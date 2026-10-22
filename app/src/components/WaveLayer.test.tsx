@@ -13,6 +13,7 @@ import {
   WAVE_ARROW_LAYER,
   WAVE_ARROW_SOURCE,
   WAVE_CELL_SOURCE,
+  WAVE_EDGE_LAYER,
   WAVE_FILL_LAYER,
 } from '../lib/waveMap';
 import type { WaveGrid } from '../types';
@@ -107,12 +108,13 @@ function lastData(map: FakeMap, id: string): GeoJSON.FeatureCollection {
   return (calls.length ? calls[calls.length - 1]![0] : src.def.data) as GeoJSON.FeatureCollection;
 }
 
-function click(map: FakeMap, props: Record<string, unknown>) {
+function click(map: FakeMap, props: Record<string, unknown>, target?: EventTarget) {
   act(() => {
     map.fireLayerEvent('click', WAVE_FILL_LAYER, {
       point: { x: 10, y: 10 },
       lngLat: { lng: 10, lat: 54.5 },
       features: [{ properties: props }],
+      ...(target !== undefined ? { originalEvent: { target } } : {}),
     });
   });
 }
@@ -152,7 +154,18 @@ describe('WaveLayer setup (#1699)', () => {
       'icon-ignore-placement': true,
     });
     expect(arrows?.layout?.['text-field']).toBeUndefined();
-    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_ARROW_LAYER]);
+    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]);
+  });
+
+  // R2-5: an edge per data cell, so an unshaded area reads as no data even
+  // where a light band is close to the basemap's water.
+  it('outlines exactly the data cells, from the cell source', () => {
+    const map = makeFakeMap();
+    renderWaves(map);
+    const edge = map.layers.get(WAVE_EDGE_LAYER);
+    expect(edge?.type).toBe('line');
+    expect(edge?.source).toBe(WAVE_CELL_SOURCE);
+    expect(edge?.filter).toBeUndefined();
   });
 
   it('paints a no-data point as no cell at all, never as calm', () => {
@@ -203,8 +216,10 @@ describe('WaveLayer setup (#1699)', () => {
     const { rerenderWith } = renderWaves(map, { visible: true });
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
     rerenderWith({ visible: false });
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     rerenderWith({ visible: true });
     act(() => simulateStyleReload(map));
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
@@ -242,6 +257,34 @@ describe('WaveLayer tap popup (#1699)', () => {
     const text = (hoisted.popups.at(-1) as RecordedPopup).content?.textContent ?? '';
     expect(text).toContain('Wave period: no data');
     expect(text).toContain('Travel direction: no data');
+  });
+
+  // R2-4: truncated, so the printed height never names the next band up.
+  it.each([
+    [2.46, '2.46 m', 'moderate'],
+    [2.5, '2.5 m', 'rough'],
+    [2.499, '2.49 m', 'moderate'],
+  ] as const)('prints %s m as %s beside its %s band', (heightM, shown, band) => {
+    const map = mapWithQuery();
+    renderWaves(map);
+    click(map, { band, heightM });
+    const text = (hoisted.popups.at(-1) as RecordedPopup).content?.textContent ?? '';
+    expect(text).toContain(`Significant wave height: ${shown}`);
+    expect(text).toContain(`Sea-state category: ${band}`);
+  });
+
+  // R2-7: MapLibre delivers a click on a DOM marker to the layer below it.
+  it('yields a tap that landed on a DOM marker, and opens for one beside it', () => {
+    const map = mapWithQuery();
+    renderWaves(map);
+    const marker = document.createElement('div');
+    marker.className = 'maplibregl-marker';
+    const dot = document.createElement('span');
+    marker.append(dot);
+    click(map, CELL, dot);
+    expect(hoisted.popups).toHaveLength(0);
+    click(map, CELL, document.createElement('canvas'));
+    expect(hoisted.popups).toHaveLength(1);
   });
 
   it('yields the tap while a map pick is armed', () => {

@@ -24,7 +24,8 @@ import * as DataLayersModule from './components/DataLayers';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
-import { fetchWindGrid, OpenMeteoError } from './services/openMeteo';
+import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from './services/openMeteo';
+import { makeWaveGrid } from './test/waveFixtures';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
@@ -2103,6 +2104,47 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
 // spirit — editing vias on one plan must not corrupt a later-loaded
 // different plan — under the new trigger (draftViaPoints resetting on
 // plan.id change), which is what now provides that guarantee.
+// #1699 R2-1: App.tsx's `mapPickArmed={tapTarget !== null}` is what makes the
+// sea-state popup yield to an armed origin/destination/via pick.
+describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', () => {
+  it('opens on a wave-cell tap, and not while an origin pick is armed', async () => {
+    vi.mocked(fetchWaveGrid).mockResolvedValueOnce(
+      makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+    );
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(20));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-waves-fill']).toBeTruthy());
+
+    const tapWaveCell = () =>
+      act(() => {
+        mapTestHooks.layerClickHandlers['sc-waves-fill']?.({
+          point: { x: 5, y: 5 },
+          lngLat: { lat: 54.6, lng: 10 },
+          features: [{ properties: { band: 'slight', heightM: 0.6 } }],
+        });
+      });
+
+    // Positive control: unarmed, the tap opens the sea-state popup.
+    tapWaveCell();
+    expect(mapTestHooks.lastPopupContent?.className).toBe('wave-popover');
+
+    mapTestHooks.lastPopupContent = null;
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    await screen.findByText(de['banner.tapPick'].replace('{target}', de['planner.origin.label']));
+    tapWaveCell();
+    expect(mapTestHooks.lastPopupContent).toBeNull();
+  });
+});
+
 describe('via edits are draft-only and never auto-replan (#571 redesign)', () => {
   it('adding then removing a via point dispatches NO routing call — only the Plan-route button does', async () => {
     renderApp();

@@ -13,7 +13,7 @@ import {
   STARBOARD_COLOR,
   VIA_COLOR,
 } from './mapColors';
-import { SEA_STATE_COLORS, SHADED_BANDS } from './waveMap';
+import { SEA_STATE_COLORS, SHADED_BANDS, WAVE_FILL_OPACITY } from './waveMap';
 
 // #715: app.css cannot IMPORT lib/mapColors.ts (no compiler spans CSS
 // and TypeScript), so its own sites read these values through --sc-*
@@ -112,10 +112,7 @@ describe('#715: app.css --sc-* map-colour TOKENS are honest twins of lib/mapColo
  */
 function assertUsesToken(css: string, blockPattern: RegExp, token: string, label: string): void {
   const block = css.match(blockPattern);
-  expect(
-    block,
-    `app.css's ${label} rule not found (renamed, reformatted, or moved)`,
-  ).not.toBeNull();
+  expect(block, `app.css's ${label} rule not found (renamed, reformatted, or moved)`).not.toBeNull();
   const body = block![1];
   expect(body, `${label} does not reference var(--${token})`).toMatch(
     new RegExp(`var\\(--${token}\\)`),
@@ -242,6 +239,16 @@ describe('#1699: --sc-sea-* tokens twin SEA_STATE_COLORS', () => {
       SEA_STATE_COLORS[band].toLowerCase(),
       SEA_STATE_COLORS[band].toLowerCase(),
     ]);
+  });
+
+  it.each(SHADED_BANDS)('.route-legend-sea-%s mixes at the map fill opacity', (band) => {
+    const block = css.match(new RegExp(`\\.route-legend-sea-${band}\\s*\\{([^}]*)\\}`));
+    expect(block, `.route-legend-sea-${band} rule not found`).not.toBeNull();
+    const mix = block![1]!.match(
+      new RegExp(`color-mix\\(in srgb, var\\(--sc-sea-${band}\\) (\\d+)%, var\\(--sc-halo\\)\\)`),
+    );
+    expect(mix, `.route-legend-sea-${band} has no color-mix over --sc-halo`).not.toBeNull();
+    expect(Number(mix![1]) / 100).toBe(WAVE_FILL_OPACITY);
   });
 
   it.each(SHADED_BANDS)('.route-legend-sea-%s uses its token', (band) => {

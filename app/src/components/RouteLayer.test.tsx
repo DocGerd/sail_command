@@ -31,7 +31,7 @@ import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { WAVE_ARROW_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
+import { WAVE_ARROW_LAYER, WAVE_EDGE_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -103,6 +103,7 @@ vi.mock('maplibre-gl', () => ({
       return this;
     }
     addTo() {
+      hoisted.popupsAdded++;
       return this;
     }
     remove() {}
@@ -124,6 +125,7 @@ const hoisted = vi.hoisted(() => ({
   map: null as unknown,
   createdMarkers: [] as RecordedRouteLayerMarker[],
   boundsPoints: [] as [number, number][],
+  popupsAdded: 0,
 }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
@@ -2639,6 +2641,7 @@ describe('sea-state toggle (#1699)', () => {
     fireEvent.click(toggle);
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     expect(localStorage.getItem('sc-waves-visible')).toBe('0');
   });
 
@@ -2661,5 +2664,86 @@ describe('sea-state toggle (#1699)', () => {
       />,
     );
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+  });
+});
+
+// #1699 R2-1: App's `mapPickArmed` reaches WaveLayer through RouteLayer.
+describe('sea-state tap while a map pick is armed (#1699)', () => {
+  const withWaves = (): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+  });
+
+  function renderArmed(mapPickArmed: boolean) {
+    const map = Object.assign(makeFakeMap(), { queryRenderedFeatures: vi.fn(() => []) });
+    hoisted.map = map;
+    hoisted.popupsAdded = 0;
+    render(
+      <RouteLayer
+        plan={withWaves()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={mapPickArmed}
+      />,
+    );
+    act(() => {
+      map.fireLayerEvent('click', WAVE_FILL_LAYER, {
+        point: { x: 5, y: 5 },
+        lngLat: { lng: 10, lat: 54.6 },
+        features: [{ properties: { band: 'slight', heightM: 0.6 } }],
+      });
+    });
+  }
+
+  it('opens the sea-state popup when no pick is armed', () => {
+    renderArmed(false);
+    expect(hoisted.popupsAdded).toBe(1);
+  });
+
+  it('opens no popup while a pick is armed', () => {
+    renderArmed(true);
+    expect(hoisted.popupsAdded).toBe(0);
+  });
+});
+
+// #1699 R2-6: an empty overlay at a slider hour the wave grid does not cover.
+describe('sea-state slider hour outside the wave axis (#1699)', () => {
+  const planWith = (t0Ms: number): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 }), { t0Ms }),
+  });
+
+  it('shows a muted note naming the hour, not the plan', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS + 10 * 3_600_000));
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeEnabled();
+    const note = screen.getByText(de['route.waves.outOfRange']);
+    expect(note.getAttribute('role')).toBeNull();
+    expect(note).toHaveClass('route-waves-note');
+    expect(toggle.getAttribute('aria-describedby')).toBe(note.id);
+    expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
+  });
+
+  it('shows no note when the hour is covered', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS));
+    expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
+    expect(
+      screen
+        .getByRole('checkbox', { name: de['route.waves.toggle'] })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+  });
+
+  it('shows no note while the overlay is switched off', () => {
+    localStorage.setItem('sc-waves-visible', '0');
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS + 10 * 3_600_000));
+    expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
   });
 });

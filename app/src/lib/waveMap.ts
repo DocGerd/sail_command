@@ -11,6 +11,7 @@ export const WAVE_CELL_SOURCE = 'sc-waves-cells';
 export const WAVE_ARROW_SOURCE = 'sc-waves-arrows';
 export const WAVE_FILL_LAYER = 'sc-waves-fill';
 export const WAVE_ARROW_LAYER = 'sc-waves-arrows';
+export const WAVE_EDGE_LAYER = 'sc-waves-edge';
 // The fill is added first with the arrows on the same anchor, so it is the bottom.
 export const WAVE_STACK_BOTTOM_LAYER = WAVE_FILL_LAYER;
 export const WAVE_ARROW_IMAGE = 'sc-wave-arrow';
@@ -24,8 +25,7 @@ export const SHADED_BANDS: readonly ShadedBand[] = [
   'rough',
 ];
 
-// Sequential blue-purple ramp, kept off the depth ramp's orange/yellow/blue
-// hues. app.css twins these as --sc-sea-* for the legend swatches.
+// app.css twins these as --sc-sea-* for the legend swatches.
 export const SEA_STATE_COLORS: Record<ShadedBand, string> = {
   calm: '#EDF8FB',
   smooth: '#B3CDE3',
@@ -43,6 +43,9 @@ export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
 };
 
 export const WAVE_FILL_OPACITY = 0.45;
+// Every data cell gets an edge whatever its band: the light bands are close to
+// the basemap's water, so the edges are what show an unshaded area as no data.
+export const WAVE_EDGE_OPACITY = 0.2;
 
 export interface WaveCellProps {
   band: ShadedBand;
@@ -170,10 +173,12 @@ export function waveArrowImage(): { width: number; height: number; data: Uint8Ar
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
-// Sea-state metres: one decimal minimum, two where a band edge needs it (1.25).
-export function formatSeaStateM(value: number, lang: Lang, maxDigits = 1): string {
+// Sea-state metres, one to two decimals. Truncated, never rounded: the band is
+// classified from the raw value, so a rounded figure could read as the next band.
+export function formatSeaStateM(value: number, lang: Lang): string {
   return new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
-    maximumFractionDigits: maxDigits,
+    maximumFractionDigits: 2,
+    roundingMode: 'trunc',
   }).format(value);
 }

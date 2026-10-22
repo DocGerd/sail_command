@@ -339,7 +339,7 @@ describe('fakeMaplibre layer-order model agrees with getStyle (#1537)', () => {
 // fill when it exists and its harbours/seamarks on the AIS/route chain;
 // WaveLayer anchors below saved waypoints, else harbour circles, else AIS,
 // else the route stack. Saved waypoints sit directly below harbour circles.
-const WAVES = ['sc-waves-fill', 'sc-waves-arrows'];
+const WAVES = ['sc-waves-fill', 'sc-waves-edge', 'sc-waves-arrows'];
 const DEPTH_BELOW_WAVES = [
   'sc-contour-labels',
   'sc-depth',

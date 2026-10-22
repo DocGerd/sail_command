@@ -35,7 +35,7 @@ import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
 import WaveLayer from './WaveLayer';
-import { seaStateUnavailable } from '../lib/waves';
+import { seaStateUnavailable, waveHourIndexAt } from '../lib/waves';
 import Disclosure from './Disclosure';
 import Button from './Button';
 import type { LatLon, Leg, Plan, SailId } from '../types';
@@ -1521,6 +1521,9 @@ export default function RouteLayer({
 
   const clampedHourIdx = Math.min(hourIdx, Math.max(0, hourOptions.length - 1));
   const tMs = hourOptions[clampedHourIdx] ?? plan?.request.departureMs ?? 0;
+  // #1699 R2-6: explains an empty overlay, so only while it is switched on.
+  const wavesOutOfRange =
+    wavesVisible && plan?.waveGrid !== undefined && waveHourIndexAt(plan.waveGrid, tMs) === null;
 
   // Viewport-scoped adaptive barbs (#36): recomputed on debounced moveend/
   // zoomend and on slider/plan/rig/mask changes — but ONLY while visible (no
@@ -1897,13 +1900,13 @@ export default function RouteLayer({
             checked={wavesVisible && hasWaveGrid}
             disabled={!hasWaveGrid}
             onChange={(e) => setWavesVisible(e.target.checked)}
-            aria-describedby={hasWaveGrid ? undefined : 'route-waves-note'}
+            aria-describedby={hasWaveGrid && !wavesOutOfRange ? undefined : 'route-waves-note'}
           />
           {t('route.waves.toggle')}
         </label>
-        {!hasWaveGrid && (
+        {(!hasWaveGrid || wavesOutOfRange) && (
           <p id="route-waves-note" className="route-waves-note">
-            {t('route.waves.unavailable')}
+            {t(hasWaveGrid ? 'route.waves.outOfRange' : 'route.waves.unavailable')}
           </p>
         )}
         <label>

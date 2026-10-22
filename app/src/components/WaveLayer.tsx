@@ -10,6 +10,7 @@ import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { installStyleSetup } from '../lib/styleReload';
 import { formatHeading, type Lang } from '../lib/format';
+import { INK_COLOR } from '../lib/mapColors';
 import {
   EMPTY_WAVE_ARROWS,
   EMPTY_WAVE_CELLS,
@@ -20,6 +21,8 @@ import {
   WAVE_ARROW_PIXEL_RATIO,
   WAVE_ARROW_SOURCE,
   WAVE_CELL_SOURCE,
+  WAVE_EDGE_LAYER,
+  WAVE_EDGE_OPACITY,
   WAVE_FILL_LAYER,
   WAVE_FILL_OPACITY,
   formatSeaStateM,
@@ -77,6 +80,20 @@ function setupLayers(map: MaplibreMap): void {
         'fill-opacity': WAVE_FILL_OPACITY,
         // Antialiasing draws hairline seams between adjacent cells.
         'fill-antialias': false,
+      },
+    },
+    beforeId,
+  );
+  map.addLayer(
+    {
+      id: WAVE_EDGE_LAYER,
+      type: 'line',
+      source: WAVE_CELL_SOURCE,
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': INK_COLOR,
+        'line-opacity': WAVE_EDGE_OPACITY,
+        'line-width': 0.75,
       },
     },
     beforeId,
@@ -199,7 +216,7 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed }: WaveLaye
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const visibility = visible && hasGrid ? 'visible' : 'none';
-    for (const id of [WAVE_FILL_LAYER, WAVE_ARROW_LAYER]) {
+    for (const id of [WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
     if (visibility === 'none') {
@@ -212,6 +229,10 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed }: WaveLaye
     if (!map || styleEpoch === 0) return;
     const handleClick = (e: MapLayerMouseEvent) => {
       if (armedRef.current) return;
+      // A DOM marker (origin, destination, via, ownship) sits over the canvas,
+      // and MapLibre still delivers its click to the layer below.
+      const target = e.originalEvent?.target;
+      if (target instanceof Element && target.closest('.maplibregl-marker')) return;
       // Any other tappable layer under the point owns the tap; the wave
       // layer covers most of the sea and must never steal it.
       const others = [

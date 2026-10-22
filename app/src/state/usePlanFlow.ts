@@ -353,10 +353,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
-      // #1699: display only, so it can never block or fail a plan. Started
-      // after wind so it cannot add to a wind 429, still overlapping the
-      // solve. Any rejection, sync or async, becomes null. Stored wind takes
-      // the stored waves; a wind fixture without a wave fixture stays offline.
+      // #1699: display only, so it never fails a plan and delays one by at
+      // most WAVE_GRACE_MS. Started after wind so it cannot add to a wind 429,
+      // still overlapping the solve. Any rejection, sync or async, becomes
+      // null. Stored wind takes the stored waves; a wind fixture without a
+      // wave fixture stays offline.
       const wavePromise: Promise<WaveGrid | null> = windFromStore
         ? Promise.resolve(opts.storedWaveGrid ?? null)
         : fixtureUrl !== undefined && waveFixtureUrl === undefined
@@ -494,7 +495,6 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       const waveGrid = await Promise.race([
         wavePromise,
         new Promise<null>((resolve) => {
-          if (cancelRequestedRef.current) resolve(null);
           endWaveWaitRef.current = () => resolve(null);
           graceTimer = setTimeout(() => resolve(null), WAVE_GRACE_MS);
         }),

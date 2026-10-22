@@ -11,9 +11,9 @@ export interface WavePoint {
   dirFromDeg: number; // NaN = no data
 }
 
-// WMO sea-state code bands for significant wave height. Each band includes
-// its lower edge and excludes its upper one, so 0.1 is smooth and 2.5 is
-// rough, matching the spec's "calm < 0.1" and "rough ≥ 2.5".
+// WMO sea-state bands per spec §0, with 'rough' open-ended above 2.5 m.
+// Each band includes its lower edge and excludes its upper one, so 0.1 is
+// smooth and 2.5 is rough, matching the spec's "calm < 0.1" and "rough ≥ 2.5".
 export type SeaStateBand = 'calm' | 'smooth' | 'slight' | 'moderate' | 'rough' | 'no-data';
 
 export const SEA_STATE_EDGES_M = { smooth: 0.1, slight: 0.5, moderate: 1.25, rough: 2.5 } as const;

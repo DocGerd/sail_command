@@ -18,6 +18,7 @@ const WIND = 'test-fixtures/wind-sw12.json';
 const WAVE = 'test-fixtures/wave-bands.json';
 const FILL = 'sc-waves-fill';
 const ARROWS = 'sc-waves-arrows';
+const EDGE = 'sc-waves-edge';
 // Lattice point [latIdx 6, lonIdx 11] (wave-fixture.mjs NULL_POINTS): the one
 // all-null point whose four neighbours all carry data.
 const NULL_CELL = { lng: 10.5, lat: 54.9 };
@@ -195,6 +196,7 @@ test.describe('sea-state overlay (#1699)', () => {
 
       await toggle.uncheck();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('none');
+      await expect.poll(() => layerVisibility(page, EDGE)).toBe('none');
       await expect.poll(() => layerVisibility(page, ARROWS)).toBe('none');
       await expect.poll(() => featureCount(page, FILL)).toBe(0);
       await expect.poll(() => featureCount(page, ARROWS)).toBe(0);

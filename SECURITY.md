@@ -44,9 +44,10 @@ arguments — is the
     boxes covering your area of interest are sent to that third party.
 - **All transport is encrypted** (HTTPS / WSS) with the browser's default
   certificate verification; the app contains no verification bypass.
-- **The app keeps working offline.** Only planning a *new* route needs the
-  network; a failure there is reported as a failure, never worked around with
-  substituted data.
+- **The app keeps working offline.** Planning needs the network, except a
+  next passage, which can reuse its source plan's stored forecast and says
+  so. A wind-forecast failure is reported as a failure; a sea-state failure
+  only leaves the plan without a sea state.
 - **Reproducible, reviewed releases.** Production is built only from `main`
   through protected-branch CI, with a determinism proof that fails the build on
   any byte difference.

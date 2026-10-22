@@ -840,6 +840,7 @@ export const de = {
   // #1699: Seegang-Overlay (nur Anzeige, ohne Einfluss auf die Route).
   'route.waves.toggle': 'Seegang anzeigen',
   'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
+  'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
   'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
   'route.legend.seaStateBelow': 'unter {max} m',
   'route.legend.seaStateRange': '{min} bis {max} m',
@@ -848,9 +849,12 @@ export const de = {
   'route.legend.seaStateArrow':
     'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
   'route.legend.seaStateCaveat':
-    'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe grob.',
+    'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe ungenau.',
+  // Douglas-scale wording per NLWKN, Anlage 7.1 Wellenauflaufberechnung
+  // (https://nlwkn.niedersachsen.de/download/213307/Anlage_7.1_Wellenauflaufberechnung.pdf.pdf).
+  // Rejected for 'smooth': 'glatt', which reads calmer than 'ruhig'.
   'seaState.band.calm': 'ruhig',
-  'seaState.band.smooth': 'glatt',
+  'seaState.band.smooth': 'schwach bewegt',
   'seaState.band.slight': 'leicht bewegt',
   'seaState.band.moderate': 'mäßig bewegt',
   'seaState.band.rough': 'grob',
