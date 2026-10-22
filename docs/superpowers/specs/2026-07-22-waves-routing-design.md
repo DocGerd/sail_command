@@ -1,7 +1,7 @@
 # SailCommand Sea-State (Waves) in Routing — Design Addendum (#18)
 
-**Status:** DRAFT for review (2026-07-22); design-only, implementation deferred to a
-future session. **Relationship:** addendum to `2026-07-14-sail-command-design.md`, whose
+**Status:** DRAFT for review (2026-07-22). §0's first slice is implemented under #1699;
+everything else is design-only. **Relationship:** addendum to `2026-07-14-sail-command-design.md`, whose
 §6 lists *"Currents/tides, wave data"* as out of scope (v1). This addendum brings **wave
 (sea-state) effects** into scope and specifies them; **currents/tides remain out of scope**
 (see §2). Where this document and the source spec conflict on wave/sea-state behavior, this
@@ -9,38 +9,48 @@ addendum wins; on all other domain behavior the source spec wins.
 
 ## 0. First slice — overlay only (2026-10-22)
 
-Maintainer rulings, recorded on #1699
-(https://github.com/DocGerd/sail_command/issues/1699#issuecomment-6339846546), scope the
-first implementation to §3 (`WaveGrid`), §4 (marine fetch) and the overlay half of §7.
-**Display only: no routing change.** §5 and §6 stay open on #1699.
+Maintainer rulings on #1699
+(https://github.com/DocGerd/sail_command/issues/1699#issuecomment-6339846546) scope a
+first slice: a plan-bound map overlay, **display only, no routing change**. §5 and §6 stay
+open on #1699.
 
 - **Content.** Hs as WMO sea-state colour bands (calm < 0.1, smooth 0.1–0.5, slight
   0.5–1.25, moderate 1.25–2.5, rough ≥ 2.5 m) plus one direction arrow per grid point.
   Period appears only in the legend and tap popup. No derived wavelength, no
-  wind-sea/swell split. This narrows §3's arrows-plus-shading wording and leaves
-  `wavePeriodS` display-only.
+  wind-sea/swell split. This narrows §7's height-shading-plus-arrows wording.
 - **Arrows point the direction of TRAVEL** (`waveDirFromDeg + 180`); the legend says so.
   Wind barbs keep their FROM convention.
 - **Plan-bound.** Fetched alongside the wind at plan time, stored on the plan, sampled at
   the slider hour. Toggle persisted via `usePersistedToggle`, default ON. No browsing
   before a plan exists.
-- **No data is not calm.** A null Hs (land, coast, no model coverage) renders no
-  symbol, never the calm band.
-- **Never reaches the worker.** `waveGrid` is not posted to the routing worker, so
-  `PlanResult` stays byte-identical.
-- **Not in this slice:** §7's shared overlay-layer registry. Layers keep the existing
-  explicit `beforeId` anchoring. A per-leg/route max-Hs readout is a follow-up issue.
-- **Model.** Provisional choice: `ewam` (DWD, regional). The 2026-10-22 live probe could not
-  run because the session's network policy denied `marine-api.open-meteo.com`. Horizon
-  coverage of `FORECAST_DAYS`, single-URL fit of the wind lattice and coastal nulls remain
-  unverified; record the model actually requested in `WaveGrid.model`.
+- **Map only.** A per-leg/route max-Hs readout is follow-up #1830.
 
-Corrections to stale facts below: the bbox is 54.3–55.6°N, 9.4–11.6°E since #295
-(`app/public/data/mask.meta.json`); the wind fetch requests `FORECAST_DAYS = 6`
-(`services/openMeteo.ts`); `db.ts` is at version 3, and §7's "bump the DB version" is
-**wrong** for an optional `Plan` field. A plan record is stored whole, so an optional field
-needs no schema change. A bump would also break production for `/uat/` visitors, who share
-one IndexedDB origin (multi-boat spec §I.2, OQ-5).
+Derived for this slice, not ruled:
+
+- **Sections implemented:** §3 (`WaveGrid`), §4 (marine fetch) and the overlay half of §7.
+- **No data is not calm.** A null Hs renders no symbol, never the calm band.
+- **Never reaches the worker.** `waveGrid` is not posted to the routing worker
+  (superseding §3's cloned-to-worker sentence), so `PlanResult` stays byte-identical.
+- **No layer registry.** §7's shared overlay-layer registry is deferred; layers keep the
+  existing explicit `beforeId` anchoring.
+- **Model.** Provisional: `ewam` (DWD, regional). Unverified: its horizon against
+  `FORECAST_DAYS`, fitting the wind lattice in one URL, and coastal nulls. Record the
+  requested model in `WaveGrid.model`.
+
+Corrections to stale facts below:
+
+- The bbox is 54.3–55.6°N, 9.4–11.6°E since #295 (`app/public/data/mask.meta.json`); §2's
+  wave probe covered only the older, smaller box.
+- The wind fetch requests `FORECAST_DAYS = 6` (`services/openMeteo.ts`), not ~7 days.
+- §4's "plan's bbox/time window" is the wind fetch's fixed 14 × 23 lattice instead.
+- §7's "first of three" overlay features is stale: seamarks (#7) and AIS (#25) have shipped.
+- `db.ts` is at version 3. §7's "bump the DB version" and §9's "v1→v2 migration framework"
+  are **wrong** for an optional `Plan` field: the `plans` store is schemaless to IndexedDB
+  (multi-boat spec §I.3), and a bump would break production for anyone who opens `/uat/`,
+  which shares its IndexedDB origin (§I.2, OQ-5). `migratePlan` rebuilds every read or
+  imported plan from named fields and drops unknown ones, so it must carry `waveGrid` (as
+  §S.4 requires for `sailPlan`), and `planExport.ts` must encode its `Float32Array`s as it
+  does `windGrid`'s.
 
 ## 1. Goal
 
