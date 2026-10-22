@@ -197,6 +197,52 @@ describe('sibling solve worker over a MessagePort', () => {
     );
   });
 
+  it('#1794: a lost sibling reply is a messageerror fatal, not a plain worker-fatal', async () => {
+    // No solver on port2: the ladder worker waits on a reply that never comes.
+    const channel = new MessageChannel();
+    channels.push(channel);
+    const out: WorkerResponse[] = [];
+    const handle = createHandler((m) => out.push(m));
+    handle({
+      type: 'init',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: openMask(),
+      polars: POLARS,
+      knownDisconnectedHarborIds: [],
+      solverPort: channel.port1,
+    });
+    handle(planMsg('lost', OPEN_REQ));
+    await vi.waitFor(() => expect(out.some((m) => m.type === 'sailDone')).toBe(true), {
+      timeout: solverTimeoutMs(60_000),
+    });
+    channel.port1.onmessageerror?.(new MessageEvent('messageerror'));
+    await vi.waitFor(() => expect(out.some((m) => m.type === 'fatal')).toBe(true));
+    expect(out.find((m) => m.type === 'fatal')).toMatchObject({
+      type: 'fatal',
+      id: 'lost',
+      kind: 'messageerror',
+    });
+  });
+
+  it('#1794: the sibling reports an undeserializable ladder message instead of staying silent', () => {
+    const channel = new MessageChannel();
+    channels.push(channel);
+    const out: WorkerResponse[] = [];
+    createSolverHandler((m) => out.push(m))({
+      type: 'init-solver',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: openMask(),
+      polars: POLARS,
+      port: channel.port2,
+    });
+    channel.port2.onmessageerror?.(new MessageEvent('messageerror'));
+    expect(out.find((m) => m.type === 'fatal')).toMatchObject({
+      type: 'fatal',
+      id: null,
+      kind: 'messageerror',
+    });
+  });
+
   it('a spent budget cuts both rigs, as on the single worker', async () => {
     const seq = sequential(openMask);
     seq.handle(planMsg('b', OPEN_REQ, { budgetMs: 0 }));

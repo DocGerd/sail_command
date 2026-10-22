@@ -456,14 +456,12 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         result = await client.plan(
           req,
           windGrid,
-          // #340/#54: only `sailId` drives the UI now (phase indication, not
-          // a percentage) — the worker's tMs/frontierSize are still
-          // throttled upstream (workerClient.ts) but no longer consumed
-          // here. `index`/`total` are derived from req.sailIds (the solve
-          // order itself), not a module constant.
+          // #340/#54: the UI shows a phase, not a percentage — the worker's
+          // tMs/frontierSize are throttled upstream (workerClient.ts) but not
+          // consumed here. `index`/`total` are derived from req.sailIds.
           //
           // #54 fix round 1: an unguarded `indexOf(sailId) + 1` degrades to
-          // a fabricated "sail 0 of 2" if the worker ever reports progress
+          // a fabricated index 0 if the worker ever reports progress
           // for a sailId not in req.sailIds — unreachable today (the worker
           // only ever solves the sails req.sailIds itself lists), but
           // silently WRONG, inconsistent with recommendedResult()'s

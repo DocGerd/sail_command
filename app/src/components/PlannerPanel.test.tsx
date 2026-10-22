@@ -1082,6 +1082,18 @@ describe('PlannerPanel', () => {
     },
   );
 
+  it('#1794: a single-sail request does not claim "all sails"', () => {
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 1 } });
+    expect(plannerStatus()).toHaveTextContent('Calculating route…');
+    expect(plannerStatus()).not.toHaveTextContent('all sails');
+    cleanup();
+    renderPanel({
+      planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 1, secondPass: true },
+    });
+    expect(plannerStatus()).toHaveTextContent('No route found — second search pass…');
+    expect(plannerStatus()).not.toHaveTextContent('all sails');
+  });
+
   it('#1136: renders a second-pass routing phase distinctly from the first pass', () => {
     renderPanel({
       planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2, secondPass: true },

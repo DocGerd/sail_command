@@ -346,6 +346,9 @@ export const en = {
   'planner.status.routingSail': 'Calculating route for all sails…',
   // #1136: the motor-off salvage re-run after a failed first search
   'planner.status.routingSailSecondPass': 'No route found — second search pass for all sails…',
+  // #1794: the same phases for a request with a single sail
+  'planner.status.routingSingle': 'Calculating route…',
+  'planner.status.routingSingleSecondPass': 'No route found — second search pass…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',

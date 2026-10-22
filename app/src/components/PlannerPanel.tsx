@@ -888,17 +888,16 @@ export default function PlannerPanel({
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'starting') statusText = t('planner.status.starting');
   else if (planning.phase === 'routing')
-    // #340/#54: phase readout ("sail N of 2") — index/total now come straight
-    // off the PlannerStatus itself (usePlanFlow.ts derives them from
-    // request.sailIds, the router's actual solve order), not a module
-    // constant, so the index always matches which solve is really running.
+    // #340/#1794: a phase readout. The rigs may solve concurrently, so it
+    // names no rig or index; `total` only picks the plural form.
     statusText = t(
-      planning.secondPass ? 'planner.status.routingSailSecondPass' : 'planner.status.routingSail',
-      {
-        index: planning.index,
-        total: planning.total,
-        sail: t(sailLabelKey(planning.sailId)),
-      },
+      planning.total > 1
+        ? planning.secondPass
+          ? 'planner.status.routingSailSecondPass'
+          : 'planner.status.routingSail'
+        : planning.secondPass
+          ? 'planner.status.routingSingleSecondPass'
+          : 'planner.status.routingSingle',
     );
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {

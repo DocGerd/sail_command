@@ -163,7 +163,7 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
 // how long the passage takes): a realistic passage completed at a few
 // percent by construction, and it reset to 0 at every genoa->fock switch and
 // #53 depth-relaxation retry. `rig` alone is now the phase signal, honest
-// and bounded ("sail N of 2" — PlannerPanel.tsx renders it).
+// and bounded (a phase line — PlannerPanel.tsx renders it).
 // Exported for a focused unit test of the phase mapping (App.test.tsx) — the
 // full render can't easily hold the transient 'probing-depth' phase, and the
 // adapter is the single point where a phase-mapping typo would slip through.

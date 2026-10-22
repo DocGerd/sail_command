@@ -358,6 +358,9 @@ export const de = {
   'planner.status.routingSail': 'Route wird für alle Segel berechnet…',
   // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
   'planner.status.routingSailSecondPass': 'Keine Route gefunden — zweiter Suchlauf für alle Segel…',
+  // #1794: dieselben Phasen für eine Anfrage mit nur einem Segel
+  'planner.status.routingSingle': 'Route wird berechnet…',
+  'planner.status.routingSingleSecondPass': 'Keine Route gefunden — zweiter Suchlauf…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
