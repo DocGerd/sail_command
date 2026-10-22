@@ -10,9 +10,9 @@ import {
 // #1699: the plan-bound sea-state overlay (WaveLayer.tsx) on a real map, fed
 // by the gitignored `wave-bands.json` fixture (scripts/wave-fixture.mjs, built
 // by `pree2e`): Hs cycles through all five WMO bands by latitude row, five
-// points are all-null, and every series is constant over time. Assertions read
-// VALUES (feature counts, band sets, layer ids) inside expect.poll callbacks
-// that re-sample the map on every call.
+// points are all-null, and every series is constant over time. Waits on map
+// state poll VALUES (feature counts, band sets, layer ids) and re-sample the
+// map on every call.
 
 const WIND = 'test-fixtures/wind-sw12.json';
 const WAVE = 'test-fixtures/wave-bands.json';
@@ -153,7 +153,6 @@ test.describe('sea-state overlay (#1699)', () => {
       await expect.poll(() => layerVisibility(page, FILL), { timeout: 30_000 }).toBe('visible');
       await expect.poll(() => layerVisibility(page, ARROWS)).toBe('visible');
       await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
-      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       // Centre the map on the null point: its four water neighbours (S is a
       // real calm cell) each have a feature, the null point itself has none.
@@ -178,6 +177,9 @@ test.describe('sea-state overlay (#1699)', () => {
           { timeout: 30_000 },
         )
         .toMatchObject({ nullCell: 0, neighbours: true });
+      // Arrows checked here, not at the route fit: land culling leaves that
+      // close-in view with no lattice point, so no arrow anchor, in it.
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       expect(openMeteoRequests, 'fixtures must keep the run off the live APIs').toEqual([]);
     } finally {
@@ -185,7 +187,7 @@ test.describe('sea-state overlay (#1699)', () => {
     }
   });
 
-  test('the toggle hides both layers and persists across a reload', async ({ page }) => {
+  test('the toggle hides the overlay layers and persists across a reload', async ({ page }) => {
     const server = await startPreview(page);
     try {
       await planRoute(page, server, `windFixture=${WIND}&waveFixture=${WAVE}`);
@@ -311,8 +313,7 @@ test.describe('sea-state overlay (#1699)', () => {
 
 // The fixture is time-invariant, so the slider cannot change anything by
 // itself. This describe serves a variant instead (odd hours all rough, even
-// hours the stock bands) through page.route, which needs the service worker
-// out of the way (the fixture is precached).
+// hours the stock bands) through page.route, with the service worker blocked.
 test.describe('sea-state overlay follows the slider (#1699)', () => {
   test.use({ serviceWorkers: 'block' });
 

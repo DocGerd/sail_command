@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Writes app/public/test-fixtures/wave-bands.json, the Open-Meteo Marine
-// response consumed via `?waveFixture=` (#1699, src/state/usePlanFlow.ts), so
-// e2e never touches the marine API. Gitignored: `pree2e` regenerates it with
-// the same current-hour start as gen-wind-fixture.mjs. Shape lives in
+// response waves.spec.ts plans on via `?waveFixture=` (#1699,
+// src/state/usePlanFlow.ts). Gitignored: `pree2e` regenerates it with the
+// same current-hour start as gen-wind-fixture.mjs. Shape lives in
 // wave-fixture.mjs.
 
 import { writeFileSync, mkdirSync } from 'node:fs';

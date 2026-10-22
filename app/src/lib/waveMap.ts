@@ -45,7 +45,9 @@ export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
 
 export const WAVE_FILL_OPACITY = 0.45;
 // Every data cell gets an edge whatever its band: the light bands are close to
-// the basemap's water, so the edges are what show an unshaded area as no data.
+// the basemap's water, so the missing cell grid is what shows a wider unshaded
+// area as no data (or land); a single no-data cell is still framed by its
+// neighbours' edges.
 export const WAVE_EDGE_OPACITY = 0.2;
 
 export interface WaveCellProps {
