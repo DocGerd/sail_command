@@ -65,17 +65,20 @@ Complete runtime network egress — there is nothing else:
 | N1 | Same origin (`docgerd.github.io`, GitHub Pages CDN) | App load, map use | Nothing but the request | Data-only assets; the app shell is precached |
 | N2 | `https://api.open-meteo.com/v1/forecast` | Only when the user plans a route | A **fixed** 14 × 23 point grid covering the whole supported area, no API key, no cookies | Untrusted JSON, validated on arrival |
 | N3 | `wss://stream.aisstream.io/v0/stream` | Only if the user pasted their own AIS key | The user's key plus bounding boxes derived from the map view / active route | Untrusted JSON frames, validated per field |
+| N4 | `https://marine-api.open-meteo.com/v1/marine` | Only when the user plans a route, after N2 succeeds | The same fixed grid as N2, no API key, no cookies | Untrusted JSON, validated on arrival; display only, so a failure drops the sea-state overlay, never the plan |
 
 Two properties of N2 are load-bearing and easy to lose in a refactor: the wind
 request is **position-independent** (a constant grid, identical for every user,
 so it discloses nothing about where the user is or intends to sail), and the
 service worker is scoped so it can **never** cache the Open-Meteo origin — wind
 lives per plan in IndexedDB so a saved route always renders against the forecast
-it was computed from.
+it was computed from. Both hold for N4: it sends the same grid, the service
+worker never caches its origin either, and its sea-state grid is stored per plan.
 
 Local state: IndexedDB database `sailcommand` (object store `plans` including
-each plan's wind grid; object store `settings` holding the single user settings
-record, which is where a pasted AIS key lives; object store `waypoints`
+each plan's wind grid and, when one was fetched, its sea-state grid; object
+store `settings` holding the single user settings record, which is where a
+pasted AIS key lives; object store `waypoints`
 holding user-named saved waypoints — an id, name, and lat/lon; object store
 `pins` holding a per-plan region-pinning INTENT, not a readiness verdict —
 `planId`, the required region ids, and a timestamp — the actual offline-ready
@@ -105,7 +108,7 @@ telemetry, or tracking of any kind.
 |---|---|---|---|
 | **TB1** | Browser sandbox ↔ app | The app is ordinary web content; it holds no elevated privilege | Browser origin model; app requests only geolocation, and only when the user opens the Live view |
 | **TB2** | App ↔ user-supplied GPX file | Inbound: arbitrary attacker-controlled XML the user chose to open | Size cap, element-count cap, XML-only parse, allowlist coordinate validation ([§5.1](#51-input-validation-tb2-tb3-tb4)) |
-| **TB3** | App ↔ Open-Meteo (N2) | Outbound: fixed grid. Inbound: untrusted JSON | HTTPS; shape/length validation before any value is used |
+| **TB3** | App ↔ Open-Meteo (N2, N4) | Outbound: fixed grid. Inbound: untrusted JSON | HTTPS; shape/length validation before any value is used |
 | **TB4** | App ↔ aisstream.io (N3) | Outbound: user's key + bounding boxes. Inbound: untrusted JSON frames | WSS; per-field type validation; feature entirely inert without a key |
 | **TB5** | App ↔ browser storage | Read/write of plans, settings, and saved waypoints | Same-origin storage; no cross-origin access; corrupt records isolated per row |
 | **TB6** | Build-time pipeline ↔ committed assets | Pipeline output becomes data the app trusts | Assets are committed and reviewed in pull requests; harbour connectivity is asserted **for every catalogue boat at that boat's derived gate** inside the required `app` suite (`app/src/test/verifyMaskConnectivity.test.ts`, [#550](https://github.com/DocGerd/sail_command/issues/550)), backed by the fuller advisory `verify_mask.py` gate in `verify-mask.yml`; pipeline never runs at app runtime |
@@ -136,7 +139,8 @@ notices inventory whose drift fails CI, and human review of every dependency
 bump (nothing merges automatically).
 **Residual risk: reduced, not eliminated.** A `<meta http-equiv>`
 Content-Security-Policy ([#223](https://github.com/DocGerd/sail_command/issues/223))
-now restricts `connect-src` to `'self'`, Open-Meteo, and aisstream.io — a
+now restricts `connect-src` to `'self'`, Open-Meteo's forecast and marine
+origins, and aisstream.io — a
 compromised bundle cannot make **background requests** (fetch/XHR/WebSocket/
 `sendBeacon`) to an arbitrary origin. `connect-src` governs only that traffic
 class; it does not restrict top-level navigation (`location.href =
@@ -144,7 +148,7 @@ class; it does not restrict top-level navigation (`location.href =
 shipped in browsers), `window.open`, `<link rel="dns-prefetch"/"preconnect">`,
 or WebRTC (no `webrtc` directive is set, and WebRTC does **not** fall back to
 `default-src`) — all remain viable, if noisier, exfiltration channels, and
-exfiltration to the three already-allowed destinations (e.g. abusing the
+exfiltration to the already-allowed destinations (e.g. abusing the
 Open-Meteo connection as a covert channel) is also unrestricted. Dependency
 review is still one person reading a diff. Partially bounded by the app
 holding little worth stealing: no credentials except an optional AIS key the
@@ -178,7 +182,9 @@ validation — the payload must be an array of exactly the expected point count,
 point 0 must carry a non-empty `hourly.time`, and each point's arrays are
 checked before being read into the typed grid; anything else raises a typed
 `malformed` error surfaced to the user. A bad response yields "cannot plan",
-never a corrupt plan.
+never a corrupt plan. The marine response (N4) gets the same structural
+validation, but it is display-only and never reaches the router: a malformed
+one drops the sea-state overlay and the plan saves without it.
 **Residual risk:** *plausible-but-wrong* wind values would pass validation and
 produce a wrong route. This is a data-quality risk, not a memory-safety or
 code-execution one, and it is the main reason the app is documented as a
@@ -374,7 +380,7 @@ place to occur, not that it was judged unlikely.
 | **A02 Cryptographic failures** | Countered | The project implements no cryptography. All transport is TLS (HTTPS to Open-Meteo and Pages, WSS to aisstream.io) with default certificate verification and no bypass anywhere in the code. No cleartext protocol is supported. The only credential is the user's own AIS key — never committed, replaceable at runtime with no rebuild |
 | **A03 Injection** (CWE-79 XSS, CWE-89 SQLi, CWE-611 XXE) | Countered | No SQL and no server-side interpreter. XSS: no `innerHTML` / `dangerouslySetInnerHTML` / `eval` / `new Function` anywhere; React escapes by default. XXE: `DOMParser` with `application/xml` does not resolve external entities. CodeQL's `js/xss-through-dom` alert on that parse is a **documented false positive** — its DOM-XSS sink model is mime-insensitive, while an `application/xml` parse is inert and the parser extracts only numeric coordinates and enumerated notices |
 | **A04 Insecure design** | Countered | This document is the design argument; see [§5](#5-secure-design-argument). Threats were considered against the architecture, and the largest control is architectural: no backend, no accounts, no central data |
-| **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app injects a `<meta http-equiv="Content-Security-Policy">` at build time (`cspMeta()` in `app/vite.config.ts`) with `default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo and aisstream.io, `worker-src 'self'` (no `blob:` — it would defeat `script-src 'self'`), `img-src` widened to `data:`/`blob:` where maplibre-gl 6 demonstrably needs it, and no `'unsafe-inline'`/`'unsafe-eval'`, plus the static `<meta name="referrer" content="strict-origin-when-cross-origin">` already present in `app/index.html` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
+| **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app injects a `<meta http-equiv="Content-Security-Policy">` at build time (`cspMeta()` in `app/vite.config.ts`) with `default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo's forecast and marine origins and aisstream.io, `worker-src 'self'` (no `blob:` — it would defeat `script-src 'self'`), `img-src` widened to `data:`/`blob:` where maplibre-gl 6 demonstrably needs it, and no `'unsafe-inline'`/`'unsafe-eval'`, plus the static `<meta name="referrer" content="strict-origin-when-cross-origin">` already present in `app/index.html` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
 | **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five update configurations spanning three package ecosystems (npm ×2, pip ×2, github-actions) weekly plus security updates; no open Dependabot alerts — the live state is the fact rather than this sentence: `gh api repos/DocGerd/sail_command/dependabot/alerts --jq '[.[]\|select(.state=="open")]\|length'` (0 at the `v0.58.0` cut); a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
 | **A07 Identification and authentication failures** | N/A by architecture | There is no authentication. No accounts, no passwords, no sessions, no password reset, nothing to brute-force |
 | **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe, and — from `v0.8.0` — SSH-signed release tags verifiable via `git tag -v` ([#322](https://github.com/DocGerd/sail_command/issues/322)); the signing key is registered and the `git tag -v` verification path is proven end to end for every signed tag including `v0.8.0`, so a user willing to run that command can confirm a tag traces to the maintainer. GitHub's Verified badge — the no-local-config channel — is a documented exception for the `v0.8.0` tag itself (signed under an email not registered on the maintainer's GitHub account; see `v0.8.1`'s CHANGELOG entry) and does show correctly for **every** tag from `v0.8.1` onward, each reporting `verified: true, reason: "valid"` — re-derivable with `gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification` rather than trusted from a list here. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **Still partial**: signing covers the tagged commit's authorship, not the deployed artifact bytes GitHub Pages serves, and `v0.1.0`–`v0.7.0` remain permanently unsigned |

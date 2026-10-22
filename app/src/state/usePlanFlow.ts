@@ -117,7 +117,12 @@ export interface RunOptions {
   replacePlanId?: string;
   /** #1707: a fallback, never an override. Used offline, or when the forecast service is unreachable (network failure or persistent server error). */
   storedWindGrid?: WindGrid;
+  /** #1699: used exactly when `storedWindGrid` is, so stored wind never pairs with fresh waves. */
+  storedWaveGrid?: WaveGrid;
 }
+
+/** #1699: how long a solved plan waits for the marine fetch, which started before the solve. */
+export const WAVE_GRACE_MS = 3_000;
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
@@ -172,6 +177,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // Reset at the top of every run() so a cancel from a PRIOR, already-
   // finished run can never affect a fresh one.
   const cancelRequestedRef = useRef(false);
+  // #1699: ends the post-solve wave wait at once, so a cancel never waits out the grace.
+  const endWaveWaitRef = useRef<(() => void) | null>(null);
 
   // Singleton client + its init() promise, created lazily on the first
   // run() and reused for the hook's lifetime — init() transfers maskBuffer
@@ -315,24 +322,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // exactOptionalPropertyTypes: fetchWindGrid's `fixtureUrl?: string`
       // rejects an explicit `undefined`, so an absent query param must omit
       // the key entirely rather than pass `{ fixtureUrl: undefined }`.
+      // One truthiness test for both params: an empty value means "no fixture".
       const query = new URLSearchParams(location.search);
-      const fixtureUrl = query.get('windFixture') ?? undefined;
-      const waveFixtureUrl = query.get('waveFixture') ?? undefined;
-      // #1699: started alongside the wind fetch and awaited only after a
-      // successful solve. It can never fail a plan: any rejection, sync or
-      // async, resolves to null. A wind fixture without a wave fixture skips
-      // it so e2e stays network-free; so does the offline stored-wind path.
-      const offlineStored = !navigator.onLine && stored !== null;
-      const wavePromise: Promise<WaveGrid | null> =
-        offlineStored || (fixtureUrl !== undefined && waveFixtureUrl === undefined)
-          ? Promise.resolve(null)
-          : (async () => fetchWave(waveFixtureUrl ? { fixtureUrl: waveFixtureUrl } : {}))().then(
-              (grid) => grid,
-              () => null,
-            );
+      const fixtureUrl = query.get('windFixture') || undefined;
+      const waveFixtureUrl = query.get('waveFixture') || undefined;
       let windGrid: WindGrid;
-      if (offlineStored) {
+      let windFromStore = false;
+      if (!navigator.onLine && stored !== null) {
         windGrid = stored;
+        windFromStore = true;
       } else {
         try {
           windGrid = await fetchWind(fixtureUrl ? { fixtureUrl } : {});
@@ -340,6 +338,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // Only an unreachable forecast service (network failure or persistent server error) may fall back; a rate limit or bad payload must not plan on an old forecast.
           if (stored !== null && err instanceof OpenMeteoError && err.kind === 'offline') {
             windGrid = stored;
+            windFromStore = true;
           } else {
             transition({ phase: 'error', messageKey: mapWindError(err) });
             return;
@@ -353,6 +352,18 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         transition({ phase: 'idle' });
         return;
       }
+
+      // #1699: display only, so it can never block or fail a plan. Started
+      // after wind so it cannot add to a wind 429, still overlapping the
+      // solve. Any rejection, sync or async, becomes null. Stored wind takes
+      // the stored waves; a wind fixture without a wave fixture stays offline.
+      const wavePromise: Promise<WaveGrid | null> = windFromStore
+        ? Promise.resolve(opts.storedWaveGrid ?? null)
+        : fixtureUrl !== undefined && waveFixtureUrl === undefined
+          ? Promise.resolve(null)
+          : (async () => fetchWave(waveFixtureUrl ? { fixtureUrl: waveFixtureUrl } : {}))().catch(
+              () => null,
+            );
 
       const client = await ensureClient();
       // #1193: same reasoning as above — a cancel during a slow first-run
@@ -478,7 +489,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
-      const waveGrid = await wavePromise;
+      // A timeout abandons the fetch; it may still fill the wave cache.
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      const waveGrid = await Promise.race([
+        wavePromise,
+        new Promise<null>((resolve) => {
+          if (cancelRequestedRef.current) resolve(null);
+          endWaveWaitRef.current = () => resolve(null);
+          graceTimer = setTimeout(() => resolve(null), WAVE_GRACE_MS);
+        }),
+      ]).finally(() => {
+        clearTimeout(graceTimer);
+        endWaveWaitRef.current = null;
+      });
       // #1193: the wave wait is a new window a cancel can land in.
       if (cancelRequestedRef.current) {
         transition({ phase: 'idle' });
@@ -520,6 +543,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     if (phaseRef.current === 'idle' || phaseRef.current === 'error') return;
     cancelRequestedRef.current = true;
     clientRef.current?.cancel();
+    endWaveWaitRef.current?.();
   }, []);
 
   return { planning, run, ensureClient, cancel };

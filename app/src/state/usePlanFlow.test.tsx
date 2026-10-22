@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { StrictMode, type ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { usePlanFlow, type PlanFlowDeps } from './usePlanFlow';
+import { usePlanFlow, WAVE_GRACE_MS, type PlanFlowDeps } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
 import {
@@ -1922,7 +1922,7 @@ describe('#1699 sea-state grid', () => {
     return h.save.mock.calls[0]?.[0] ?? null;
   }
 
-  it('starts the marine fetch before the wind resolves and attaches the grid to the saved plan', async () => {
+  it('starts the marine fetch only after the wind resolves and attaches the grid to the saved plan', async () => {
     let resolveWind!: (g: WindGrid) => void;
     const fetchWind = vi.fn(() => new Promise<WindGrid>((r) => (resolveWind = r)));
     const grid = waveGrid();
@@ -1934,14 +1934,15 @@ describe('#1699 sea-state grid', () => {
       pending = h.result.current.run(REQ, 'Waves');
       await flush();
     });
-    expect(fetchWave).toHaveBeenCalledTimes(1);
-    expect(fetchWave).toHaveBeenCalledWith({});
-    expect(h.w.posted.some((m) => m.type === 'plan')).toBe(false);
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+    expect(fetchWave).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveWind(uniformWindGrid(12, 0));
       await flush();
     });
+    expect(fetchWave).toHaveBeenCalledTimes(1);
+    expect(fetchWave).toHaveBeenCalledWith({});
     const planMsg = findPosted(h.w.posted, 'plan');
     await act(async () => {
       h.w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -2054,18 +2055,193 @@ describe('#1699 sea-state grid', () => {
     expect(Object.hasOwn(h.save.mock.calls[0]![0], 'waveGrid')).toBe(false);
   });
 
-  it('a hanging marine fetch does not delay the wind error path', async () => {
+  it('a failed wind run makes no marine request', async () => {
+    const fetchWave = vi.fn();
     const h = setup({
-      fetchWind: vi.fn().mockRejectedValue(new OpenMeteoError('http', 'HTTP 400')),
-      fetchWave: vi.fn(() => new Promise<WaveGrid>(() => {})),
+      fetchWind: vi.fn().mockRejectedValue(new OpenMeteoError('rate-limited', 'HTTP 429')),
+      fetchWave,
     });
 
     await act(async () => {
       await h.result.current.run(REQ, 'Waves');
     });
 
-    expect(h.result.current.planning).toEqual({ phase: 'error', messageKey: 'error.windService' });
+    expect(h.result.current.planning).toEqual({ phase: 'error', messageKey: 'error.rateLimited' });
+    expect(fetchWave).not.toHaveBeenCalled();
     expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it('a cancel while the wind is in flight makes no marine request', async () => {
+    let resolveWind!: (g: WindGrid) => void;
+    const fetchWave = vi.fn();
+    const h = setup({
+      fetchWind: vi.fn(() => new Promise<WindGrid>((r) => (resolveWind = r))),
+      fetchWave,
+    });
+
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = h.result.current.run(REQ, 'Waves');
+      await flush();
+    });
+    await act(async () => {
+      h.result.current.cancel();
+      resolveWind(uniformWindGrid(12, 0));
+      await pending;
+    });
+
+    expect(h.result.current.planning).toEqual({ phase: 'idle' });
+    expect(fetchWave).not.toHaveBeenCalled();
+  });
+
+  it('an empty ?waveFixture= under ?windFixture= does not reach the live marine API', async () => {
+    window.history.replaceState({}, '', '/?windFixture=test-fixtures/wind-sw12.json&waveFixture=');
+    const fetchWave = vi.fn();
+    const h = setup({ fetchWave });
+
+    const saved = await runAndAnswer(h);
+
+    expect(saved).not.toBeNull(); // positive control: the plan ran
+    expect(fetchWave).not.toHaveBeenCalled();
+  });
+
+  describe('stored wind takes the stored wave grid, never fresh waves', () => {
+    const storedWind = () =>
+      uniformWindGrid(12, 0, { t0Ms: REQ.departureMs - 3_600_000, hours: 48 });
+
+    async function runStored(h: ReturnType<typeof setup>, storedWaveGrid?: WaveGrid) {
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = h.result.current.run(REQ, 'Waves', {
+          storedWindGrid: storedWind(),
+          ...(storedWaveGrid !== undefined ? { storedWaveGrid } : {}),
+        });
+        await flush();
+      });
+      const planMsg = findPosted(h.w.posted, 'plan');
+      await act(async () => {
+        h.w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+        await pending;
+      });
+      return h.save.mock.calls[0]![0];
+    }
+
+    it.each<[string, () => void, PlanFlowDeps['fetchWind'] | undefined]>([
+      [
+        'offline',
+        () => vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false),
+        undefined,
+      ],
+      [
+        "the wind fetch failing 'offline'",
+        () => {},
+        vi.fn().mockRejectedValue(new OpenMeteoError('offline', 'down')),
+      ],
+    ])('%s: uses the stored wave grid and fetches none', async (_l, arrange, fetchWind) => {
+      arrange();
+      const stored = waveGrid();
+      const fetchWave = vi.fn().mockResolvedValue(waveGrid());
+      const h = setup({ fetchWave, ...(fetchWind ? { fetchWind } : {}) });
+
+      const saved = await runStored(h, stored);
+
+      expect(fetchWave).not.toHaveBeenCalled();
+      expect(saved.waveGrid).toBe(stored);
+    });
+
+    it("the wind fetch failing 'offline' with no stored wave grid: saves none", async () => {
+      const fetchWave = vi.fn().mockResolvedValue(waveGrid());
+      const h = setup({
+        fetchWave,
+        fetchWind: vi.fn().mockRejectedValue(new OpenMeteoError('offline', 'down')),
+      });
+
+      const saved = await runStored(h);
+
+      expect(fetchWave).not.toHaveBeenCalled();
+      expect(Object.hasOwn(saved, 'waveGrid')).toBe(false);
+    });
+
+    it('a successful wind fetch ignores the stored wave grid and fetches fresh waves', async () => {
+      const fresh = waveGrid();
+      const fetchWave = vi.fn().mockResolvedValue(fresh);
+      const h = setup({ fetchWave });
+
+      const saved = await runStored(h, waveGrid());
+
+      expect(fetchWave).toHaveBeenCalledTimes(1);
+      expect(saved.waveGrid).toBe(fresh);
+    });
+  });
+
+  describe('the post-solve wait is capped at WAVE_GRACE_MS', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+    // Runs to a solved plan whose wave wait has just begun.
+    async function solve(h: ReturnType<typeof setup>) {
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = h.result.current.run(REQ, 'Waves');
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const planMsg = findPosted(h.w.posted, 'plan');
+      await act(async () => {
+        h.w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      return { pending }; // wrapped: an async function returning it would await it
+    }
+
+    it('a never-settling marine fetch: the plan saves without a wave grid after the grace', async () => {
+      const h = setup({ fetchWave: vi.fn(() => new Promise<WaveGrid>(() => {})) });
+
+      const { pending } = await solve(h);
+      await tick(WAVE_GRACE_MS - 1);
+      expect(h.save).not.toHaveBeenCalled();
+      await tick(1);
+      await act(async () => void (await pending));
+
+      expect(h.save).toHaveBeenCalledTimes(1);
+      expect(Object.hasOwn(h.save.mock.calls[0]![0], 'waveGrid')).toBe(false);
+      expect(h.result.current.planning).toEqual({ phase: 'idle' });
+    });
+
+    it('a grid arriving inside the grace is kept, and the grace timer is cleared', async () => {
+      let resolveWave!: (g: WaveGrid) => void;
+      const h = setup({ fetchWave: vi.fn(() => new Promise<WaveGrid>((r) => (resolveWave = r))) });
+      const grid = waveGrid();
+
+      const { pending } = await solve(h);
+      await tick(WAVE_GRACE_MS - 1);
+      await act(async () => {
+        resolveWave(grid);
+        await pending;
+      });
+
+      expect(h.save.mock.calls[0]![0].waveGrid).toBe(grid);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('a cancel during the grace reaches idle at once, without saving', async () => {
+      const h = setup({ fetchWave: vi.fn(() => new Promise<WaveGrid>(() => {})) });
+
+      const { pending } = await solve(h);
+      expect(h.save).not.toHaveBeenCalled(); // inside the grace
+      await act(async () => {
+        h.result.current.cancel();
+        await pending; // no timer advanced: only the cancel can settle this
+      });
+
+      expect(h.save).not.toHaveBeenCalled();
+      expect(h.result.current.planning).toEqual({ phase: 'idle' });
+    });
   });
 
   it('a cancel while waiting on the marine fetch after the solve returns to idle without saving', async () => {
