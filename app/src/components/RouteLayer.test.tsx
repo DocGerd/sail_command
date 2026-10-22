@@ -31,7 +31,7 @@ import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { WAVE_ARROW_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
+import { WAVE_ARROW_LAYER, WAVE_EDGE_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -2641,6 +2641,7 @@ describe('sea-state toggle (#1699)', () => {
     fireEvent.click(toggle);
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     expect(localStorage.getItem('sc-waves-visible')).toBe('0');
   });
 

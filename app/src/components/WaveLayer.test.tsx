@@ -13,6 +13,7 @@ import {
   WAVE_ARROW_LAYER,
   WAVE_ARROW_SOURCE,
   WAVE_CELL_SOURCE,
+  WAVE_EDGE_LAYER,
   WAVE_FILL_LAYER,
 } from '../lib/waveMap';
 import type { WaveGrid } from '../types';
@@ -153,7 +154,18 @@ describe('WaveLayer setup (#1699)', () => {
       'icon-ignore-placement': true,
     });
     expect(arrows?.layout?.['text-field']).toBeUndefined();
-    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_ARROW_LAYER]);
+    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]);
+  });
+
+  // R2-5: an edge per data cell, so an unshaded area reads as no data even
+  // where a light band is close to the basemap's water.
+  it('outlines exactly the data cells, from the cell source', () => {
+    const map = makeFakeMap();
+    renderWaves(map);
+    const edge = map.layers.get(WAVE_EDGE_LAYER);
+    expect(edge?.type).toBe('line');
+    expect(edge?.source).toBe(WAVE_CELL_SOURCE);
+    expect(edge?.filter).toBeUndefined();
   });
 
   it('paints a no-data point as no cell at all, never as calm', () => {
@@ -204,8 +216,10 @@ describe('WaveLayer setup (#1699)', () => {
     const { rerenderWith } = renderWaves(map, { visible: true });
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
     rerenderWith({ visible: false });
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     rerenderWith({ visible: true });
     act(() => simulateStyleReload(map));
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');

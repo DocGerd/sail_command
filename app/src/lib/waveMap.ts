@@ -11,6 +11,7 @@ export const WAVE_CELL_SOURCE = 'sc-waves-cells';
 export const WAVE_ARROW_SOURCE = 'sc-waves-arrows';
 export const WAVE_FILL_LAYER = 'sc-waves-fill';
 export const WAVE_ARROW_LAYER = 'sc-waves-arrows';
+export const WAVE_EDGE_LAYER = 'sc-waves-edge';
 // The fill is added first with the arrows on the same anchor, so it is the bottom.
 export const WAVE_STACK_BOTTOM_LAYER = WAVE_FILL_LAYER;
 export const WAVE_ARROW_IMAGE = 'sc-wave-arrow';
@@ -42,6 +43,9 @@ export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
 };
 
 export const WAVE_FILL_OPACITY = 0.45;
+// Every data cell gets an edge whatever its band: the light bands are close to
+// the basemap's water, so the edges are what show an unshaded area as no data.
+export const WAVE_EDGE_OPACITY = 0.2;
 
 export interface WaveCellProps {
   band: ShadedBand;

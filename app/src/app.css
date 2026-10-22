@@ -2731,8 +2731,10 @@ select {
   border: 1px solid var(--sc-ink);
 }
 
-/* #1699: sea-state band swatches (WaveLayer's fill). Full-strength colour, so
-   the near-white calm band needs a border to show on light chrome. */
+/* #1699: sea-state band swatches, at the map fill's opacity (WAVE_FILL_OPACITY,
+   pinned by mapColors.test.ts) over white: the basemap stays light in both
+   themes (maintainer ruling), so mixing with the dark panel would misstate it.
+   The border shows the near-white calm band. */
 .route-legend-sea {
   width: 1.25rem;
   height: 0.85rem;
@@ -2740,23 +2742,23 @@ select {
 }
 
 .route-legend-sea-calm {
-  background: var(--sc-sea-calm);
+  background: color-mix(in srgb, var(--sc-sea-calm) 45%, var(--sc-halo));
 }
 
 .route-legend-sea-smooth {
-  background: var(--sc-sea-smooth);
+  background: color-mix(in srgb, var(--sc-sea-smooth) 45%, var(--sc-halo));
 }
 
 .route-legend-sea-slight {
-  background: var(--sc-sea-slight);
+  background: color-mix(in srgb, var(--sc-sea-slight) 45%, var(--sc-halo));
 }
 
 .route-legend-sea-moderate {
-  background: var(--sc-sea-moderate);
+  background: color-mix(in srgb, var(--sc-sea-moderate) 45%, var(--sc-halo));
 }
 
 .route-legend-sea-rough {
-  background: var(--sc-sea-rough);
+  background: color-mix(in srgb, var(--sc-sea-rough) 45%, var(--sc-halo));
 }
 
 .route-legend-sea-arrow {
