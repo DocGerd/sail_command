@@ -9,7 +9,7 @@ import {
   WAVE_MODEL,
 } from './openMeteo';
 import { seaStateBand, wavePointsAtHour } from '../lib/waves';
-import fixtureText from '../../public/test-fixtures/wave-bands.json?raw';
+import { buildWaveFixture } from '../../scripts/wave-fixture.mjs';
 
 // Literal lattice, not openMeteo.ts's formula (same reason as openMeteo.test.ts).
 const N_LATS = 14;
@@ -168,9 +168,9 @@ describe('fetchWaveGrid (#1699)', () => {
   });
 });
 
-describe('committed wave-bands.json fixture (#1699)', () => {
+describe('gen-wave-fixture builder (#1699)', () => {
   it('parses through the fixture path and shows every band, no data and varied directions', async () => {
-    expect(fixtureText.length).toBeGreaterThan(1000); // positive control: the import read bytes
+    const fixtureText = JSON.stringify(buildWaveFixture(1_800_000_000));
     const fetchFn = vi
       .fn()
       .mockResolvedValue(new Response(fixtureText, { status: 200 })) as unknown as typeof fetch;
