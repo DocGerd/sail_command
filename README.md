@@ -181,8 +181,9 @@ map area is already saved and what downloading it would cost.
   [tangrams/icons](https://github.com/tangrams/icons), © 2017 Mapzen) are
   self-hosted from
   [protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets).
-- **Wind forecast**: [Open-Meteo](https://open-meteo.com/) (CC-BY 4.0),
-  fetched directly from the browser.
+- **Wind and sea-state forecasts**: [Open-Meteo](https://open-meteo.com/)
+  (CC-BY 4.0), the forecast and marine APIs, fetched directly from the
+  browser and stored with each plan. Sea state is display only.
 - **Boat polars (Salona 45)**: estimate derived from the ORC International
   2026 certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind
   angles corrected to white-sails-only (non-spinnaker) performance.

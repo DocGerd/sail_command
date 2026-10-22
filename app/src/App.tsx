@@ -18,6 +18,7 @@ import {
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
 import { cloneWindGrid, useLiveReroute } from './state/reroute';
+import { cloneWaveGrid } from './lib/waves';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
@@ -1385,7 +1386,14 @@ function AppShell() {
     void run(
       request,
       `${origin.label} → ${destination.label}`,
-      activeSeed && plan ? { storedWindGrid: cloneWindGrid(plan.windGrid) } : {},
+      activeSeed && plan
+        ? {
+            storedWindGrid: cloneWindGrid(plan.windGrid),
+            ...(plan.waveGrid !== undefined
+              ? { storedWaveGrid: cloneWaveGrid(plan.waveGrid) }
+              : {}),
+          }
+        : {},
     );
   }, [
     activeSeed,

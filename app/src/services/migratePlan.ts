@@ -711,15 +711,17 @@ export function migratePlan(raw: unknown): Plan | null {
 }
 
 // #1699: same trust model as windGrid, plus a shape check so a damaged
-// optional grid is dropped instead of failing the whole plan. A brand check,
-// not instanceof: a structured clone can come from another realm.
-const isFloat32Array = (x: unknown) =>
+// optional grid is dropped instead of failing the whole plan, or throwing in
+// the sampler at render. A brand check, not instanceof: a structured clone can
+// come from another realm.
+const isFloat32Array = (x: unknown): x is Float32Array =>
   Object.prototype.toString.call(x) === '[object Float32Array]';
+const isAxis = (x: unknown): x is number[] =>
+  Array.isArray(x) && x.length > 0 && x.every((v) => Number.isFinite(v));
 function isStoredWaveGrid(x: unknown): x is WaveGrid {
-  return (
-    isRecord(x) &&
-    isFloat32Array(x.waveHeightM) &&
-    isFloat32Array(x.wavePeriodS) &&
-    isFloat32Array(x.waveDirFromDeg)
+  if (!isRecord(x) || !isAxis(x.lats) || !isAxis(x.lons) || !isAxis(x.timesMs)) return false;
+  const n = x.timesMs.length * x.lats.length * x.lons.length;
+  return [x.waveHeightM, x.wavePeriodS, x.waveDirFromDeg].every(
+    (b) => isFloat32Array(b) && b.length === n,
   );
 }

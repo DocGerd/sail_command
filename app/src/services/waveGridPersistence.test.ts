@@ -101,8 +101,40 @@ describe('#1699 waveGrid persistence', () => {
     ['a string', 'not a grid'],
     ['an array', [1, 2, 3]],
     ['null', null],
-    ['plain-array fields', { ...grid(), waveHeightM: [1, 2, 3] }],
   ])('drops a waveGrid that is %s and keeps the plan', (_label, bad) => {
+    const raw = { ...structuredClone(plan()), waveGrid: bad };
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(Object.hasOwn(migrated!, 'waveGrid')).toBe(false);
+  });
+
+  const BUFFERS = ['waveHeightM', 'wavePeriodS', 'waveDirFromDeg'] as const;
+  const AXES = ['lats', 'lons', 'timesMs'] as const;
+  const emptyBuffers = Object.fromEntries(BUFFERS.map((k) => [k, new Float32Array(0)]));
+  const damaged: [string, unknown][] = [
+    ...BUFFERS.flatMap((k): [string, unknown][] => [
+      [`${k} a plain array`, { ...grid(), [k]: Array.from(grid()[k]) }],
+      [`${k} one value short`, { ...grid(), [k]: grid()[k].slice(1) }],
+    ]),
+    ...AXES.flatMap((k): [string, unknown][] => [
+      [`${k} missing`, { ...grid(), [k]: undefined }],
+      [`${k} not an array`, { ...grid(), [k]: { length: grid()[k].length } }],
+      // Buffers sized to match, so only the non-empty check can reject it.
+      [`${k} empty`, { ...grid(), ...emptyBuffers, [k]: [] }],
+      [`${k} with a NaN`, { ...grid(), [k]: grid()[k].map((v, i) => (i === 0 ? NaN : v)) }],
+      [
+        `${k} with a string`,
+        { ...grid(), [k]: grid()[k].map((v, i) => (i === 0 ? String(v) : v)) },
+      ],
+    ]),
+  ];
+
+  it('control: the undamaged grid passes the same path', () => {
+    const migrated = migratePlan({ ...structuredClone(plan()), waveGrid: grid() });
+    expect(Object.hasOwn(migrated!, 'waveGrid')).toBe(true);
+  });
+
+  it.each(damaged)('drops a waveGrid with %s and keeps the plan', (_label, bad) => {
     const raw = { ...structuredClone(plan()), waveGrid: bad };
     const migrated = migratePlan(raw);
     expect(migrated).not.toBeNull();
