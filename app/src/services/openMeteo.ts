@@ -1,7 +1,12 @@
-import type { WindGrid } from '../types';
+import type { WaveGrid, WindGrid } from '../types';
+import { cloneWaveGrid } from '../lib/waves';
 
 export const FORECAST_DAYS = 6;
 const API = 'https://api.open-meteo.com/v1/forecast';
+const MARINE_API = 'https://marine-api.open-meteo.com/v1/marine';
+// #1699: provisional. ewam's horizon and coastal coverage of this lattice are
+// unverified against the live API (spec §0); change the model here only.
+export const WAVE_MODEL = 'ewam';
 const LATS = Array.from({ length: 14 }, (_, i) => Number((54.3 + i * 0.1).toFixed(1)));
 const LONS = Array.from({ length: 23 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
 const RETRY_DELAYS_MS = [1000, 4000];
@@ -38,12 +43,18 @@ interface PointResponse {
   };
 }
 
-function buildUrl(): string {
+function latLonParams(): { latitude: string; longitude: string } {
   const points: string[][] = [];
   for (const lat of LATS) for (const lon of LONS) points.push([String(lat), String(lon)]);
-  const p = new URLSearchParams({
+  return {
     latitude: points.map((x) => x[0]).join(','),
     longitude: points.map((x) => x[1]).join(','),
+  };
+}
+
+function buildUrl(): string {
+  const p = new URLSearchParams({
+    ...latLonParams(),
     hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m',
     wind_speed_unit: 'kn',
     timeformat: 'unixtime',
@@ -52,6 +63,18 @@ function buildUrl(): string {
     models: 'icon_seamless',
   });
   return `${API}?${p}`;
+}
+
+export function buildWaveUrl(): string {
+  const p = new URLSearchParams({
+    ...latLonParams(),
+    hourly: 'wave_height,wave_direction,wave_period',
+    timeformat: 'unixtime',
+    timezone: 'UTC',
+    forecast_days: String(FORECAST_DAYS),
+    models: WAVE_MODEL,
+  });
+  return `${MARINE_API}?${p}`;
 }
 
 // Races a fetch attempt against a rejecting setTimeout timer rather than
@@ -193,7 +216,9 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
   }
 }
 
-async function loadWindGrid(url: string, fetchFn: typeof fetch): Promise<WindGrid> {
+// Shared by wind and waves: fetch, read, parse, and check one entry per
+// lattice point. Field parsing differs per feed and stays with each loader.
+async function loadPointArray(url: string, fetchFn: typeof fetch): Promise<unknown[]> {
   const res = await fetchWithRetry(url, fetchFn);
   let data: unknown;
   let text: string;
@@ -214,8 +239,13 @@ async function loadWindGrid(url: string, fetchFn: typeof fetch): Promise<WindGri
       'malformed',
       `expected ${nPoints} points, got ${Array.isArray(data) ? data.length : typeof data}`,
     );
+  return data as unknown[];
+}
 
-  const t0 = (data as PointResponse[])[0]?.hourly?.time;
+async function loadWindGrid(url: string, fetchFn: typeof fetch): Promise<WindGrid> {
+  const data = (await loadPointArray(url, fetchFn)) as PointResponse[];
+  const nPoints = LATS.length * LONS.length;
+  const t0 = data[0]?.hourly?.time;
   if (!Array.isArray(t0) || t0.length === 0)
     throw new OpenMeteoError('malformed', 'point 0 missing hourly.time');
   const timesS = t0;
@@ -298,14 +328,48 @@ function cloneGrid(g: WindGrid): WindGrid {
   };
 }
 
-// fetchFn is part of the identity so an injected fetch never reads a grid
-// fetched through another one.
-let cache: { url: string; fetchFn: typeof fetch; grid: WindGrid; storedAtMs: number } | null = null;
-const inFlight = new Map<string, { fetchFn: typeof fetch; promise: Promise<WindGrid> }>();
+// A TTL cache plus in-flight dedupe, one instance per feed, so wind and waves
+// never share an entry. fetchFn is part of the identity so an injected fetch
+// never reads a grid fetched through another one.
+function createGridCache<G>(
+  load: (url: string, fetchFn: typeof fetch) => Promise<G>,
+  clone: (g: G) => G,
+) {
+  let cache: { url: string; fetchFn: typeof fetch; grid: G; storedAtMs: number } | null = null;
+  const inFlight = new Map<string, { fetchFn: typeof fetch; promise: Promise<G> }>();
+  return {
+    clear(): void {
+      cache = null;
+      inFlight.clear();
+    },
+    async get(url: string, fetchFn: typeof fetch): Promise<G> {
+      if (cache && cache.url === url && cache.fetchFn === fetchFn) {
+        const age = Date.now() - cache.storedAtMs;
+        if (age >= 0 && age < GRID_CACHE_TTL_MS) return clone(cache.grid);
+      }
+      let pending = inFlight.get(url);
+      if (!pending || pending.fetchFn !== fetchFn) {
+        const promise = load(url, fetchFn).then((grid) => {
+          cache = { url, fetchFn, grid, storedAtMs: Date.now() };
+          return grid;
+        });
+        const created = { fetchFn, promise };
+        pending = created;
+        inFlight.set(url, created);
+        const release = () => {
+          if (inFlight.get(url) === created) inFlight.delete(url);
+        };
+        promise.then(release, release);
+      }
+      return clone(await pending.promise);
+    },
+  };
+}
+
+const windCache = createGridCache(loadWindGrid, cloneGrid);
 
 export function clearWindGridCache(): void {
-  cache = null;
-  inFlight.clear();
+  windCache.clear();
 }
 
 export async function fetchWindGrid(opts?: {
@@ -314,25 +378,87 @@ export async function fetchWindGrid(opts?: {
 }): Promise<WindGrid> {
   const fetchFn = opts?.fetchFn ?? fetch;
   if (opts?.fixtureUrl !== undefined) return loadWindGrid(opts.fixtureUrl, fetchFn);
+  return windCache.get(buildUrl(), fetchFn);
+}
 
-  const url = buildUrl();
-  if (cache && cache.url === url && cache.fetchFn === fetchFn) {
-    const age = Date.now() - cache.storedAtMs;
-    if (age >= 0 && age < GRID_CACHE_TTL_MS) return cloneGrid(cache.grid);
+interface WavePointResponse {
+  hourly?: {
+    time?: unknown;
+    wave_height?: unknown;
+    wave_direction?: unknown;
+    wave_period?: unknown;
+  };
+}
+
+const WAVE_FIELDS = ['wave_height', 'wave_direction', 'wave_period'] as const;
+
+// Unlike wind, a null or non-numeric element is NOT malformed: land, coast and
+// the model edge return null, stored as NaN so it reads as "no data", never 0.
+// Structure (point count, array presence, lengths, time axis) still throws.
+async function loadWaveGrid(url: string, fetchFn: typeof fetch): Promise<WaveGrid> {
+  const data = (await loadPointArray(url, fetchFn)) as (WavePointResponse | null | undefined)[];
+  const nPoints = LATS.length * LONS.length;
+  const t0 = data[0]?.hourly?.time;
+  if (!Array.isArray(t0) || t0.length === 0)
+    throw new OpenMeteoError('malformed', 'point 0 missing hourly.time');
+  // The marine axis may differ in length from wind's, but must be hourly.
+  const timesS: number[] = [];
+  for (let t = 0; t < t0.length; t++) {
+    const v: unknown = t0[t];
+    if (typeof v !== 'number' || !Number.isFinite(v) || (t > 0 && v - timesS[t - 1]! !== 3600))
+      throw new OpenMeteoError('malformed', `hourly.time is not ascending hourly at index ${t}`);
+    timesS.push(v);
   }
-  let pending = inFlight.get(url);
-  if (!pending || pending.fetchFn !== fetchFn) {
-    const promise = loadWindGrid(url, fetchFn).then((grid) => {
-      cache = { url, fetchFn, grid, storedAtMs: Date.now() };
-      return grid;
-    });
-    const created = { fetchFn, promise };
-    pending = created;
-    inFlight.set(url, created);
-    const release = () => {
-      if (inFlight.get(url) === created) inFlight.delete(url);
-    };
-    promise.then(release, release);
+  const nT = timesS.length;
+  const targets = {
+    wave_height: new Float32Array(nT * nPoints),
+    wave_direction: new Float32Array(nT * nPoints),
+    wave_period: new Float32Array(nT * nPoints),
+  };
+  for (let p = 0; p < nPoints; p++) {
+    const h = data[p]?.hourly;
+    if (!h || !Array.isArray(h.time))
+      throw new OpenMeteoError('malformed', `point ${p} missing hourly.time`);
+    if (h.time.length !== nT)
+      throw new OpenMeteoError('malformed', `ragged hourly arrays at point ${p}`);
+    for (const field of WAVE_FIELDS) {
+      const series = h[field];
+      if (!Array.isArray(series))
+        throw new OpenMeteoError('malformed', `point ${p} missing hourly.${field}`);
+      if (series.length !== nT)
+        throw new OpenMeteoError('malformed', `ragged hourly arrays at point ${p}`);
+      const out = targets[field];
+      for (let t = 0; t < nT; t++) {
+        const v: unknown = series[t];
+        out[t * nPoints + p] = typeof v === 'number' && Number.isFinite(v) ? v : NaN;
+      }
+    }
   }
-  return cloneGrid(await pending.promise);
+  return {
+    lats: LATS,
+    lons: LONS,
+    timesMs: timesS.map((s) => s * 1000),
+    waveHeightM: targets.wave_height,
+    wavePeriodS: targets.wave_period,
+    waveDirFromDeg: targets.wave_direction,
+    fetchedAtMs: Date.now(),
+    model: WAVE_MODEL,
+  };
+}
+
+const waveCache = createGridCache(loadWaveGrid, cloneWaveGrid);
+
+export function clearWaveGridCache(): void {
+  waveCache.clear();
+}
+
+// #1699: the marine sea-state grid on the wind lattice. Callers treat any
+// rejection as "no wave grid"; it must never fail a plan.
+export async function fetchWaveGrid(opts?: {
+  fetchFn?: typeof fetch;
+  fixtureUrl?: string;
+}): Promise<WaveGrid> {
+  const fetchFn = opts?.fetchFn ?? fetch;
+  if (opts?.fixtureUrl !== undefined) return loadWaveGrid(opts.fixtureUrl, fetchFn);
+  return waveCache.get(buildWaveUrl(), fetchFn);
 }

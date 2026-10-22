@@ -211,7 +211,7 @@ function decodeWindGrid(raw: unknown, maskBounds?: WindLatticeCoverageBounds): W
 
 /** The JSON-safe, on-disk shape of a `Plan` — every field identical except
  * `windGrid`. */
-export type ExportedPlan = Omit<Plan, 'windGrid'> & { windGrid: ExportedWindGrid };
+export type ExportedPlan = Omit<Plan, 'windGrid' | 'waveGrid'> & { windGrid: ExportedWindGrid };
 
 /** The whole exported file's shape. `settings`/`waypoints` are independent
  * of `plans` — a user may export with zero saved plans, e.g. to back up
@@ -247,7 +247,10 @@ export function buildExportEnvelope(
   return {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAtMs: Date.now(),
-    plans: plans.map((p) => {
+    plans: plans.map((plan) => {
+      // #1699: the sea-state grid is not exported; only the wind grid has an encoder.
+      const p = { ...plan };
+      delete p.waveGrid;
       const planSettings = withoutAisApiKey(p.request.settings);
       return {
         ...p,
@@ -355,7 +358,10 @@ function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan 
   if (!isRecord(raw)) return null;
   const windGrid = decodeWindGrid(raw.windGrid, maskBounds);
   if (windGrid === null) return null;
-  return migratePlan({ ...raw, windGrid });
+  // #1699: a file never carries a wave grid; one present is untrusted JSON.
+  const rest = { ...raw };
+  delete rest.waveGrid;
+  return migratePlan({ ...rest, windGrid });
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   type SailResult,
   type SegmentMode,
   type ViaPoint,
+  type WaveGrid,
   type WindGrid,
 } from '../types';
 
@@ -704,6 +705,21 @@ export function migratePlan(raw: unknown): Plan | null {
     // field by field — that matches getPlan's pre-existing trust model for
     // records this app itself wrote.
     windGrid: windGrid as unknown as WindGrid,
+    ...(isStoredWaveGrid(raw.waveGrid) ? { waveGrid: raw.waveGrid } : {}),
     result: migratedResult,
   };
+}
+
+// #1699: same trust model as windGrid, plus a shape check so a damaged
+// optional grid is dropped instead of failing the whole plan. A brand check,
+// not instanceof: a structured clone can come from another realm.
+const isFloat32Array = (x: unknown) =>
+  Object.prototype.toString.call(x) === '[object Float32Array]';
+function isStoredWaveGrid(x: unknown): x is WaveGrid {
+  return (
+    isRecord(x) &&
+    isFloat32Array(x.waveHeightM) &&
+    isFloat32Array(x.wavePeriodS) &&
+    isFloat32Array(x.waveDirFromDeg)
+  );
 }

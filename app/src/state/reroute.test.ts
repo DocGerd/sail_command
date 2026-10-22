@@ -9,6 +9,7 @@ import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
+import { makeWaveGrid } from '../test/waveFixtures';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
@@ -779,5 +780,38 @@ describe('useLiveReroute', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+});
+
+describe('#1699 rerouteFromFix and the wave grid', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('carries a deep copy of the wave grid, never an alias, and keeps it off the client call', async () => {
+    const waveGrid = makeWaveGrid(() => ({ heightM: 1.4, periodS: 5, dirFromDeg: 300 }));
+    const plan = makePlan({ waveGrid });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    const rerouted = await rerouteFromFix(plan, FIX, NOW_MS, 'Reroute', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(rerouted.waveGrid).toEqual(waveGrid);
+    expect(rerouted.waveGrid).not.toBe(waveGrid);
+    expect(rerouted.waveGrid!.waveHeightM).not.toBe(waveGrid.waveHeightM);
+    const args = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(args).toHaveLength(2);
+    expect(Object.hasOwn(args[1] as object, 'waveGrid')).toBe(false);
+  });
+
+  it('leaves the key absent when the original plan had none', async () => {
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const rerouted = await rerouteFromFix(makePlan(), FIX, NOW_MS, 'Reroute', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(Object.hasOwn(rerouted, 'waveGrid')).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
+import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave';
 import { loadRoutingAssets } from '../services/assets';
@@ -23,6 +23,7 @@ import {
   type PlanResult,
   type SailId,
   type Settings,
+  type WaveGrid,
   type WindGrid,
 } from '../types';
 
@@ -79,6 +80,7 @@ function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
+  fetchWave?: typeof fetchWaveGrid;
   makeClient?: () => RoutingClient;
   save?: typeof savePlan;
   /** #1164 T6: fire-and-forget region pinning after a successful save. */
@@ -178,6 +180,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   const readyRef = useRef<Promise<void> | null>(null);
 
   const fetchWind = deps.fetchWind ?? fetchWindGrid;
+  const fetchWave = deps.fetchWave ?? fetchWaveGrid;
   // Wrapped in useMemo: the `?? (() => ...)` fallback would otherwise
   // allocate a new closure identity every render, which would in turn
   // invalidate run's useCallback below on every render.
@@ -312,9 +315,23 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // exactOptionalPropertyTypes: fetchWindGrid's `fixtureUrl?: string`
       // rejects an explicit `undefined`, so an absent query param must omit
       // the key entirely rather than pass `{ fixtureUrl: undefined }`.
-      const fixtureUrl = new URLSearchParams(location.search).get('windFixture') ?? undefined;
+      const query = new URLSearchParams(location.search);
+      const fixtureUrl = query.get('windFixture') ?? undefined;
+      const waveFixtureUrl = query.get('waveFixture') ?? undefined;
+      // #1699: started alongside the wind fetch and awaited only after a
+      // successful solve. It can never fail a plan: any rejection, sync or
+      // async, resolves to null. A wind fixture without a wave fixture skips
+      // it so e2e stays network-free; so does the offline stored-wind path.
+      const offlineStored = !navigator.onLine && stored !== null;
+      const wavePromise: Promise<WaveGrid | null> =
+        offlineStored || (fixtureUrl !== undefined && waveFixtureUrl === undefined)
+          ? Promise.resolve(null)
+          : (async () => fetchWave(waveFixtureUrl ? { fixtureUrl: waveFixtureUrl } : {}))().then(
+              (grid) => grid,
+              () => null,
+            );
       let windGrid: WindGrid;
-      if (!navigator.onLine && stored !== null) {
+      if (offlineStored) {
         windGrid = stored;
       } else {
         try {
@@ -461,6 +478,13 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
+      const waveGrid = await wavePromise;
+      // #1193: the wave wait is a new window a cancel can land in.
+      if (cancelRequestedRef.current) {
+        transition({ phase: 'idle' });
+        return;
+      }
+
       const plan: Plan = {
         // #114: a replace-recalculation persists under the original plan's id
         // (see RunOptions) — everything else mints a fresh one.
@@ -470,6 +494,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         schemaVersion: PLAN_SCHEMA_VERSION,
         request: req,
         windGrid,
+        ...(waveGrid !== null ? { waveGrid } : {}),
         result,
       };
       try {
@@ -483,7 +508,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       setPlan(plan);
       transition({ phase: 'idle' });
     },
-    [ensureClient, fetchWind, pinRegions, save, setPlan, transition],
+    [ensureClient, fetchWave, fetchWind, pinRegions, save, setPlan, transition],
   );
 
   // #1193: a no-op while idle/erroring, matching run()'s own guard — set

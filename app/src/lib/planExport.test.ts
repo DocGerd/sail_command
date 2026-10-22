@@ -10,6 +10,7 @@ import {
 import type { SavedWaypoint } from '../services/db';
 import { defaultBoatSnapshot, PLAN_SCHEMA_VERSION, type Plan, type Settings } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
+import { makeWaveGrid } from '../test/waveFixtures';
 
 const TEST_SETTINGS: Settings = {
   safetyDepthM: 3.0,
@@ -505,5 +506,35 @@ describe('buildExportEnvelope never writes the AIS API key', () => {
     const plan = makeTestPlan();
     const envelope = buildExportEnvelope([plan], TEST_SETTINGS, []);
     expect(envelope.plans[0]!.request).toBe(plan.request);
+  });
+});
+
+describe('#1699 wave grid in export/import', () => {
+  it('leaves the wave grid out of the exported file', () => {
+    const waveGrid = makeWaveGrid(() => ({ heightM: 1, periodS: 4, dirFromDeg: 0 }));
+    const plan: Plan = { ...makeTestPlan(), waveGrid };
+    const envelope = buildExportEnvelope([plan], TEST_SETTINGS, []);
+    expect(Object.hasOwn(envelope.plans[0]!, 'waveGrid')).toBe(false);
+    expect(exportEnvelopeToJson(envelope)).not.toContain('waveGrid');
+    expect(plan.waveGrid).toBe(waveGrid); // the live plan is untouched
+  });
+
+  it('drops a waveGrid injected into an imported file', () => {
+    const envelope = JSON.parse(
+      exportEnvelopeToJson(buildExportEnvelope([makeTestPlan()], TEST_SETTINGS, [])),
+    ) as { plans: Record<string, unknown>[] };
+    envelope.plans[0]!.waveGrid = {
+      lats: [1],
+      lons: [1],
+      timesMs: [1],
+      waveHeightM: { 0: 1 },
+      wavePeriodS: { 0: 1 },
+      waveDirFromDeg: { 0: 1 },
+      fetchedAtMs: 1,
+      model: 'x',
+    };
+    const result = parseExportFile(JSON.stringify(envelope));
+    expect(result.plans).toHaveLength(1);
+    expect(Object.hasOwn(result.plans[0]!, 'waveGrid')).toBe(false);
   });
 });
