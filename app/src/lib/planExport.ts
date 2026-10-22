@@ -358,10 +358,9 @@ function decodePlan(raw: unknown, maskBounds?: WindLatticeCoverageBounds): Plan 
   if (!isRecord(raw)) return null;
   const windGrid = decodeWindGrid(raw.windGrid, maskBounds);
   if (windGrid === null) return null;
-  // #1699: a file never carries a wave grid; one present is untrusted JSON.
-  const rest = { ...raw };
-  delete rest.waveGrid;
-  return migratePlan({ ...rest, windGrid });
+  // #1699: a waveGrid in the file is JSON, never Float32Arrays, so
+  // migratePlan's shape check drops it.
+  return migratePlan({ ...raw, windGrid });
 }
 
 /**
