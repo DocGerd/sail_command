@@ -76,7 +76,7 @@ it was computed from. Both hold for N4: it sends the same grid, the service
 worker never caches its origin either, and its sea-state grid is stored per plan.
 
 Local state: IndexedDB database `sailcommand` (object store `plans` including
-each plan's wind grid and, when one was fetched, its sea-state grid; object
+each plan's wind grid and, when one arrived in time, its sea-state grid; object
 store `settings` holding the single user settings record, which is where a
 pasted AIS key lives; object store `waypoints`
 holding user-named saved waypoints — an id, name, and lat/lon; object store

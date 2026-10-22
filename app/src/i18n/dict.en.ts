@@ -927,7 +927,7 @@ export const en = {
   'route.legend.seaStateBelow': 'below {max} m',
   'route.legend.seaStateRange': '{min} to {max} m',
   'route.legend.seaStateAbove': '{min} m and above',
-  'route.legend.seaStateNoData': 'No shading and no outline means no data or land, not calm water.',
+  'route.legend.seaStateNoData': 'No shading means no data or land, not calm water.',
   'route.legend.seaStateArrow':
     'Arrows show the direction the waves travel — not where they come from, unlike wind barbs.',
   'route.legend.seaStateCaveat':

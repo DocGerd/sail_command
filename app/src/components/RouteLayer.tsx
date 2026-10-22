@@ -1173,8 +1173,8 @@ export default function RouteLayer({
   );
   // Real land/depth mask for barb and sea-state land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
-  // transferred, never mutated). null until it resolves; sampling skips
-  // culling gracefully in the meantime.
+  // transferred, never mutated). null until it resolves: barbs skip culling
+  // in the meantime, and the sea-state overlay draws nothing.
   const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
   // Reference "now" for the slider label's day-vs-today tier decision

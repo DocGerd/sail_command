@@ -94,8 +94,8 @@ export function waveFeaturesAt(
   const cells: CellFC['features'] = [];
   const arrows: ArrowFC['features'] = [];
   for (const p of points) {
-    // The marine API can answer a land point with a nearby sea cell's value
-    // (cell_selection=sea), so cull by the mask at the point itself.
+    // What the marine API returns for a land point is unverified (spec §0),
+    // so cull by the mask at the point itself.
     // Outside the mask there is no land/water answer, so no data (as for barbs).
     if (!mask.inBounds(p)) continue;
     // Land/unknown only (byte 0); shallow water still renders.
@@ -191,10 +191,10 @@ export function waveArrowImage(): { width: number; height: number; data: Uint8Ar
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
-// Sea-state metres, one to two decimals. Truncated, never rounded: the band is
-// classified from the raw value, so a rounded figure could read as the next band.
-// Heights are stored as Float32 (0.7 reads 0.699999988), so snap below its
-// resolution first, unless the snap would cross a band edge.
+// Sea-state metres, one to two decimals, truncated: the band is classified from
+// the raw value, so a rounded figure could read as the next band.
+// Heights are stored as Float32 (0.7 reads 0.699999988), so first snap to 1e-6,
+// unless the snap would cross a band edge.
 // Engines without Intl `roundingMode` ignore it and round instead.
 export function formatSeaStateM(value: number, lang: Lang): string {
   const snapped = Math.round(value * 1e6) / 1e6;

@@ -400,7 +400,8 @@ export interface Plan {
   request: PlanRequest;
   windGrid: WindGrid; // the forecast this plan was computed from
   // #1699: display only, never sent to the routing worker. Absent when the
-  // marine fetch failed or was skipped, and on plans saved before it existed.
+  // marine fetch failed, was skipped or arrived too late, and on plans saved
+  // before it existed.
   waveGrid?: WaveGrid;
   result: PlanResultOk;
 }

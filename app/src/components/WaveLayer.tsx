@@ -170,7 +170,7 @@ export interface WaveLayerProps {
   visible: boolean;
   // A map pick (origin/destination/via) is armed: the tap belongs to it.
   mapPickArmed: boolean;
-  // Land/water mask for culling; null while it loads.
+  // Land/water mask for culling; null while it loads or if it fails to load.
   mask: NavMask | null;
 }
 
@@ -209,7 +209,7 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
     const cells = map.getSource(WAVE_CELL_SOURCE) as GeoJSONSource | undefined;
     const arrows = map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined;
     // Nothing until the mask loads: un-culled cells would tint land as sea
-    // state, while an empty overlay reads as no data, which is then true.
+    // state.
     const data = grid && mask ? waveFeaturesAt(grid, tMs, mask) : null;
     cells?.setData(data?.cells ?? EMPTY_WAVE_CELLS);
     arrows?.setData(data?.arrows ?? EMPTY_WAVE_ARROWS);

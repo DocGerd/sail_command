@@ -845,8 +845,7 @@ export const de = {
   'route.legend.seaStateBelow': 'unter {max} m',
   'route.legend.seaStateRange': '{min} bis {max} m',
   'route.legend.seaStateAbove': 'ab {min} m',
-  'route.legend.seaStateNoData':
-    'Keine Färbung und keine Umrandung bedeutet keine Daten oder Land, nicht ruhige See.',
+  'route.legend.seaStateNoData': 'Keine Färbung bedeutet keine Daten oder Land, nicht ruhige See.',
   'route.legend.seaStateArrow':
     'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
   'route.legend.seaStateCaveat':

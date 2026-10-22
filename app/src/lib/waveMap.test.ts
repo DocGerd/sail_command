@@ -61,8 +61,8 @@ describe('waveFeaturesAt (#1699)', () => {
   });
 });
 
-// The marine API can answer a land point with a nearby sea cell's value, so only
-// the mask can say the point itself is land.
+// What the marine API returns for a land point is unverified (spec §0), so
+// only the mask can say the point itself is land.
 describe('waveFeaturesAt land culling (#1699)', () => {
   const grid = makeWaveGrid(() => ({ heightM: 0.8, periodS: 4, dirFromDeg: 90 }), {
     lats: [54.5],
