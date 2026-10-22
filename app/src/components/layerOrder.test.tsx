@@ -365,6 +365,7 @@ function renderWaves() {
         tMs={Date.UTC(2026, 6, 15, 6, 0, 0)}
         visible
         mapPickArmed={false}
+        mask={null}
       />
     </I18nProvider>,
   );

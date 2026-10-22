@@ -10,14 +10,13 @@ export const N_LONS = 23; // must match openMeteo.ts's LONS.length
 export const N_HOURS = 144; // FORECAST_DAYS (6) * 24
 // One value inside each band: calm, smooth, slight, moderate, rough.
 const BAND_HEIGHTS_M = [0.05, 0.3, 0.8, 1.8, 3.2];
-// [latIdx, lonIdx] of the all-null points.
-export const NULL_POINTS = [
-  [0, 0],
-  [0, 1],
-  [1, 0],
-  [6, 11],
-  [13, 22],
-];
+// The all-null point e2e/waves.spec.ts centres on (54.4N 11.4E): it and its
+// four neighbours are water in the committed mask (test/waveFixtureMask.test.ts),
+// so land culling cannot hide it, and its south neighbour is calm.
+export const E2E_NULL_POINT = [1, 20];
+// [latIdx, lonIdx] of the all-null points. The others sit on land or outside
+// the mask, so the map culls them before their null-ness matters.
+export const NULL_POINTS = [[0, 0], [0, 1], [1, 0], E2E_NULL_POINT, [13, 22]];
 
 // One Open-Meteo Marine point object per lattice point, hourly from `startS`.
 export function buildWaveFixture(startS) {

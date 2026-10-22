@@ -30,6 +30,7 @@ import {
   waveFeaturesAt,
   type ShadedBand,
 } from '../lib/waveMap';
+import type { NavMask } from '../lib/mask';
 import type { WaveGrid } from '../types';
 
 // Stack position (#160): above the depth ramp, hatch and contours (DataLayers
@@ -169,11 +170,13 @@ export interface WaveLayerProps {
   visible: boolean;
   // A map pick (origin/destination/via) is armed: the tap belongs to it.
   mapPickArmed: boolean;
+  // Land/water mask for culling; null while it loads.
+  mask: NavMask | null;
 }
 
 // #1699: plan-bound sea-state overlay — Hs shading by WMO band plus travel
 // arrows, display only. Rendered by RouteLayer, which owns the slider.
-export default function WaveLayer({ grid, tMs, visible, mapPickArmed }: WaveLayerProps) {
+export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: WaveLayerProps) {
   const map = useMapInstance();
   const t = useT();
   const [lang] = useLang();
@@ -205,13 +208,15 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed }: WaveLaye
     if (!map || styleEpoch === 0) return;
     const cells = map.getSource(WAVE_CELL_SOURCE) as GeoJSONSource | undefined;
     const arrows = map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined;
-    const data = grid ? waveFeaturesAt(grid, tMs) : null;
+    // Nothing until the mask loads: un-culled cells would tint land as sea
+    // state, while an empty overlay reads as no data, which is then true.
+    const data = grid && mask ? waveFeaturesAt(grid, tMs, mask) : null;
     cells?.setData(data?.cells ?? EMPTY_WAVE_CELLS);
     arrows?.setData(data?.arrows ?? EMPTY_WAVE_ARROWS);
     // The popup's numbers belong to the hour and plan it was opened on.
     popupRef.current?.remove();
     popupRef.current = null;
-  }, [map, styleEpoch, grid, tMs]);
+  }, [map, styleEpoch, grid, tMs, mask]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0) return;

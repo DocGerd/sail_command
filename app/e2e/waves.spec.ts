@@ -19,9 +19,10 @@ const WAVE = 'test-fixtures/wave-bands.json';
 const FILL = 'sc-waves-fill';
 const ARROWS = 'sc-waves-arrows';
 const EDGE = 'sc-waves-edge';
-// Lattice point [latIdx 6, lonIdx 11] (wave-fixture.mjs NULL_POINTS): the one
-// all-null point whose four neighbours all carry data.
-const NULL_CELL = { lng: 10.5, lat: 54.9 };
+// wave-fixture.mjs's E2E_NULL_POINT [1, 20]: an all-null point that, with its
+// four neighbours, is water in the mask (waveFixtureMask.test.ts), so land
+// culling cannot stand in for its null-ness.
+const NULL_CELL = { lng: 11.4, lat: 54.4 };
 const STEP_DEG = 0.1;
 
 test.use({ viewport: STANDARD_VIEWPORTS.desktopHd });
@@ -154,8 +155,8 @@ test.describe('sea-state overlay (#1699)', () => {
       await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
       await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
-      // Centre the map on the null point: its four neighbours (S is a real calm
-      // cell) each have a feature, the null point itself has none.
+      // Centre the map on the null point: its four water neighbours (S is a
+      // real calm cell) each have a feature, the null point itself has none.
       await page.evaluate(
         ({ lng, lat }) => (window as MapWindow).__scMap?.jumpTo({ center: [lng, lat], zoom: 9 }),
         NULL_CELL,
@@ -204,7 +205,10 @@ test.describe('sea-state overlay (#1699)', () => {
       // The reload restores the saved plan (with its stored wave grid), so
       // the preference is read back without planning again.
       await page.reload();
-      await page.waitForFunction((id) => Boolean((window as MapWindow).__scMap?.getLayer(id)), FILL);
+      await page.waitForFunction(
+        (id) => Boolean((window as MapWindow).__scMap?.getLayer(id)),
+        FILL,
+      );
       await openControls(page);
       await expect(waveToggle(page)).not.toBeChecked();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('none');

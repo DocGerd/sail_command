@@ -7,7 +7,8 @@ import { AIS_VESSEL_LAYER } from './AisLayer';
 import { ROUTE_HIT_LAYER } from './RouteLayer';
 import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
-import { makeWaveGrid } from '../test/waveFixtures';
+import { makeWaveGrid, waveTestMask } from '../test/waveFixtures';
+import type { NavMask } from '../lib/mask';
 import {
   WAVE_ARROW_IMAGE,
   WAVE_ARROW_LAYER,
@@ -57,6 +58,7 @@ vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 const HOUR = 3_600_000;
+const WATER = waveTestMask();
 
 type FakeMap = ReturnType<typeof makeFakeMap>;
 type QueryFn = (point: unknown, opts: { layers: string[] }) => unknown[];
@@ -84,6 +86,7 @@ function renderWaves(
     tMs: number;
     visible: boolean;
     armed: boolean;
+    mask: NavMask | null;
   }> = {},
 ) {
   hoisted.map = map;
@@ -94,6 +97,7 @@ function renderWaves(
         tMs={p.tMs ?? T0}
         visible={p.visible ?? true}
         mapPickArmed={p.armed ?? false}
+        mask={'mask' in p ? (p.mask ?? null) : WATER}
       />
     </I18nProvider>
   );
@@ -327,5 +331,34 @@ describe('WaveLayer tap popup (#1699)', () => {
     click(map, CELL);
     rerenderWith({ tMs: T0 + HOUR });
     expect((hoisted.popups[0] as RecordedPopup).removed).toBe(true);
+  });
+});
+
+describe('WaveLayer land culling (#1699)', () => {
+  const coords = (map: FakeMap) =>
+    lastData(map, WAVE_ARROW_SOURCE).features.map((f) =>
+      (f.geometry as GeoJSON.Point).coordinates.join(),
+    );
+
+  it('shows nothing until the mask loads, then the water cells', () => {
+    const map = makeFakeMap();
+    // Same grid object both times, as RouteLayer passes it: only the mask changes.
+    const g = grid();
+    const { rerenderWith } = renderWaves(map, { grid: g, mask: null });
+    expect(map.layers.has(WAVE_FILL_LAYER)).toBe(true);
+    expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(0);
+    expect(lastData(map, WAVE_ARROW_SOURCE).features).toHaveLength(0);
+    rerenderWith({ grid: g, mask: WATER });
+    expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(5);
+  });
+
+  it('gives a land point no cell and no arrow, whatever its Hs', () => {
+    const map = makeFakeMap();
+    renderWaves(map, { mask: waveTestMask((lat, lon) => (lat === 54.7 && lon === 10 ? 0 : 50)) });
+    // grid(): 5 data points, 4 with a direction; (54.7, 10.0) is now land.
+    expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(4);
+    expect(coords(map)).toHaveLength(3);
+    expect(coords(map)).not.toContain('10,54.7');
+    expect(coords(map)).toContain('10.1,54.7');
   });
 });
