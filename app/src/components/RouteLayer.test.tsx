@@ -2735,9 +2735,9 @@ describe('sea-state slider hour outside the wave axis (#1699)', () => {
     renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS));
     expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
     expect(
-      screen.getByRole('checkbox', { name: de['route.waves.toggle'] }).getAttribute(
-        'aria-describedby',
-      ),
+      screen
+        .getByRole('checkbox', { name: de['route.waves.toggle'] })
+        .getAttribute('aria-describedby'),
     ).toBeNull();
   });
 
