@@ -81,6 +81,9 @@ export interface HarborPickerProps {
   // #1721: the checked gate range over which a harbour is unreachable, null
   // when it is not, or 'pending' while that scan is unfinished.
   unreachableBandOf?: (harborId: string) => BandLookup;
+  // #1749: the ids of the rows shown while the list is open (empty otherwise),
+  // so the caller can scan those bands before the rest.
+  onVisibleIdsChange?: (ids: readonly string[]) => void;
   mask?: NavMask | null;
 }
 
@@ -278,7 +281,21 @@ export function unreachableBand(
 }
 
 /**
- * Scans the given harbours one gate per macrotask, so no render waits on a
+ * #1749: the scan order, selected endpoints first, then visible rows, then the
+ * rest in their given order. Only ids in `all` are kept.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function orderBandScanIds(
+  all: readonly string[],
+  selected: readonly string[],
+  visible: readonly string[],
+): string[] {
+  const wanted = new Set(all);
+  return [...new Set([...selected, ...visible, ...all])].filter((id) => wanted.has(id));
+}
+
+/**
+ * Scans the given harbours, in the given order, one gate per macrotask, so no render waits on a
  * flood. The returned lookup yields 'pending' for any id without a finished scan,
  * so ask only about ids in `harborIds` (null without a mask); its identity
  * changes whenever a scan finishes.
@@ -440,6 +457,7 @@ export default function HarborPicker({
   safetyDepthM,
   harborAccess,
   unreachableBandOf,
+  onVisibleIdsChange,
   mask,
 }: HarborPickerProps) {
   const [query, setQuery] = useState('');
@@ -483,6 +501,20 @@ export default function HarborPicker({
     () => rankHarbors(harbors, query, lang, recentIds),
     [harbors, query, lang, recentIds],
   );
+
+  const visibleKey = open ? results.map((h) => h.id).join('|') : '';
+  const onVisibleIdsChangeRef = useRef(onVisibleIdsChange);
+  useEffect(() => {
+    onVisibleIdsChangeRef.current = onVisibleIdsChange;
+  });
+  const reportedRef = useRef(false);
+  useEffect(() => {
+    // Nothing to clear before the first non-empty report.
+    if (visibleKey === '' && !reportedRef.current) return;
+    reportedRef.current = visibleKey !== '';
+    onVisibleIdsChangeRef.current?.(visibleKey === '' ? [] : visibleKey.split('|'));
+  }, [visibleKey]);
+  useEffect(() => () => onVisibleIdsChangeRef.current?.([]), []);
 
   // Keep the active option visible: with the aria-activedescendant pattern DOM
   // focus stays on the input, so the browser never auto-scrolls the listbox —

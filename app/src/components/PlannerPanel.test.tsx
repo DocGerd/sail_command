@@ -2946,6 +2946,41 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     expect(vi.mocked(harborAccessAt).mock.calls.map((c) => c[3])).toEqual([2.2]);
   });
 
+  // #1749: scan order is selected endpoints, then visible rows, then the rest.
+  it('#1749: scans the selected endpoint before earlier harbours in map order', async () => {
+    vi.mocked(computeHarborAccess).mockImplementation(
+      () =>
+        new Map([
+          ['flensburg', 'unreachable'],
+          ['marstal', 'unreachable'],
+        ]),
+    );
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+
+    renderPanel({ navMask: fakeMask, destination: marstalDestination });
+    await waitFor(() => expect(harborAccessAt).toHaveBeenCalled());
+    expect(vi.mocked(harborAccessAt).mock.calls[0]?.[1].id).toBe('marstal');
+  });
+
+  it('#1749: scans the rows an open picker shows before the rest', async () => {
+    vi.mocked(computeHarborAccess).mockImplementation(
+      () =>
+        new Map([
+          ['flensburg', 'unreachable'],
+          ['marstal', 'unreachable'],
+        ]),
+    );
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+
+    renderPanel({ navMask: fakeMask });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Marstal' } });
+    await waitFor(() => expect(harborAccessAt).toHaveBeenCalled());
+    expect(vi.mocked(harborAccessAt).mock.calls[0]?.[1].id).toBe('marstal');
+  });
+
   // #1724: PlannerPanel builds no mask of its own. A hook-returned mask that
   // App did not hand down must not reach the access derivation.
   it('#1724: derives nothing from a mask that App did not pass down', () => {

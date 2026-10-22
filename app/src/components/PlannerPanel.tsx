@@ -42,7 +42,11 @@ import {
 } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
+import HarborPicker, {
+  harborAccessCopy,
+  orderBandScanIds,
+  useUnreachableBandOf,
+} from './HarborPicker';
 import type { NavMask } from '../lib/mask';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef, BoatId } from '../data/boats';
@@ -346,14 +350,23 @@ export default function PlannerPanel({
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
   );
-  // #1721: scans, off the render path, the gate band over which each harbour
-  // unreachable at the live gate stays unreachable.
+  // #1721/#1749: scans, off the render path, the gate band over which each
+  // harbour unreachable at the live gate stays unreachable; selected endpoints
+  // first, then the rows an open picker shows.
+  const [originVisibleIds, setOriginVisibleIds] = useState<readonly string[]>([]);
+  const [destinationVisibleIds, setDestinationVisibleIds] = useState<readonly string[]>([]);
+  const originHarborId = origin?.source === 'harbor' ? origin.harborId : null;
+  const destinationHarborId = destination?.source === 'harbor' ? destination.harborId : null;
   const unreachableIds = useMemo(
     () =>
       harborAccess
-        ? [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : []))
+        ? orderBandScanIds(
+            [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : [])),
+            [originHarborId, destinationHarborId].flatMap((id) => (id === null ? [] : [id])),
+            [...originVisibleIds, ...destinationVisibleIds],
+          )
         : [],
-    [harborAccess],
+    [harborAccess, originHarborId, destinationHarborId, originVisibleIds, destinationVisibleIds],
   );
   const unreachableBandOf = useUnreachableBandOf(
     mask,
@@ -1042,6 +1055,7 @@ export default function PlannerPanel({
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
               unreachableBandOf={unreachableBandOf}
+              onVisibleIdsChange={setOriginVisibleIds}
               mask={mask}
               // #737: true only when this mount was caused by the Change
               // button above (see HarborPicker's own `autoFocus` doc comment
@@ -1134,6 +1148,7 @@ export default function PlannerPanel({
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
               unreachableBandOf={unreachableBandOf}
+              onVisibleIdsChange={setDestinationVisibleIds}
               mask={mask}
               // #737: see the matching comment on the origin HarborPicker above.
               autoFocus={editingDestination}
