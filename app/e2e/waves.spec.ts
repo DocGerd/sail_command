@@ -248,10 +248,11 @@ test.describe('sea-state overlay (#1699)', () => {
             );
             const at = (id: string) => ids.indexOf(id);
             const problems: string[] = [];
-            for (const id of [FILL, ARROWS, ...required]) {
+            for (const id of [FILL, EDGE, ARROWS, ...required]) {
               if (at(id) < 0) problems.push(`missing ${id}`);
             }
-            if (at(FILL) >= at(ARROWS)) problems.push(`${FILL} not below ${ARROWS}`);
+            if (at(FILL) >= at(EDGE)) problems.push(`${FILL} not below ${EDGE}`);
+            if (at(EDGE) >= at(ARROWS)) problems.push(`${EDGE} not below ${ARROWS}`);
             for (const id of below) {
               if (at(id) >= 0 && at(id) > at(FILL)) problems.push(`${id} above ${FILL}`);
             }
@@ -299,11 +300,15 @@ test.describe('sea-state overlay (#1699)', () => {
       );
       expect(waveLayerIds).toEqual([]);
 
-      // Display-only data must not raise a banner: nothing in the banner area
-      // mentions sea state. (Other banners, e.g. the SW toast, may come and go.)
-      await expect(
-        page.locator('.banner-area .banner').filter({ hasText: /Seegang|Wellen/i }),
-      ).toHaveCount(0);
+      // Display-only data must not raise a banner: no banner mentions sea state.
+      // Positive control: arming a map pick raises a banner the locator matches.
+      await page
+        .getByRole('region', { name: 'Start' })
+        .getByRole('button', { name: 'Auf Karte wählen' })
+        .click();
+      const banners = page.locator('.banner-area .banner');
+      await expect(banners.filter({ hasText: 'Auf Karte tippen für Start.' })).toHaveCount(1);
+      await expect(banners.filter({ hasText: /Seegang|Wellen/i })).toHaveCount(0);
       expect(openMeteoRequests, 'wind fixture alone must not reach any live API').toEqual([]);
     } finally {
       server.kill();

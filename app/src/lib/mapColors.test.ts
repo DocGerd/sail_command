@@ -13,7 +13,7 @@ import {
   STARBOARD_COLOR,
   VIA_COLOR,
 } from './mapColors';
-import { SEA_STATE_COLORS, SHADED_BANDS, WAVE_FILL_OPACITY } from './waveMap';
+import { SEA_STATE_COLORS, SHADED_BANDS, WAVE_ARROW_COLOR, WAVE_FILL_OPACITY } from './waveMap';
 
 // #715: app.css cannot IMPORT lib/mapColors.ts (no compiler spans CSS
 // and TypeScript), so its own sites read these values through --sc-*
@@ -112,7 +112,10 @@ describe('#715: app.css --sc-* map-colour TOKENS are honest twins of lib/mapColo
  */
 function assertUsesToken(css: string, blockPattern: RegExp, token: string, label: string): void {
   const block = css.match(blockPattern);
-  expect(block, `app.css's ${label} rule not found (renamed, reformatted, or moved)`).not.toBeNull();
+  expect(
+    block,
+    `app.css's ${label} rule not found (renamed, reformatted, or moved)`,
+  ).not.toBeNull();
   const body = block![1];
   expect(body, `${label} does not reference var(--${token})`).toMatch(
     new RegExp(`var\\(--${token}\\)`),
@@ -249,6 +252,25 @@ describe('#1699: --sc-sea-* tokens twin SEA_STATE_COLORS', () => {
     );
     expect(mix, `.route-legend-sea-${band} has no color-mix over --sc-halo`).not.toBeNull();
     expect(Number(mix![1]) / 100).toBe(WAVE_FILL_OPACITY);
+  });
+
+  it('--sc-wave-arrow matches WAVE_ARROW_COLOR in both colour schemes', () => {
+    const all = [...css.matchAll(/--sc-wave-arrow:\s*(#[0-9a-fA-F]{6});/g)];
+    expect(all.map((m) => m[1]!.toLowerCase())).toEqual([
+      WAVE_ARROW_COLOR.toLowerCase(),
+      WAVE_ARROW_COLOR.toLowerCase(),
+    ]);
+    // Sanity pin: navy, not the barbs' ink.
+    expect(WAVE_ARROW_COLOR).toBe('#1E3A8A');
+  });
+
+  it('.route-legend-sea-arrow fills with --sc-wave-arrow', () => {
+    assertUsesToken(
+      css,
+      /\.route-legend-sea-arrow\s*\{([^}]*)\}/,
+      'sc-wave-arrow',
+      '.route-legend-sea-arrow',
+    );
   });
 
   it.each(SHADED_BANDS)('.route-legend-sea-%s uses its token', (band) => {

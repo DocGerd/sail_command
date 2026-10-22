@@ -5,7 +5,7 @@ import type { WaveGrid } from '../types';
 import type { NavMask } from './mask';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Lang } from './format';
-import { INK_COLOR, HALO_COLOR } from './mapColors';
+import { HALO_COLOR } from './mapColors';
 import { seaStateBand, wavePointsAt, type SeaStateBand } from './waves';
 
 export const WAVE_CELL_SOURCE = 'sc-waves-cells';
@@ -34,6 +34,10 @@ export const SEA_STATE_COLORS: Record<ShadedBand, string> = {
   moderate: '#8856A7',
   rough: '#810F7C',
 };
+
+// Navy, so the arrows read apart from the black wind barbs on the same
+// lattice. app.css twins it as --sc-wave-arrow for the legend glyph.
+export const WAVE_ARROW_COLOR = '#1E3A8A';
 
 export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
   calm: 'seaState.band.calm',
@@ -151,12 +155,12 @@ function hexRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Raw RGBA pixels for map.addImage: ink arrow on a white halo. Drawn without a
+// Raw RGBA pixels for map.addImage: navy arrow on a white halo. Drawn without a
 // canvas so it registers wherever the map does, test fakes included.
 export function waveArrowImage(): { width: number; height: number; data: Uint8Array } {
   const size = WAVE_ARROW_IMAGE_PX;
   const data = new Uint8Array(size * size * 4);
-  const ink = hexRgb(INK_COLOR);
+  const ink = hexRgb(WAVE_ARROW_COLOR);
   const halo = hexRgb(HALO_COLOR);
   const haloPx = 2;
   const at = (x: number, y: number) => insideArrow((x + 0.5) / size, (y + 0.5) / size);
@@ -189,10 +193,15 @@ const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
 // Sea-state metres, one to two decimals. Truncated, never rounded: the band is
 // classified from the raw value, so a rounded figure could read as the next band.
+// Heights are stored as Float32 (0.7 reads 0.699999988), so snap below its
+// resolution first, unless the snap would cross a band edge.
+// Engines without Intl `roundingMode` ignore it and round instead.
 export function formatSeaStateM(value: number, lang: Lang): string {
+  const snapped = Math.round(value * 1e6) / 1e6;
+  const v = seaStateBand(snapped) === seaStateBand(value) ? snapped : value;
   return new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
     roundingMode: 'trunc',
-  }).format(value);
+  }).format(v);
 }

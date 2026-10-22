@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   formatSeaStateM,
   travelDeg,
+  WAVE_ARROW_COLOR,
   WAVE_ARROW_IMAGE_PX,
   waveArrowImage,
   waveFeaturesAt,
 } from './waveMap';
 import { makeWaveGrid, waveTestMask } from '../test/waveFixtures';
-import { seaStateBand } from './waves';
+import { seaStateBand, wavePointsAtHour } from './waves';
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 const WATER = waveTestMask();
@@ -136,6 +137,12 @@ describe('waveArrowImage (#1699)', () => {
     expect(alphaAt(0, 0)).toBe(0);
     expect(alphaAt(img.width - 1, img.height - 1)).toBe(0);
   });
+
+  it('draws in WAVE_ARROW_COLOR, not the barbs’ black ink', () => {
+    const mid = (Math.round(img.height * 0.75) * img.width + img.width / 2) * 4;
+    const hex = `#${[0, 1, 2].map((c) => img.data[mid + c]!.toString(16).padStart(2, '0')).join('')}`;
+    expect(hex.toUpperCase()).toBe(WAVE_ARROW_COLOR);
+  });
 });
 
 describe('formatSeaStateM', () => {
@@ -154,5 +161,36 @@ describe('formatSeaStateM', () => {
     expect(formatSeaStateM(h, 'en')).toBe(text);
     expect(seaStateBand(h)).toBe(band);
     expect(seaStateBand(Number(text))).toBe(band);
+  });
+
+  // R3-1: heights arrive as Float32, e.g. fround(0.7) = 0.699999988.
+  it.each([
+    [0.7, '0.7', '0,7'],
+    [0.9, '0.9', '0,9'],
+    [1.3, '1.3', '1,3'],
+    [1.4, '1.4', '1,4'],
+    [2.499, '2.49', '2,49'],
+    [2.5, '2.5', '2,5'],
+  ] as const)('fround(%s) prints %s / %s', (h, en, de) => {
+    expect(formatSeaStateM(Math.fround(h), 'en')).toBe(en);
+    expect(formatSeaStateM(Math.fround(h), 'de')).toBe(de);
+  });
+
+  it('prints Float32 heights from a wave grid at their own value', () => {
+    const heights = [0.7, 0.9, 1.3, 1.4];
+    const grid = makeWaveGrid((_, lo) => ({ heightM: heights[lo]!, periodS: 4, dirFromDeg: 0 }), {
+      lats: [54.5],
+      lons: [10.0, 10.1, 10.2, 10.3],
+    });
+    const printed = wavePointsAtHour(grid, 0).map((p) => formatSeaStateM(p.heightM, 'en'));
+    expect(printed).toEqual(['0.7', '0.9', '1.3', '1.4']);
+  });
+
+  it('does not snap across a band edge', () => {
+    // The largest Float32 below 0.1: calm, so it must not print as 0.1.
+    const h = 0.09999999403953552;
+    expect(Math.fround(h)).toBe(h);
+    expect(seaStateBand(h)).toBe('calm');
+    expect(formatSeaStateM(h, 'en')).toBe('0.09');
   });
 });

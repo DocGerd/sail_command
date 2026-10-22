@@ -5340,6 +5340,35 @@ describe('#1707 next passage', () => {
       expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
     });
 
+    // #1699 R3-2: App hands run() the source plan's wave grid with its wind grid.
+    // The fetchWaveGrid mock rejects, so a wave grid on the new plan can only
+    // have come from the source plan.
+    it("reaching grid: the new plan keeps the source plan's wave grid", async () => {
+      const plan = sourcePlan('next-offline-waves');
+      plan.windGrid = uniformWindGrid(10, 250, { t0Ms: plan.windGrid.fetchedAtMs, hours: 8 * 24 });
+      plan.waveGrid = makeWaveGrid(() => ({ heightM: 0.7, periodS: 4, dirFromDeg: 200 }), {
+        t0Ms: plan.windGrid.fetchedAtMs,
+        hours: 8 * 24,
+      });
+      await loadSource(plan);
+      fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+      goOffline();
+      pickDestination(FLENSBURG.names.de);
+
+      fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+      await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+      routingMock.calls[0].resolve(okPlanResult(12));
+
+      await waitFor(async () => expect(await db.listPlans()).toHaveLength(2));
+      const saved = (await db.listPlans()).find((p) => p.id !== plan.id);
+      const created = await db.getPlan(saved!.id);
+      // Array.from: toEqual on the stored Float32Array fails even with equal contents.
+      expect(Array.from(created?.waveGrid?.waveHeightM ?? [])).toEqual(
+        Array.from(plan.waveGrid.waveHeightM),
+      );
+      expect(created?.waveGrid?.timesMs).toEqual(plan.waveGrid.timesMs);
+    });
+
     it("grid ending before the departure: disabled with today's message and the too-short line", async () => {
       const plan = await seeded(2);
       const last = plan.windGrid.timesMs[plan.windGrid.timesMs.length - 1];
