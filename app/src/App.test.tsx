@@ -216,6 +216,10 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
         hours: 24 * (actual.FORECAST_DAYS + 2),
       }),
     ),
+    // #1699: no marine fetch here; a rejection is "no wave grid" to usePlanFlow.
+    fetchWaveGrid: vi.fn(async () => {
+      throw new actual.OpenMeteoError('offline', 'not under test');
+    }),
   };
 });
 

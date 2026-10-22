@@ -160,7 +160,7 @@ function cspMeta(): Plugin {
     // worker-src: 'self' only — see the comment below for why `blob:` was
     // investigated and rejected (PR #316 review B1/M3), not merely unused.
     "worker-src 'self'",
-    "connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io",
+    "connect-src 'self' https://api.open-meteo.com https://marine-api.open-meteo.com wss://stream.aisstream.io",
     // img-src keeps blob: — unlike the worker case this path is genuinely
     // reachable (browser-dependent createImageBitmap fallback in maplibre's
     // util/util.ts arrayBufferToImage, and the PMTiles raster path).
@@ -199,8 +199,9 @@ function cspMeta(): Plugin {
            path IS reachable (browser-dependent \`createImageBitmap\`
            fallback), so \`blob:\` stays here.
          - connect-src 'self' https://api.open-meteo.com
-           wss://stream.aisstream.io — the two outbound third-party feeds
-           (Open-Meteo forecasts over HTTPS, optional BYOK AIS over WSS) plus
+           https://marine-api.open-meteo.com wss://stream.aisstream.io — the
+           outbound third-party feeds (Open-Meteo wind and marine sea-state
+           forecasts over HTTPS, #1699; optional BYOK AIS over WSS) plus
            same-origin XHR/fetch (PMTiles range reads, SW, IndexedDB-adjacent
            fetches, AND the basemap's glyph .pbf ranges — MapLibre loads glyph
            ranges via \`getArrayBuffer\`/\`fetch\`,

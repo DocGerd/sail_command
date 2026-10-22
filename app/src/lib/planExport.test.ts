@@ -10,6 +10,7 @@ import {
 import type { SavedWaypoint } from '../services/db';
 import { defaultBoatSnapshot, PLAN_SCHEMA_VERSION, type Plan, type Settings } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
+import { makeWaveGrid } from '../test/waveFixtures';
 
 const TEST_SETTINGS: Settings = {
   safetyDepthM: 3.0,
@@ -505,5 +506,62 @@ describe('buildExportEnvelope never writes the AIS API key', () => {
     const plan = makeTestPlan();
     const envelope = buildExportEnvelope([plan], TEST_SETTINGS, []);
     expect(envelope.plans[0]!.request).toBe(plan.request);
+  });
+});
+
+describe('#1699 wave grid in export/import', () => {
+  // Includes NaN ("no data"), which must survive the byte encoding.
+  const waveGrid = () =>
+    makeWaveGrid((la, lo, t) => ({
+      heightM: la === 1 && lo === 0 ? NaN : 0.25 * (la + 1) + t,
+      periodS: 3 + lo,
+      dirFromDeg: 45 * la + t,
+    }));
+
+  type FileShape = { plans: Record<string, unknown>[] };
+  const exported = (plan: Plan): FileShape =>
+    JSON.parse(exportEnvelopeToJson(buildExportEnvelope([plan], TEST_SETTINGS, []))) as FileShape;
+
+  it('round-trips the wave grid as real Float32Arrays, NaN included', () => {
+    const g = waveGrid();
+    const plan: Plan = { ...makeTestPlan(), waveGrid: g };
+    const file = exported(plan);
+    expect(typeof (file.plans[0]!.waveGrid as Record<string, unknown>).waveHeightM).toBe('string');
+
+    const back = parseExportFile(JSON.stringify(file)).plans[0]!;
+    expect(back.waveGrid!.waveHeightM).toBeInstanceOf(Float32Array);
+    expect(Array.from(back.waveGrid!.waveHeightM)).toEqual(Array.from(g.waveHeightM));
+    expect(Array.from(back.waveGrid!.wavePeriodS)).toEqual(Array.from(g.wavePeriodS));
+    expect(Array.from(back.waveGrid!.waveDirFromDeg)).toEqual(Array.from(g.waveDirFromDeg));
+    expect(Number.isNaN(back.waveGrid!.waveHeightM[2])).toBe(true);
+    expect(back.waveGrid!.timesMs).toEqual(g.timesMs);
+    expect(back.waveGrid!.model).toBe('ewam');
+    expect(plan.waveGrid).toBe(g); // the live plan is untouched
+  });
+
+  it('round-trips an absent wave grid to absent', () => {
+    const file = exported(makeTestPlan());
+    expect(Object.hasOwn(file.plans[0]!, 'waveGrid')).toBe(false);
+    const back = parseExportFile(JSON.stringify(file));
+    expect(Object.hasOwn(back.plans[0]!, 'waveGrid')).toBe(false);
+  });
+
+  it.each<[string, (w: Record<string, unknown>) => unknown]>([
+    ['truncated lats (dimension mismatch)', (w) => ({ ...w, lats: (w.lats as number[]).slice(1) })],
+    [
+      'an extra hour (dimension mismatch)',
+      (w) => ({ ...w, timesMs: [...(w.timesMs as number[]), 9] }),
+    ],
+    ['undecodable base64', (w) => ({ ...w, waveHeightM: '%%%' })],
+    ['index-keyed objects instead of base64', (w) => ({ ...w, waveHeightM: { 0: 1 } })],
+    ['an empty time axis', (w) => ({ ...w, timesMs: [] })],
+    ['a string', () => 'not a grid'],
+  ])('drops a wave grid with %s and keeps the plan', (_label, damage) => {
+    const file = exported({ ...makeTestPlan(), waveGrid: waveGrid() });
+    file.plans[0]!.waveGrid = damage(file.plans[0]!.waveGrid as Record<string, unknown>);
+    const result = parseExportFile(JSON.stringify(file));
+    expect(result.invalidPlanCount).toBe(0);
+    expect(result.plans).toHaveLength(1);
+    expect(Object.hasOwn(result.plans[0]!, 'waveGrid')).toBe(false);
   });
 });

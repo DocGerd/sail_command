@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { noRouteMessageKey } from '../lib/plan';
+import { cloneWaveGrid } from '../lib/waves';
 import { pinRegionsAfterReroute, type PinAfterSave } from '../services/pinAfterSave';
 import {
   disposeAfterFailure,
@@ -178,6 +179,7 @@ export async function rerouteFromFix(
     schemaVersion: PLAN_SCHEMA_VERSION,
     request,
     windGrid: cloneWindGrid(plan.windGrid),
+    ...(plan.waveGrid !== undefined ? { waveGrid: cloneWaveGrid(plan.waveGrid) } : {}),
     result,
   };
   const save = deps.save ?? savePlan;
