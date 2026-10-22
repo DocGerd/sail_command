@@ -2092,18 +2092,6 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
   });
 });
 
-// #571 redesign (maintainer ruling: a via edit "is kind of a new route and
-// hence should only calculate once clicked on calculate" — no auto-replan on
-// add/remove/reorder). Replaces the pre-redesign "via-replan clobber guard
-// (Phase E gate fix)" describe block, which drove the OLD auto-replan-on-
-// edit behavior end to end — that behavior no longer exists (a via edit
-// never dispatches a routing call at all), so its exact scenario (a pending
-// replan racing a plan switch) is moot. The first test below is this
-// redesign's own core regression test (brief requirement: assert the
-// routing client was NOT called); the second preserves the ORIGINAL test's
-// spirit — editing vias on one plan must not corrupt a later-loaded
-// different plan — under the new trigger (draftViaPoints resetting on
-// plan.id change), which is what now provides that guarantee.
 // #1699 R2-1: App.tsx's `mapPickArmed={tapTarget !== null}` is what makes the
 // sea-state popup yield to an armed origin/destination/via pick.
 describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', () => {
@@ -2145,6 +2133,18 @@ describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', 
   });
 });
 
+// #571 redesign (maintainer ruling: a via edit "is kind of a new route and
+// hence should only calculate once clicked on calculate" — no auto-replan on
+// add/remove/reorder). Replaces the pre-redesign "via-replan clobber guard
+// (Phase E gate fix)" describe block, which drove the OLD auto-replan-on-
+// edit behavior end to end — that behavior no longer exists (a via edit
+// never dispatches a routing call at all), so its exact scenario (a pending
+// replan racing a plan switch) is moot. The first test below is this
+// redesign's own core regression test (brief requirement: assert the
+// routing client was NOT called); the second preserves the ORIGINAL test's
+// spirit — editing vias on one plan must not corrupt a later-loaded
+// different plan — under the new trigger (draftViaPoints resetting on
+// plan.id change), which is what now provides that guarantee.
 describe('via edits are draft-only and never auto-replan (#571 redesign)', () => {
   it('adding then removing a via point dispatches NO routing call — only the Plan-route button does', async () => {
     renderApp();

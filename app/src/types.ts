@@ -128,8 +128,8 @@ export interface WindGrid {
 }
 
 // Sea state from the Open-Meteo Marine API (#1699). Same flattened index as
-// WindGrid. A null source value (land, coast, no model coverage) is stored as
-// NaN, never 0: 0 m would read as calm water.
+// WindGrid. A null source value is stored as NaN, never 0: 0 m would read as
+// calm water.
 export interface WaveGrid {
   lats: number[]; // ascending
   lons: number[]; // ascending

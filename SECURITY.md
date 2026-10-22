@@ -22,7 +22,7 @@ arguments — is the
   project operates no server, no API, and no database; there is no central
   store of user data anywhere.
 - **Your data stays on your device.** Saved plans (including the wind grid each
-  was computed from, and its sea-state grid when one was fetched), settings,
+  was computed from, and its sea-state grid when one arrived in time), settings,
   and GPS positions live in your browser's IndexedDB / localStorage and are
   never uploaded.
 - **No analytics, telemetry, or tracking.** None is present and none is
@@ -44,10 +44,12 @@ arguments — is the
     boxes covering your area of interest are sent to that third party.
 - **All transport is encrypted** (HTTPS / WSS) with the browser's default
   certificate verification; the app contains no verification bypass.
-- **The app keeps working offline.** Planning needs the network, except a
-  next passage, which can reuse its source plan's stored forecast and says
-  so. A wind-forecast failure is reported as a failure; a sea-state failure
-  only leaves the plan without a sea state.
+- **The app keeps working offline.** Planning needs the network, except
+  where a plan's stored forecast is reused: re-routing from a GPS fix,
+  "Compare departure times", and a next passage planned offline, which says
+  so. A wind-forecast failure is reported as a failure unless a next passage
+  can fall back to its source plan's forecast; a sea-state failure only
+  leaves the plan without a sea state.
 - **Reproducible, reviewed releases.** Production is built only from `main`
   through protected-branch CI, with a determinism proof that fails the build on
   any byte difference.

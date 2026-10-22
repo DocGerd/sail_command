@@ -23,7 +23,7 @@ they are restated below as claims so the argument stands on its own.
 | # | Claim |
 |---|---|
 | **C1** | There is no server-side attack surface owned by this project: no backend, no API, no database, no accounts. |
-| **C2** | User data — saved plans, wind grids, settings, GPS position — never leaves the user's device, except for the deliberate outbound cases in [§2](#2-system-description). |
+| **C2** | User data — saved plans, wind and sea-state grids, settings, GPS position — never leaves the user's device, except for the deliberate outbound cases in [§2](#2-system-description). |
 | **C3** | Every untrusted input crossing into the app is validated before use, and a hostile input degrades to a clear error rather than to code execution, corruption, or a hang. |
 | **C4** | The shipped bytes correspond to the reviewed source: what is on `main` is what CI builds, reproducibly, and what GitHub Pages serves. |
 | **C5** | Third-party code entering the product is inventoried, monitored, and updated. |
