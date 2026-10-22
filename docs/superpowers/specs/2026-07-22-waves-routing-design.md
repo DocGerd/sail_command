@@ -7,6 +7,41 @@ future session. **Relationship:** addendum to `2026-07-14-sail-command-design.md
 (see §2). Where this document and the source spec conflict on wave/sea-state behavior, this
 addendum wins; on all other domain behavior the source spec wins.
 
+## 0. First slice — overlay only (2026-10-22)
+
+Maintainer rulings, recorded on #1699
+(https://github.com/DocGerd/sail_command/issues/1699#issuecomment-6339846546), scope the
+first implementation to §3 (`WaveGrid`), §4 (marine fetch) and the overlay half of §7.
+**Display only: no routing change.** §5 and §6 stay open on #1699.
+
+- **Content.** Hs as WMO sea-state colour bands (calm < 0.1, smooth 0.1–0.5, slight
+  0.5–1.25, moderate 1.25–2.5, rough ≥ 2.5 m) plus one direction arrow per grid point.
+  Period appears only in the legend and tap popup. No derived wavelength, no
+  wind-sea/swell split. This narrows §3's arrows-plus-shading wording and leaves
+  `wavePeriodS` display-only.
+- **Arrows point the direction of TRAVEL** (`waveDirFromDeg + 180`); the legend says so.
+  Wind barbs keep their FROM convention.
+- **Plan-bound.** Fetched alongside the wind at plan time, stored on the plan, sampled at
+  the slider hour. Toggle persisted via `usePersistedToggle`, default ON. No browsing
+  before a plan exists.
+- **No data is not calm.** A null Hs (land, coast, no model coverage) renders no
+  symbol, never the calm band.
+- **Never reaches the worker.** `waveGrid` is not posted to the routing worker, so
+  `PlanResult` stays byte-identical.
+- **Not in this slice:** §7's shared overlay-layer registry. Layers keep the existing
+  explicit `beforeId` anchoring. A per-leg/route max-Hs readout is a follow-up issue.
+- **Model.** Provisional choice: `ewam` (DWD, regional). The 2026-10-22 live probe could not
+  run because the session's network policy denied `marine-api.open-meteo.com`. Horizon
+  coverage of `FORECAST_DAYS`, single-URL fit of the wind lattice and coastal nulls remain
+  unverified; record the model actually requested in `WaveGrid.model`.
+
+Corrections to stale facts below: the bbox is 54.3–55.6°N, 9.4–11.6°E since #295
+(`app/public/data/mask.meta.json`); the wind fetch requests `FORECAST_DAYS = 6`
+(`services/openMeteo.ts`); `db.ts` is at version 3, and §7's "bump the DB version" is
+**wrong** for an optional `Plan` field. A plan record is stored whole, so an optional field
+needs no schema change. A bump would also break production for `/uat/` visitors, who share
+one IndexedDB origin (multi-boat spec §I.2, OQ-5).
+
 ## 1. Goal
 
 Make routes reflect the sea state. A boat's real speed in a seaway is lower than its
