@@ -1730,6 +1730,7 @@ function AppShell() {
             onRouteLineInsert={handleRouteLineInsert}
             viaArmed={tapTarget === 'via'}
             onArmedRouteTapInsert={handleRouteLineArmedTap}
+            mapPickArmed={tapTarget !== null}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),

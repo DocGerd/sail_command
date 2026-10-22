@@ -16,11 +16,15 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
-function renderLegend(hasForcedLeg = false, hasHandover = false) {
+function renderLegend(hasForcedLeg = false, hasHandover = false, hasWaveGrid = false) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
-      <RouteLegend hasForcedLeg={hasForcedLeg} hasHandover={hasHandover} />
+      <RouteLegend
+        hasForcedLeg={hasForcedLeg}
+        hasHandover={hasHandover}
+        hasWaveGrid={hasWaveGrid}
+      />
     </I18nProvider>,
   );
 }
@@ -217,5 +221,31 @@ describe('#1541: the legend holds explanations, not toggles', () => {
     expect(on.getByText(en['map.depth.legend.contourNoDataLabel'])).toBeInTheDocument();
     expect(on.container.querySelector('.depth-legend-swatch-contour')).not.toBeNull();
     expect(on.container.querySelector('.depth-legend-swatch-nodata')).not.toBeNull();
+  });
+});
+
+// #1699: the sea-state section shows only for a plan with a wave grid while
+// the overlay toggle is on.
+describe('#1699: sea-state legend section', () => {
+  it('lists five bands with metre ranges, the no-data note, the travel arrow and the caveat', () => {
+    const { container, getByText } = renderLegend(false, false, true);
+    expect(container.querySelectorAll('.route-legend-sea')).toHaveLength(5);
+    expect(getByText('calm: below 0.1 m')).toBeInTheDocument();
+    expect(getByText('slight: 0.5 to 1.25 m')).toBeInTheDocument();
+    expect(getByText('rough: 2.5 m and above')).toBeInTheDocument();
+    expect(getByText(en['route.legend.seaStateNoData'])).toBeInTheDocument();
+    expect(getByText(en['route.legend.seaStateArrow'])).toBeInTheDocument();
+    expect(getByText(en['route.legend.seaStateCaveat'])).toBeInTheDocument();
+  });
+
+  it('is absent for a plan without a grid', () => {
+    const { queryByText } = renderLegend(false, false, false);
+    expect(queryByText(en['route.legend.seaStateHeading'])).toBeNull();
+  });
+
+  it('is absent while the overlay toggle is off', () => {
+    localStorage.setItem('sc-waves-visible', '0');
+    const { queryByText } = renderLegend(false, false, true);
+    expect(queryByText(en['route.legend.seaStateHeading'])).toBeNull();
   });
 });

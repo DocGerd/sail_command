@@ -159,6 +159,25 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     expect(style.sources['protomaps']?.url).toBe(BASEMAP_SOURCE_URL);
   });
 
+  // #1699 (#7: one anchor per accessible name): the marine data extends the
+  // existing Open-Meteo credit rather than adding a link.
+  it('#1699: credits Open-Meteo weather and marine data through one anchor', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
+    render(<MapView tapActive={false} onTap={() => {}} />);
+    await flushAsyncMount();
+    const style = (
+      hoisted.mapCtorCalls[0] as {
+        style: { sources: Record<string, { attribution: string }> };
+      }
+    ).style;
+    const holder = document.createElement('div');
+    holder.innerHTML = style.sources['protomaps']!.attribution;
+    const anchors = Array.from(holder.querySelectorAll('a'));
+    expect(anchors).toHaveLength(4);
+    const meteo = anchors.filter((a) => a.href.startsWith('https://open-meteo.com'));
+    expect(meteo.map((a) => a.textContent)).toEqual(['Weather and marine data by Open-Meteo.com']);
+  });
+
   // #295 (PWA review r4016341229): a fresh install claims the page mid-session.
   it('#295: the service worker taking control enables regions and reloads the source TileJSON', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
