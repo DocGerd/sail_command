@@ -568,7 +568,7 @@ const WIDE_CTA_VIEWPORTS = Object.entries(ATTRIBUTION_VIEWPORTS).filter(
 const CTA_CORNER_INSET_PX = 10;
 
 // The map's attribution carries exactly four credit links: OpenStreetMap,
-// Protomaps, EMODnet Bathymetry, and "Weather data by Open-Meteo.com".
+// Protomaps, EMODnet Bathymetry, and "Weather and marine data by Open-Meteo.com".
 // MEASURED 2026-09-01: four at every narrow row, in both planner states.
 // Pinned as an exact count, not a non-vacuity floor: attribution reachability
 // is an ODbL/CC-BY obligation, so a credit silently disappearing from the

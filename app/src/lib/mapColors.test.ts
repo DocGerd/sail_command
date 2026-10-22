@@ -13,6 +13,7 @@ import {
   STARBOARD_COLOR,
   VIA_COLOR,
 } from './mapColors';
+import { SEA_STATE_COLORS, SHADED_BANDS } from './waveMap';
 
 // #715: app.css cannot IMPORT lib/mapColors.ts (no compiler spans CSS
 // and TypeScript), so its own sites read these values through --sc-*
@@ -111,7 +112,10 @@ describe('#715: app.css --sc-* map-colour TOKENS are honest twins of lib/mapColo
  */
 function assertUsesToken(css: string, blockPattern: RegExp, token: string, label: string): void {
   const block = css.match(blockPattern);
-  expect(block, `app.css's ${label} rule not found (renamed, reformatted, or moved)`).not.toBeNull();
+  expect(
+    block,
+    `app.css's ${label} rule not found (renamed, reformatted, or moved)`,
+  ).not.toBeNull();
   const body = block![1];
   expect(body, `${label} does not reference var(--${token})`).toMatch(
     new RegExp(`var\\(--${token}\\)`),
@@ -225,5 +229,27 @@ describe('#715: sanity pins (not twins) for the Okabe-Ito literals themselves', 
     expect(HALO_COLOR).toBe('#FFFFFF');
     expect(POSITION_HALO_COLOR).toBe('#FFD400');
     expect(DEPTH_WARNING_COLOR).toBe('#E69F00');
+  });
+});
+
+// #1699: the sea-state legend swatches read --sc-sea-* tokens; the map fill
+// reads SEA_STATE_COLORS. Both copies must agree, in light and dark mode.
+describe('#1699: --sc-sea-* tokens twin SEA_STATE_COLORS', () => {
+  const css = readAppCss();
+  it.each(SHADED_BANDS)('--sc-sea-%s matches in both colour schemes', (band) => {
+    const all = [...css.matchAll(new RegExp(`--sc-sea-${band}:\\s*(#[0-9a-fA-F]{6});`, 'g'))];
+    expect(all.map((m) => m[1]!.toLowerCase())).toEqual([
+      SEA_STATE_COLORS[band].toLowerCase(),
+      SEA_STATE_COLORS[band].toLowerCase(),
+    ]);
+  });
+
+  it.each(SHADED_BANDS)('.route-legend-sea-%s uses its token', (band) => {
+    assertUsesToken(
+      css,
+      new RegExp(`\\.route-legend-sea-${band}\\s*\\{([^}]*)\\}`),
+      `sc-sea-${band}`,
+      `.route-legend-sea-${band}`,
+    );
   });
 });

@@ -34,6 +34,8 @@ import { harborHandoverLines, type HarborHandoverLine } from '../lib/harborHando
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
+import WaveLayer from './WaveLayer';
+import { seaStateUnavailable } from '../lib/waves';
 import Disclosure from './Disclosure';
 import Button from './Button';
 import type { LatLon, Leg, Plan, SailId } from '../types';
@@ -91,6 +93,9 @@ export interface RouteLayerProps {
   // "extra step" over handleSelectSavedWaypoint), where the desktop drag
   // gesture has no arming to clear.
   onArmedRouteTapInsert: (point: LatLon) => void;
+  // #1699: any map pick (origin/destination/via) is armed; the sea-state
+  // popup then yields the tap to it.
+  mapPickArmed: boolean;
 }
 
 // jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
@@ -1004,6 +1009,7 @@ export default function RouteLayer({
   onRouteLineInsert,
   viaArmed,
   onArmedRouteTapInsert,
+  mapPickArmed,
 }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
@@ -1153,6 +1159,9 @@ export default function RouteLayer({
   // #324: map-only overlay of the OTHER rig's route, default OFF (settled
   // design — showing two routes by default clutters harbour-approach zoom).
   const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
+  // #1699: sea-state overlay, default ON; only a plan with a wave grid has one.
+  const [wavesVisible, setWavesVisible] = usePersistedToggle('sc-waves-visible', true);
+  const hasWaveGrid = plan !== null && !seaStateUnavailable(plan);
   // Depth-overlay rows (#1541): DataLayers.tsx applies these flags to the map;
   // the persisted-toggle registry keeps both components in step.
   const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
@@ -1837,6 +1846,12 @@ export default function RouteLayer({
           regardless of collapse state, so it sits OUTSIDE the Disclosure
           below rather than inside its collapsible body. */}
       <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
+      <WaveLayer
+        grid={plan.waveGrid}
+        tMs={tMs}
+        visible={wavesVisible}
+        mapPickArmed={mapPickArmed}
+      />
       {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
           this Disclosure on an unresponded `isWide` change (see that state's
           own comment above) — do not remove the key thinking it is inert. */}
@@ -1876,6 +1891,21 @@ export default function RouteLayer({
           />
           {t('route.windBarbs.toggle')}
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={wavesVisible && hasWaveGrid}
+            disabled={!hasWaveGrid}
+            onChange={(e) => setWavesVisible(e.target.checked)}
+            aria-describedby={hasWaveGrid ? undefined : 'route-waves-note'}
+          />
+          {t('route.waves.toggle')}
+        </label>
+        {!hasWaveGrid && (
+          <p id="route-waves-note" className="route-waves-note">
+            {t('route.waves.unavailable')}
+          </p>
+        )}
         <label>
           <input
             type="checkbox"
@@ -1941,6 +1971,7 @@ export default function RouteLayer({
         <RouteLegend
           hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false}
           hasHandover={result !== null && handoverLines.length > 0}
+          hasWaveGrid={hasWaveGrid}
         />
       </Disclosure>
     </div>

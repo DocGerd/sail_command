@@ -30,6 +30,8 @@ import { __resetContoursForTests, loadContoursAsset } from '../lib/contours';
 import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
+import { makeWaveGrid } from '../test/waveFixtures';
+import { WAVE_ARROW_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -300,6 +302,7 @@ function renderRouteLayer(
       onRouteLineInsert={() => {}}
       viaArmed={false}
       onArmedRouteTapInsert={() => {}}
+      mapPickArmed={false}
     />,
   );
 }
@@ -322,6 +325,7 @@ function renderRouteLayerWithPlan(
       onRouteLineInsert={() => {}}
       viaArmed={false}
       onArmedRouteTapInsert={() => {}}
+      mapPickArmed={false}
     />,
   );
 }
@@ -1075,6 +1079,7 @@ describe('RouteLayer fit-to-view button (#297)', () => {
       onRouteLineInsert: () => {},
       viaArmed: false,
       onArmedRouteTapInsert: () => {},
+      mapPickArmed: false,
     };
     const { rerender } = render(<RouteLayer plan={null} rig={null} {...props} />);
     expect(screen.queryByRole('button', { name: 'Route einpassen' })).toBeNull();
@@ -1312,6 +1317,7 @@ describe('RouteLayer style reload (#153)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     act(() => {
@@ -1413,6 +1419,7 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           onRouteLineInsert={() => {}}
           viaArmed={false}
           onArmedRouteTapInsert={() => {}}
+          mapPickArmed={false}
         />
       </I18nProvider>,
     );
@@ -1510,6 +1517,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const chip = container.querySelector('.via-markers-spinner-chip');
@@ -1598,6 +1606,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -1614,6 +1623,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const details = () =>
@@ -1658,6 +1668,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const details = () =>
@@ -1682,6 +1693,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -1698,6 +1710,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(details()?.open).toBe(true);
@@ -1820,6 +1833,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1863,6 +1877,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1887,6 +1902,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1914,6 +1930,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={onRouteLineInsert}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1953,6 +1970,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
@@ -1974,6 +1992,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1999,6 +2018,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(ghost!.removed).toBe(true);
@@ -2019,6 +2039,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -2076,6 +2097,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2107,6 +2129,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2138,6 +2161,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2169,6 +2193,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const hitLayer = map.layers.get(ROUTE_HIT_LAYER);
@@ -2188,6 +2213,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('visible');
@@ -2208,6 +2234,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('none');
@@ -2333,6 +2360,7 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={e.viaArmed ?? false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />
     );
     const utils = render(element(edit));
@@ -2578,5 +2606,60 @@ describe('RouteLayer harbour handover (#1721)', () => {
     unmount();
     renderRouteLayerWithPlan(makeFakeMap(), makePlan());
     expect(screen.queryByText(de['route.legend.handover'])).toBeNull();
+  });
+});
+
+// #1699: the sea-state toggle is gated on the plan carrying a wave grid.
+describe('sea-state toggle (#1699)', () => {
+  const withWaves = (): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+  });
+
+  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makePlan());
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeDisabled();
+    expect(toggle).not.toBeChecked();
+    const note = screen.getByText(de['route.waves.unavailable']);
+    expect(note.getAttribute('role')).toBeNull();
+    expect(toggle.getAttribute('aria-describedby')).toBe(note.id);
+    expect(map.layers.has(WAVE_FILL_LAYER)).toBe(false);
+  });
+
+  it('is on by default for a plan with a grid and drives the layer visibility', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, withWaves());
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeEnabled();
+    expect(toggle).toBeChecked();
+    expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    fireEvent.click(toggle);
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
+    expect(localStorage.getItem('sc-waves-visible')).toBe('0');
+  });
+
+  it('hides the overlay when the next plan has no grid, though the toggle stays on', () => {
+    const map = makeFakeMap();
+    const { rerender } = renderRouteLayerWithPlan(map, withWaves());
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
+      />,
+    );
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
   });
 });
