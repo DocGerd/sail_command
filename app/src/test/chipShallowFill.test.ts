@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withBackgroundSentinels } from './cssBackgroundSentinels';
 
 // `node:fs`, not a `?raw` static import: Vitest's default CSS handling mocks
 // any `.css`-matching module id to an empty string regardless of a `?raw`
@@ -23,15 +24,9 @@ const APP_CSS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../app.cs
 //
 // This test asserts the RESOLVED style against the REAL app.css, not the
 // CSS text — a selector-only check would pass on the broken bare-modifier
-// form too. jsdom parses neither `color-mix()` nor `var()`, so
-// `getComputedStyle(el).backgroundColor` reads `rgba(0, 0, 0, 0)` in BOTH
-// the broken and the fixed state and cannot discriminate (CLAUDE.md's own
-// documented jsdom caveat for this exact cascade). Only the `background`
-// SHORTHAND carries the winning declaration's raw text through jsdom's CSS
-// cascade resolution — MEASURED here: the neutral `.chip` shorthand reads
-// `"color-mix(in srgb, var(--sc-fg) 8%, transparent)"` and, once fixed, the
-// shallow chip's reads `"var(--sc-depth-warning-bg)"`, its own declared
-// value rather than the base rule's.
+// form too. jsdom does not resolve `var()`, so the stylesheet goes through
+// `withBackgroundSentinels` first (see its header): the shallow chip must
+// resolve to the sentinel for its own token.
 
 afterEach(() => {
   document.head.innerHTML = '';
@@ -47,7 +42,7 @@ function renderChip(className: string): HTMLSpanElement {
 
 describe('#506: .chip-shallow amber hazard fill actually renders', () => {
   it("resolves its OWN background, not .chip's neutral color-mix fill", () => {
-    const css = readFileSync(APP_CSS_PATH, 'utf8');
+    const { css, sentinel } = withBackgroundSentinels(readFileSync(APP_CSS_PATH, 'utf8'));
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -55,18 +50,16 @@ describe('#506: .chip-shallow amber hazard fill actually renders', () => {
     const neutral = renderChip('chip');
     const shallow = renderChip('chip chip-shallow');
 
-    const neutralBackground = getComputedStyle(neutral).background;
-    const shallowBackground = getComputedStyle(shallow).background;
+    const neutralBackground = getComputedStyle(neutral).backgroundColor;
+    const shallowBackground = getComputedStyle(shallow).backgroundColor;
 
     expect(
       shallowBackground,
-      `#506 guard: .chip.chip-shallow's resolved "background" shorthand was ` +
-        `"${shallowBackground}", identical to plain .chip's ` +
-        `"${neutralBackground}" — the amber hazard fill is being overridden ` +
-        `by .chip's own neutral color-mix fill again (the cascade #506 fixed).`,
-    ).not.toBe(neutralBackground);
-
-    expect(shallowBackground).toContain('--sc-depth-warning-bg');
+      `#506 guard: .chip.chip-shallow resolved backgroundColor "${shallowBackground}" ` +
+        `(plain .chip: "${neutralBackground}") instead of --sc-depth-warning-bg's ` +
+        `sentinel — the amber hazard fill is being overridden by .chip's own ` +
+        `neutral color-mix fill again (the cascade #506 fixed).`,
+    ).toBe(sentinel('--sc-depth-warning-bg'));
   });
 });
 
