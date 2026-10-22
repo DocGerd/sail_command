@@ -614,19 +614,32 @@ select {
    MapView's subtree (for BoatMarker's map context), docked above .app-bottom-sheet.
    `--live-sheet-h` is the sheet's measured height (set by LiveView); the fallback
    clears the tab strip plus a typical collapsed AIS row if it never runs. On wide the readout portals into .app-panel-live
-   and these absolute rules are neutralized (see the #31 block in the wide media query). */
+   and these absolute rules are neutralized (see the #31 block in the wide media query).
+   #1822: the card outranks the sheet's panel. Its budget is 70vh minus the sheet (not the
+   sheet's own 55vh cap), and the panel is capped below, so a long AIS list scrolls inside
+   the sheet instead of pushing the reroute control out of the card's scrollport. The
+   `12rem` floor is the least the card keeps whatever the sheet measures; pinned by
+   `src/test/liveCardPriority.test.ts`. 70vh and 10rem are judgement calls, not measured
+   layout constants. */
 .live-view {
   position: absolute;
   left: 0;
   right: 0;
   bottom: var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem));
-  max-height: max(12rem, calc(55vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))));
+  max-height: max(12rem, calc(70vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))));
   overflow-y: auto;
   background: var(--sc-bg);
   border-top: 1px solid var(--sc-border);
   border-radius: 12px 12px 0 0;
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
   padding: 0.75rem;
+}
+
+/* #1822: only while the card is docked (a plan exists) and the sheet's panel hosts the AIS list. */
+@media (max-width: 1023.98px) {
+  .app-shell:has(.map-area .live-view) .app-panel:has(.app-panel-ais) {
+    max-height: 10rem;
+  }
 }
 
 .live-view-no-plan {
@@ -2075,13 +2088,13 @@ select {
      same way `sheetLift` reads the sheet's `offsetHeight` — so it LOOKS
      like a third member of the coupling above and a first draft of this
      comment treated it as one, narrowing its cap the same dynamic way.
-     MEASURED, and the narrowing was WRONG: a `.live-view` at its 55vh-based
-     cap (146px at 740x360) suppresses ScaleBar with ZERO banners present —
-     `liveLift` is already past the ceiling before any banner term enters
-     the computation at all, because the card is BOTTOM-anchored
-     (`bottom: var(--sc-tabbar-h)` when measured; since #1802 `var(--live-sheet-h, ...)`), so a taller capped box pushes its OWN
-     top edge further up the screen regardless of what pushed
-     `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
+     MEASURED, and the narrowing was WRONG: a `.live-view` at its then
+     55vh-based cap (146px at 740x360) suppresses ScaleBar with ZERO banners
+     present — `liveLift` is already past the ceiling before any banner term
+     enters the computation at all, because the card is BOTTOM-anchored (at
+     the tab strip then, at the sheet's measured top since #1802 via
+     `--live-sheet-h`), so a taller capped box pushes its OWN top edge
+     further up the screen regardless of what pushed `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
      block uses for the sheet does NOT clear it either (still suppressed at
      the 114px the banner-scaled formula would give) — the deficit here is
      structural, not proportional to the banner. This is a PRE-EXISTING,
