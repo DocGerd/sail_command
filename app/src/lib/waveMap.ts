@@ -24,8 +24,7 @@ export const SHADED_BANDS: readonly ShadedBand[] = [
   'rough',
 ];
 
-// Sequential blue-purple ramp, kept off the depth ramp's orange/yellow/blue
-// hues. app.css twins these as --sc-sea-* for the legend swatches.
+// app.css twins these as --sc-sea-* for the legend swatches.
 export const SEA_STATE_COLORS: Record<ShadedBand, string> = {
   calm: '#EDF8FB',
   smooth: '#B3CDE3',
@@ -170,10 +169,12 @@ export function waveArrowImage(): { width: number; height: number; data: Uint8Ar
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
-// Sea-state metres: one decimal minimum, two where a band edge needs it (1.25).
-export function formatSeaStateM(value: number, lang: Lang, maxDigits = 1): string {
+// Sea-state metres, one to two decimals. Truncated, never rounded: the band is
+// classified from the raw value, so a rounded figure could read as the next band.
+export function formatSeaStateM(value: number, lang: Lang): string {
   return new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
-    maximumFractionDigits: maxDigits,
+    maximumFractionDigits: 2,
+    roundingMode: 'trunc',
   }).format(value);
 }

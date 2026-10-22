@@ -7,6 +7,7 @@ import {
   waveFeaturesAt,
 } from './waveMap';
 import { makeWaveGrid } from '../test/waveFixtures';
+import { seaStateBand } from './waves';
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 
@@ -85,8 +86,19 @@ describe('waveArrowImage (#1699)', () => {
 
 describe('formatSeaStateM', () => {
   it('uses the locale decimal separator and keeps the 1.25 edge', () => {
-    expect(formatSeaStateM(1.25, 'de', 2)).toBe('1,25');
-    expect(formatSeaStateM(0.5, 'en', 2)).toBe('0.5');
-    expect(formatSeaStateM(0.84, 'en')).toBe('0.8');
+    expect(formatSeaStateM(1.25, 'de')).toBe('1,25');
+    expect(formatSeaStateM(0.5, 'en')).toBe('0.5');
+  });
+
+  // R2-4: the printed figure must name the same band as the raw value.
+  it.each([
+    [2.46, '2.46', 'moderate'],
+    [2.5, '2.5', 'rough'],
+    [2.499, '2.49', 'moderate'],
+    [0.096, '0.09', 'calm'],
+  ] as const)('%s m prints %s, inside its %s band', (h, text, band) => {
+    expect(formatSeaStateM(h, 'en')).toBe(text);
+    expect(seaStateBand(h)).toBe(band);
+    expect(seaStateBand(Number(text))).toBe(band);
   });
 });

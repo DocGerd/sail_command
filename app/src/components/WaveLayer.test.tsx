@@ -107,12 +107,13 @@ function lastData(map: FakeMap, id: string): GeoJSON.FeatureCollection {
   return (calls.length ? calls[calls.length - 1]![0] : src.def.data) as GeoJSON.FeatureCollection;
 }
 
-function click(map: FakeMap, props: Record<string, unknown>) {
+function click(map: FakeMap, props: Record<string, unknown>, target?: EventTarget) {
   act(() => {
     map.fireLayerEvent('click', WAVE_FILL_LAYER, {
       point: { x: 10, y: 10 },
       lngLat: { lng: 10, lat: 54.5 },
       features: [{ properties: props }],
+      ...(target !== undefined ? { originalEvent: { target } } : {}),
     });
   });
 }
@@ -242,6 +243,34 @@ describe('WaveLayer tap popup (#1699)', () => {
     const text = (hoisted.popups.at(-1) as RecordedPopup).content?.textContent ?? '';
     expect(text).toContain('Wave period: no data');
     expect(text).toContain('Travel direction: no data');
+  });
+
+  // R2-4: truncated, so the printed height never names the next band up.
+  it.each([
+    [2.46, '2.46 m', 'moderate'],
+    [2.5, '2.5 m', 'rough'],
+    [2.499, '2.49 m', 'moderate'],
+  ] as const)('prints %s m as %s beside its %s band', (heightM, shown, band) => {
+    const map = mapWithQuery();
+    renderWaves(map);
+    click(map, { band, heightM });
+    const text = (hoisted.popups.at(-1) as RecordedPopup).content?.textContent ?? '';
+    expect(text).toContain(`Significant wave height: ${shown}`);
+    expect(text).toContain(`Sea-state category: ${band}`);
+  });
+
+  // R2-7: MapLibre delivers a click on a DOM marker to the layer below it.
+  it('yields a tap that landed on a DOM marker, and opens for one beside it', () => {
+    const map = mapWithQuery();
+    renderWaves(map);
+    const marker = document.createElement('div');
+    marker.className = 'maplibregl-marker';
+    const dot = document.createElement('span');
+    marker.append(dot);
+    click(map, CELL, dot);
+    expect(hoisted.popups).toHaveLength(0);
+    click(map, CELL, document.createElement('canvas'));
+    expect(hoisted.popups).toHaveLength(1);
   });
 
   it('yields the tap while a map pick is armed', () => {

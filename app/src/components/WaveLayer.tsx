@@ -212,6 +212,10 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed }: WaveLaye
     if (!map || styleEpoch === 0) return;
     const handleClick = (e: MapLayerMouseEvent) => {
       if (armedRef.current) return;
+      // A DOM marker (origin, destination, via, ownship) sits over the canvas,
+      // and MapLibre still delivers its click to the layer below.
+      const target = e.originalEvent?.target;
+      if (target instanceof Element && target.closest('.maplibregl-marker')) return;
       // Any other tappable layer under the point owns the tap; the wave
       // layer covers most of the sea and must never steal it.
       const others = [

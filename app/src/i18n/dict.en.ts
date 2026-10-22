@@ -922,6 +922,7 @@ export const en = {
   // #1699: sea-state overlay (display only, no effect on the route).
   'route.waves.toggle': 'Show sea state',
   'route.waves.unavailable': 'Sea-state data not available for this plan.',
+  'route.waves.outOfRange': 'No sea-state data for the selected hour.',
   'route.legend.seaStateHeading': 'Sea state (significant wave height)',
   'route.legend.seaStateBelow': 'below {max} m',
   'route.legend.seaStateRange': '{min} to {max} m',

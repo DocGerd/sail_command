@@ -7,7 +7,7 @@ import type { Lang } from '../lib/format';
 
 // Metre range per WMO band, from the classifier's own edges.
 function bandRange(band: ShadedBand, t: ReturnType<typeof useT>, lang: Lang): string {
-  const m = (v: number) => formatSeaStateM(v, lang, 2);
+  const m = (v: number) => formatSeaStateM(v, lang);
   switch (band) {
     case 'calm':
       return t('route.legend.seaStateBelow', { max: m(SEA_STATE_EDGES_M.smooth) });

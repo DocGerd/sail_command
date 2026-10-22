@@ -112,10 +112,7 @@ describe('#715: app.css --sc-* map-colour TOKENS are honest twins of lib/mapColo
  */
 function assertUsesToken(css: string, blockPattern: RegExp, token: string, label: string): void {
   const block = css.match(blockPattern);
-  expect(
-    block,
-    `app.css's ${label} rule not found (renamed, reformatted, or moved)`,
-  ).not.toBeNull();
+  expect(block, `app.css's ${label} rule not found (renamed, reformatted, or moved)`).not.toBeNull();
   const body = block![1];
   expect(body, `${label} does not reference var(--${token})`).toMatch(
     new RegExp(`var\\(--${token}\\)`),

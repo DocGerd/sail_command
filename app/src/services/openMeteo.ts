@@ -392,9 +392,10 @@ interface WavePointResponse {
 
 const WAVE_FIELDS = ['wave_height', 'wave_direction', 'wave_period'] as const;
 
-// Unlike wind, a null or non-numeric element is NOT malformed: land, coast and
-// the model edge return null, stored as NaN so it reads as "no data", never 0.
-// Structure (point count, array presence, lengths, time axis) still throws.
+// Unlike wind, a null or non-numeric element is NOT malformed: it is stored
+// as NaN so it reads as "no data", never 0 (where ewam returns null is
+// unverified, spec §0). Structure (point count, array presence, lengths,
+// time axis) still throws.
 async function loadWaveGrid(url: string, fetchFn: typeof fetch): Promise<WaveGrid> {
   const data = (await loadPointArray(url, fetchFn)) as (WavePointResponse | null | undefined)[];
   const nPoints = LATS.length * LONS.length;

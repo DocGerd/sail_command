@@ -671,8 +671,9 @@ async function ctaCornerTopmost(page: Page, insetPx: number): Promise<string> {
  * rect per line box while its bounding box spans both lines PLUS the gap
  * between them — and that gap belongs to the parent. MEASURED 2026-09-01 with
  * this control expanded: every anchor with two client rects
- * ("Weather data by Open-Meteo.com" at six of the nine narrow rows and
- * "EMODnet Bathymetry" additionally at deepPortrait320 and wrapForcing280 —
+ * (the Open-Meteo credit, then "Weather data by Open-Meteo.com", at six of
+ * the nine narrow rows and "EMODnet Bathymetry" additionally at
+ * deepPortrait320 and wrapForcing280 —
  * the set is deterministic but NOT monotonic in viewport width) hit-tested its
  * bounding-box centre to `div.maplibregl-ctrl-attrib-inner`, its own parent,
  * while BOTH of its line-box centres hit-tested to the anchor. That is a

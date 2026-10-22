@@ -4356,6 +4356,14 @@ select {
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
 }
 
+/* #1699: the cluster is shrink-to-fit, so a sentence here would set its width
+   (layout.spec.ts's #628 width pin). Contribute no intrinsic width; wrap to
+   the width the toggle rows set. */
+.route-waves-note {
+  width: 0;
+  min-width: 100%;
+}
+
 .plans-list {
   list-style: none;
   margin: 0;
