@@ -189,10 +189,15 @@ const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
 // Sea-state metres, one to two decimals. Truncated, never rounded: the band is
 // classified from the raw value, so a rounded figure could read as the next band.
+// Heights are stored as Float32 (0.7 reads 0.699999988), so snap below its
+// resolution first, unless the snap would cross a band edge.
+// Engines without Intl `roundingMode` ignore it and round instead.
 export function formatSeaStateM(value: number, lang: Lang): string {
+  const snapped = Math.round(value * 1e6) / 1e6;
+  const v = seaStateBand(snapped) === seaStateBand(value) ? snapped : value;
   return new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
     roundingMode: 'trunc',
-  }).format(value);
+  }).format(v);
 }
