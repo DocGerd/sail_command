@@ -1171,7 +1171,7 @@ export default function RouteLayer({
     subscribeContoursFetchState,
     getContoursFetchState,
   );
-  // Real land/depth mask for barb land-culling — loaded once, best-effort.
+  // Real land/depth mask for barb and sea-state land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips
   // culling gracefully in the meantime.
@@ -1264,10 +1264,11 @@ export default function RouteLayer({
     };
   }, [map]);
 
-  // Load the real mask once (for barb land-culling). new Uint8Array(buffer) is
-  // a read-only VIEW over the module-cached maskBuffer — no copy, no transfer,
-  // no mutation; NavMask only reads. Best-effort: on failure, barbs still
-  // render without land-culling.
+  // Load the real mask once (for barb and sea-state land-culling). new
+  // Uint8Array(buffer) is a read-only VIEW over the module-cached maskBuffer —
+  // no copy, no transfer, no mutation; NavMask only reads. Best-effort: on
+  // failure, barbs still render without land-culling and the sea-state
+  // overlay stays empty.
   useEffect(() => {
     let cancelled = false;
     loadRoutingAssets()
@@ -1276,7 +1277,7 @@ export default function RouteLayer({
         setMask(new NavMask(assets.maskMeta, new Uint8Array(assets.maskBuffer)));
       })
       .catch(() => {
-        /* leave mask null — barbs render un-culled */
+        /* leave mask null — barbs render un-culled, waves not at all */
       });
     return () => {
       cancelled = true;
@@ -1854,6 +1855,7 @@ export default function RouteLayer({
         tMs={tMs}
         visible={wavesVisible}
         mapPickArmed={mapPickArmed}
+        mask={mask}
       />
       {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
           this Disclosure on an unresponded `isWide` change (see that state's

@@ -2,6 +2,7 @@
 // GeoJSON and the arrow raster. A plain module (no React), so DataLayers can
 // import the stack anchor without importing a component.
 import type { WaveGrid } from '../types';
+import type { NavMask } from './mask';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Lang } from './format';
 import { INK_COLOR, HALO_COLOR } from './mapColors';
@@ -44,7 +45,9 @@ export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
 
 export const WAVE_FILL_OPACITY = 0.45;
 // Every data cell gets an edge whatever its band: the light bands are close to
-// the basemap's water, so the edges are what show an unshaded area as no data.
+// the basemap's water, so the missing cell grid is what shows a wider unshaded
+// area as no data (or land); a single no-data cell is still framed by its
+// neighbours' edges.
 export const WAVE_EDGE_OPACITY = 0.2;
 
 export interface WaveCellProps {
@@ -70,11 +73,16 @@ function halfStep(axis: readonly number[]): number {
   return (axis[axis.length - 1]! - axis[0]!) / (axis.length - 1) / 2;
 }
 
-// One cell polygon per point with a finite Hs, one arrow per point with a
-// finite Hs and direction. A no-data point gets no feature at all: an empty
-// cell must never read as calm. Non-finite values are left out of the
+// One cell polygon per water point with a finite Hs, one arrow per such point
+// with a finite direction. A no-data or culled point gets no feature at all
+// (fill, edge and arrow alike, since the edge layer reads the cell source): an
+// empty cell must never read as calm. Non-finite values are left out of the
 // properties because GeoJSON has no NaN.
-export function waveFeaturesAt(grid: WaveGrid, tMs: number): { cells: CellFC; arrows: ArrowFC } {
+export function waveFeaturesAt(
+  grid: WaveGrid,
+  tMs: number,
+  mask: NavMask,
+): { cells: CellFC; arrows: ArrowFC } {
   const points = wavePointsAt(grid, tMs);
   if (points === null) return { cells: EMPTY_WAVE_CELLS, arrows: EMPTY_WAVE_ARROWS };
   const dLat = halfStep(grid.lats);
@@ -82,6 +90,12 @@ export function waveFeaturesAt(grid: WaveGrid, tMs: number): { cells: CellFC; ar
   const cells: CellFC['features'] = [];
   const arrows: ArrowFC['features'] = [];
   for (const p of points) {
+    // The marine API can answer a land point with a nearby sea cell's value
+    // (cell_selection=sea), so cull by the mask at the point itself.
+    // Outside the mask there is no land/water answer, so no data (as for barbs).
+    if (!mask.inBounds(p)) continue;
+    // Land/unknown only (byte 0); shallow water still renders.
+    if (mask.depthM(p) <= 0) continue;
     const band = seaStateBand(p.heightM);
     if (band === 'no-data') continue;
     const props: WaveCellProps = { band, heightM: p.heightM };

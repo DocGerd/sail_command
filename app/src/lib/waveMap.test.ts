@@ -6,10 +6,11 @@ import {
   waveArrowImage,
   waveFeaturesAt,
 } from './waveMap';
-import { makeWaveGrid } from '../test/waveFixtures';
+import { makeWaveGrid, waveTestMask } from '../test/waveFixtures';
 import { seaStateBand } from './waves';
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
+const WATER = waveTestMask();
 
 describe('travelDeg (#1699: arrows show where waves go)', () => {
   it.each([
@@ -29,7 +30,7 @@ describe('waveFeaturesAt (#1699)', () => {
       lats: [54.5, 54.6],
       lons: [10.0, 10.1, 10.2],
     });
-    const ring = waveFeaturesAt(grid, T0).cells.features[0]!.geometry.coordinates[0]!;
+    const ring = waveFeaturesAt(grid, T0, WATER).cells.features[0]!.geometry.coordinates[0]!;
     const r = (v: number) => Number(v.toFixed(6));
     expect(ring.map(([x, y]) => [r(x!), r(y!)])).toEqual([
       [9.95, 54.45],
@@ -46,16 +47,69 @@ describe('waveFeaturesAt (#1699)', () => {
       periodS: 3,
       dirFromDeg: 45,
     }));
-    const { cells, arrows } = waveFeaturesAt(grid, T0);
+    const { cells, arrows } = waveFeaturesAt(grid, T0, WATER);
     expect(cells.features.map((f) => f.properties.band)).toEqual(['calm', 'calm']);
     expect(arrows.features).toHaveLength(2);
   });
 
   it('leaves non-finite period and direction out of the properties', () => {
     const grid = makeWaveGrid(() => ({ heightM: 1, periodS: NaN, dirFromDeg: NaN }));
-    const { cells, arrows } = waveFeaturesAt(grid, T0);
+    const { cells, arrows } = waveFeaturesAt(grid, T0, WATER);
     expect(cells.features[0]!.properties).toEqual({ band: 'slight', heightM: 1 });
     expect(arrows.features).toHaveLength(0);
+  });
+});
+
+// The marine API can answer a land point with a nearby sea cell's value, so only
+// the mask can say the point itself is land.
+describe('waveFeaturesAt land culling (#1699)', () => {
+  const grid = makeWaveGrid(() => ({ heightM: 0.8, periodS: 4, dirFromDeg: 90 }), {
+    lats: [54.5],
+    lons: [10.0, 10.1, 10.2],
+  });
+  const lons = (fc: { features: { geometry: { coordinates: unknown } }[] }) =>
+    fc.features.map((f) => f.geometry.coordinates);
+
+  it('drops a land point with a finite Hs: no cell (so no edge) and no arrow', () => {
+    const mask = waveTestMask((_, lon) => (lon === 10.1 ? 0 : 50));
+    const { cells, arrows } = waveFeaturesAt(grid, T0, mask);
+    expect(cells.features.map((f) => f.properties.heightM)).toHaveLength(2);
+    expect(lons(arrows)).toEqual([
+      [10.0, 54.5],
+      [10.2, 54.5],
+    ]);
+  });
+
+  it('keeps water points, shallow water (0.1 m) included', () => {
+    const mask = waveTestMask((_, lon) => (lon === 10.1 ? 1 : 50));
+    const { cells, arrows } = waveFeaturesAt(grid, T0, mask);
+    expect(cells.features).toHaveLength(3);
+    expect(arrows.features).toHaveLength(3);
+  });
+
+  it('drops a point outside the mask: no land/water answer there', () => {
+    const edge = makeWaveGrid(() => ({ heightM: 0.8, periodS: 4, dirFromDeg: 90 }), {
+      lats: [54.5],
+      lons: [10.5, 10.6],
+    });
+    const mask = waveTestMask();
+    expect(mask.inBounds({ lat: 54.5, lon: 10.6 })).toBe(false);
+    const { cells, arrows } = waveFeaturesAt(edge, T0, mask);
+    expect(lons(arrows)).toEqual([[10.5, 54.5]]);
+    expect(cells.features).toHaveLength(1);
+  });
+
+  it('still gives a no-data point on water no feature', () => {
+    const nulls = makeWaveGrid(
+      (_, lo) => ({
+        heightM: lo === 1 ? NaN : 0.05,
+        periodS: 4,
+        dirFromDeg: 90,
+      }),
+      { lats: [54.5], lons: [10.0, 10.1, 10.2] },
+    );
+    const { cells } = waveFeaturesAt(nulls, T0, waveTestMask());
+    expect(cells.features.map((f) => f.properties.band)).toEqual(['calm', 'calm']);
   });
 });
 
