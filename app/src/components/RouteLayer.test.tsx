@@ -30,6 +30,8 @@ import { __resetContoursForTests, loadContoursAsset } from '../lib/contours';
 import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
+import { makeWaveGrid } from '../test/waveFixtures';
+import { WAVE_ARROW_LAYER, WAVE_EDGE_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -101,6 +103,7 @@ vi.mock('maplibre-gl', () => ({
       return this;
     }
     addTo() {
+      hoisted.popupsAdded++;
       return this;
     }
     remove() {}
@@ -122,6 +125,7 @@ const hoisted = vi.hoisted(() => ({
   map: null as unknown,
   createdMarkers: [] as RecordedRouteLayerMarker[],
   boundsPoints: [] as [number, number][],
+  popupsAdded: 0,
 }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
@@ -300,6 +304,7 @@ function renderRouteLayer(
       onRouteLineInsert={() => {}}
       viaArmed={false}
       onArmedRouteTapInsert={() => {}}
+      mapPickArmed={false}
     />,
   );
 }
@@ -322,6 +327,7 @@ function renderRouteLayerWithPlan(
       onRouteLineInsert={() => {}}
       viaArmed={false}
       onArmedRouteTapInsert={() => {}}
+      mapPickArmed={false}
     />,
   );
 }
@@ -1075,6 +1081,7 @@ describe('RouteLayer fit-to-view button (#297)', () => {
       onRouteLineInsert: () => {},
       viaArmed: false,
       onArmedRouteTapInsert: () => {},
+      mapPickArmed: false,
     };
     const { rerender } = render(<RouteLayer plan={null} rig={null} {...props} />);
     expect(screen.queryByRole('button', { name: 'Route einpassen' })).toBeNull();
@@ -1312,6 +1319,7 @@ describe('RouteLayer style reload (#153)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     act(() => {
@@ -1413,6 +1421,7 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           onRouteLineInsert={() => {}}
           viaArmed={false}
           onArmedRouteTapInsert={() => {}}
+          mapPickArmed={false}
         />
       </I18nProvider>,
     );
@@ -1510,6 +1519,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const chip = container.querySelector('.via-markers-spinner-chip');
@@ -1598,6 +1608,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -1614,6 +1625,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const details = () =>
@@ -1658,6 +1670,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const details = () =>
@@ -1682,6 +1695,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(container.querySelector('.route-layer-controls')).toBeNull();
@@ -1698,6 +1712,7 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(details()?.open).toBe(true);
@@ -1820,6 +1835,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1863,6 +1879,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1887,6 +1904,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1914,6 +1932,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={onRouteLineInsert}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1953,6 +1972,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const call = map.on.mock.calls.find((c) => c[0] === 'mousemove');
@@ -1974,6 +1994,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -1999,6 +2020,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(ghost!.removed).toBe(true);
@@ -2019,6 +2041,7 @@ describe('RouteLayer #850: drag the route line to insert a waypoint', () => {
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const onMouseMove = mousemoveHandler(map);
@@ -2076,6 +2099,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2107,6 +2131,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2138,6 +2163,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={onArmedRouteTapInsert}
+        mapPickArmed={false}
       />,
     );
 
@@ -2169,6 +2195,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     const hitLayer = map.layers.get(ROUTE_HIT_LAYER);
@@ -2188,6 +2215,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('visible');
@@ -2208,6 +2236,7 @@ describe('RouteLayer #1170: tap the route line to insert a waypoint while armed'
         onRouteLineInsert={() => {}}
         viaArmed={true}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />,
     );
     expect(map.layers.get(ROUTE_HIT_LAYER)?.layout?.visibility).toBe('none');
@@ -2333,6 +2362,7 @@ describe('RouteLayer options cluster during via editing (#1541)', () => {
         onRouteLineInsert={() => {}}
         viaArmed={e.viaArmed ?? false}
         onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
       />
     );
     const utils = render(element(edit));
@@ -2578,5 +2608,144 @@ describe('RouteLayer harbour handover (#1721)', () => {
     unmount();
     renderRouteLayerWithPlan(makeFakeMap(), makePlan());
     expect(screen.queryByText(de['route.legend.handover'])).toBeNull();
+  });
+});
+
+// #1699: the sea-state toggle is gated on the plan carrying a wave grid.
+describe('sea-state toggle (#1699)', () => {
+  const withWaves = (): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+  });
+
+  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makePlan());
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeDisabled();
+    expect(toggle).not.toBeChecked();
+    const note = screen.getByText(de['route.waves.unavailable']);
+    expect(note.getAttribute('role')).toBeNull();
+    expect(toggle.getAttribute('aria-describedby')).toBe(note.id);
+    expect(map.layers.has(WAVE_FILL_LAYER)).toBe(false);
+  });
+
+  it('is on by default for a plan with a grid and drives the layer visibility', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, withWaves());
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeEnabled();
+    expect(toggle).toBeChecked();
+    expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
+    fireEvent.click(toggle);
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
+    expect(localStorage.getItem('sc-waves-visible')).toBe('0');
+  });
+
+  it('hides the overlay when the next plan has no grid, though the toggle stays on', () => {
+    const map = makeFakeMap();
+    const { rerender } = renderRouteLayerWithPlan(map, withWaves());
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
+      />,
+    );
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+  });
+});
+
+// #1699 R2-1: App's `mapPickArmed` reaches WaveLayer through RouteLayer.
+describe('sea-state tap while a map pick is armed (#1699)', () => {
+  const withWaves = (): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+  });
+
+  function renderArmed(mapPickArmed: boolean) {
+    const map = Object.assign(makeFakeMap(), { queryRenderedFeatures: vi.fn(() => []) });
+    hoisted.map = map;
+    hoisted.popupsAdded = 0;
+    render(
+      <RouteLayer
+        plan={withWaves()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={mapPickArmed}
+      />,
+    );
+    act(() => {
+      map.fireLayerEvent('click', WAVE_FILL_LAYER, {
+        point: { x: 5, y: 5 },
+        lngLat: { lng: 10, lat: 54.6 },
+        features: [{ properties: { band: 'slight', heightM: 0.6 } }],
+      });
+    });
+  }
+
+  it('opens the sea-state popup when no pick is armed', () => {
+    renderArmed(false);
+    expect(hoisted.popupsAdded).toBe(1);
+  });
+
+  it('opens no popup while a pick is armed', () => {
+    renderArmed(true);
+    expect(hoisted.popupsAdded).toBe(0);
+  });
+});
+
+// #1699 R2-6: an empty overlay at a slider hour the wave grid does not cover.
+describe('sea-state slider hour outside the wave axis (#1699)', () => {
+  const planWith = (t0Ms: number): Plan => ({
+    ...makePlan(),
+    waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 }), { t0Ms }),
+  });
+
+  it('shows a muted note naming the hour, not the plan', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS + 10 * 3_600_000));
+    const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
+    expect(toggle).toBeEnabled();
+    const note = screen.getByText(de['route.waves.outOfRange']);
+    expect(note.getAttribute('role')).toBeNull();
+    expect(note).toHaveClass('route-waves-note');
+    expect(toggle.getAttribute('aria-describedby')).toBe(note.id);
+    expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
+  });
+
+  it('shows no note when the hour is covered', () => {
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS));
+    expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
+    expect(
+      screen
+        .getByRole('checkbox', { name: de['route.waves.toggle'] })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+  });
+
+  it('shows no note while the overlay is switched off', () => {
+    localStorage.setItem('sc-waves-visible', '0');
+    renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS + 10 * 3_600_000));
+    expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
   });
 });

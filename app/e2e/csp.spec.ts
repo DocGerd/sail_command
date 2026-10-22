@@ -93,6 +93,20 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
       }
     });
 
+    // #1699: the marine sea-state fetch (services/openMeteo.ts's MARINE_API) is
+    // a second Open-Meteo origin in connect-src. Same shape and same outage-proof reasoning
+    // as the probe above: a dropped or misspelt entry shows up as a violation
+    // in the unexpected-violations assertion below.
+    await page.evaluate(async () => {
+      try {
+        await fetch(
+          'https://marine-api.open-meteo.com/v1/marine?latitude=54.8&longitude=10.0&hourly=wave_height&forecast_days=1',
+        );
+      } catch {
+        // Ignored here on purpose — see comment above.
+      }
+    });
+
     // Disallowed-origin probe: proves the policy actually restricts
     // connect-src rather than having degraded to an unrestrictive default.
     await page.evaluate(async () => {

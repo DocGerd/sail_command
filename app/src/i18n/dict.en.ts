@@ -919,6 +919,31 @@ export const en = {
   'route.altRig.toggle': 'Show other rig',
   'route.altRig.unavailable': 'Only one rig found a route',
   'route.altRig.singleSail': 'Only one headsail planned',
+  // #1699: sea-state overlay (display only, no effect on the route).
+  'route.waves.toggle': 'Show sea state',
+  'route.waves.unavailable': 'Sea-state data not available for this plan.',
+  'route.waves.outOfRange': 'No sea-state data for the selected hour.',
+  'route.legend.seaStateHeading': 'Sea state (significant wave height)',
+  'route.legend.seaStateBelow': 'below {max} m',
+  'route.legend.seaStateRange': '{min} to {max} m',
+  'route.legend.seaStateAbove': '{min} m and above',
+  'route.legend.seaStateNoData': 'No shading means no data or land, not calm water.',
+  'route.legend.seaStateArrow':
+    'Arrows show the direction the waves travel — not where they come from, unlike wind barbs.',
+  'route.legend.seaStateCaveat':
+    'Model estimate (Open-Meteo), not chart authority; coarse near coasts.',
+  'seaState.band.calm': 'calm',
+  'seaState.band.smooth': 'smooth',
+  'seaState.band.slight': 'slight',
+  'seaState.band.moderate': 'moderate',
+  'seaState.band.rough': 'rough',
+  'map.waves.popup.title': 'Sea state',
+  'map.waves.popup.height': 'Significant wave height',
+  'map.waves.popup.band': 'Sea-state category',
+  'map.waves.popup.period': 'Wave period',
+  'map.waves.popup.direction': 'Travel direction',
+  'map.waves.popup.noData': 'no data',
+  'map.waves.popup.disclaimer': 'Model estimate, not chart authority.',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
@@ -1257,7 +1282,8 @@ export const en = {
   'about.sources.heading': 'Data sources',
   'about.sources.protomaps': 'Map rendering: Protomaps',
   'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
-  'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
+  'about.sources.openMeteo':
+    'Wind and sea-state forecast: Weather and marine data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
   'about.sources.seamarks':

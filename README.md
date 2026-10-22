@@ -181,8 +181,10 @@ map area is already saved and what downloading it would cost.
   [tangrams/icons](https://github.com/tangrams/icons), © 2017 Mapzen) are
   self-hosted from
   [protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets).
-- **Wind forecast**: [Open-Meteo](https://open-meteo.com/) (CC-BY 4.0),
-  fetched directly from the browser.
+- **Wind and sea-state forecasts**: [Open-Meteo](https://open-meteo.com/)
+  (CC-BY 4.0), the forecast and marine APIs, fetched directly from the
+  browser. Each plan stores its wind grid, and its sea-state grid when one
+  arrived in time. Sea state is display only.
 - **Boat polars (Salona 45)**: estimate derived from the ORC International
   2026 certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind
   angles corrected to white-sails-only (non-spinnaker) performance.
@@ -294,8 +296,9 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Out of scope (v1)
 
-Currents/tides, wave data, multi-day passages beyond the forecast horizon,
-route sharing/collaboration, official ENC chart data.
+Currents/tides, sea state in routing (the map shows it, display only),
+multi-day passages beyond the forecast horizon, route sharing/collaboration,
+official ENC chart data.
 
 ## Development
 
@@ -339,10 +342,10 @@ flowchart LR
   MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
   subgraph app ["Runtime — app/ (PWA, no backend)"]
     ASSETS --> UI["React + MapLibre GL UI"]
-    OM["Open-Meteo hourly wind (browser-direct)"] --> UI
+    OM["Open-Meteo hourly wind + marine sea state (browser-direct)"] --> UI
     UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Workers), tack/gybe time penalty, dual-rig"]
     WORKER -->|"Plan (legs, wind grid)"| UI
-    UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
+    UI <--> IDB[("IndexedDB — saved plans incl. their wind and sea-state grids")]
     SW["service worker — ~40 MB precache + runtime font cache"] -.-> UI
   end
 ```

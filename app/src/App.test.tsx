@@ -24,7 +24,8 @@ import * as DataLayersModule from './components/DataLayers';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
-import { fetchWindGrid, OpenMeteoError } from './services/openMeteo';
+import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from './services/openMeteo';
+import { makeWaveGrid } from './test/waveFixtures';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
@@ -216,6 +217,10 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
         hours: 24 * (actual.FORECAST_DAYS + 2),
       }),
     ),
+    // #1699: no marine fetch here; a rejection is "no wave grid" to usePlanFlow.
+    fetchWaveGrid: vi.fn(async () => {
+      throw new actual.OpenMeteoError('offline', 'not under test');
+    }),
   };
 });
 
@@ -2084,6 +2089,47 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
     // No via point exists yet; the generic handler firing its append branch
     // would create exactly one. Its absence is the proof the bail ran.
     expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
+  });
+});
+
+// #1699 R2-1: App.tsx's `mapPickArmed={tapTarget !== null}` is what makes the
+// sea-state popup yield to an armed origin/destination/via pick.
+describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', () => {
+  it('opens on a wave-cell tap, and not while an origin pick is armed', async () => {
+    vi.mocked(fetchWaveGrid).mockResolvedValueOnce(
+      makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+    );
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(20));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-waves-fill']).toBeTruthy());
+
+    const tapWaveCell = () =>
+      act(() => {
+        mapTestHooks.layerClickHandlers['sc-waves-fill']?.({
+          point: { x: 5, y: 5 },
+          lngLat: { lat: 54.6, lng: 10 },
+          features: [{ properties: { band: 'slight', heightM: 0.6 } }],
+        });
+      });
+
+    // Positive control: unarmed, the tap opens the sea-state popup.
+    tapWaveCell();
+    expect(mapTestHooks.lastPopupContent?.className).toBe('wave-popover');
+
+    mapTestHooks.lastPopupContent = null;
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    await screen.findByText(de['banner.tapPick'].replace('{target}', de['planner.origin.label']));
+    tapWaveCell();
+    expect(mapTestHooks.lastPopupContent).toBeNull();
   });
 });
 
@@ -5292,6 +5338,35 @@ describe('#1707 next passage', () => {
       expect(created?.windGrid.fetchedAtMs).toBe(t0);
       // The seed ends once the new plan is active.
       expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
+    });
+
+    // #1699 R3-2: App hands run() the source plan's wave grid with its wind grid.
+    // The fetchWaveGrid mock rejects, so a wave grid on the new plan can only
+    // have come from the source plan.
+    it("reaching grid: the new plan keeps the source plan's wave grid", async () => {
+      const plan = sourcePlan('next-offline-waves');
+      plan.windGrid = uniformWindGrid(10, 250, { t0Ms: plan.windGrid.fetchedAtMs, hours: 8 * 24 });
+      plan.waveGrid = makeWaveGrid(() => ({ heightM: 0.7, periodS: 4, dirFromDeg: 200 }), {
+        t0Ms: plan.windGrid.fetchedAtMs,
+        hours: 8 * 24,
+      });
+      await loadSource(plan);
+      fireEvent.click(screen.getByRole('button', { name: NEXT_ACTION }));
+      goOffline();
+      pickDestination(FLENSBURG.names.de);
+
+      fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+      await waitFor(() => expect(routingMock.calls).toHaveLength(1));
+      routingMock.calls[0].resolve(okPlanResult(12));
+
+      await waitFor(async () => expect(await db.listPlans()).toHaveLength(2));
+      const saved = (await db.listPlans()).find((p) => p.id !== plan.id);
+      const created = await db.getPlan(saved!.id);
+      // Array.from: toEqual on the stored Float32Array fails even with equal contents.
+      expect(Array.from(created?.waveGrid?.waveHeightM ?? [])).toEqual(
+        Array.from(plan.waveGrid.waveHeightM),
+      );
+      expect(created?.waveGrid?.timesMs).toEqual(plan.waveGrid.timesMs);
     });
 
     it("grid ending before the departure: disabled with today's message and the too-short line", async () => {

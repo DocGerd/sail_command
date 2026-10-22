@@ -127,6 +127,20 @@ export interface WindGrid {
   model: string;
 }
 
+// Sea state from the Open-Meteo Marine API (#1699). Same flattened index as
+// WindGrid. A null source value is stored as NaN, never 0: 0 m would read as
+// calm water.
+export interface WaveGrid {
+  lats: number[]; // ascending
+  lons: number[]; // ascending
+  timesMs: number[]; // hourly, ascending, UTC epoch ms
+  waveHeightM: Float32Array; // significant wave height Hs
+  wavePeriodS: Float32Array;
+  waveDirFromDeg: Float32Array; // meteorological: coming FROM, degrees true
+  fetchedAtMs: number;
+  model: string;
+}
+
 export interface WindSample {
   speedKn: number;
   dirFromDeg: number;
@@ -375,7 +389,7 @@ export type PlanResult = PlanResultOk | PlanResultError;
 export const PLAN_SCHEMA_VERSION = 1;
 
 // Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
-// windGrid carries Float32Array fields.
+// windGrid and waveGrid carry Float32Array fields.
 // File import/export (e.g. Garmin sync, issue #3) needs a dedicated
 // serializer — never JSON.stringify(plan).
 export interface Plan {
@@ -385,6 +399,10 @@ export interface Plan {
   schemaVersion: number;
   request: PlanRequest;
   windGrid: WindGrid; // the forecast this plan was computed from
+  // #1699: display only, never sent to the routing worker. Absent when the
+  // marine fetch failed, was skipped or arrived too late, and on plans saved
+  // before it existed.
+  waveGrid?: WaveGrid;
   result: PlanResultOk;
 }
 

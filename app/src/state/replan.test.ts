@@ -15,6 +15,7 @@ import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
+import { makeWaveGrid } from '../test/waveFixtures';
 import { migratePlan } from '../services/migratePlan';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
@@ -713,5 +714,28 @@ describe('useViaReplan', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+});
+
+describe("#1699 replanWithVias keeps the plan's wave grid", () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  it('carries waveGrid onto the replanned plan and never hands it to the client', async () => {
+    const waveGrid = makeWaveGrid(() => ({ heightM: 0.7, periodS: 4, dirFromDeg: 250 }));
+    const plan = makePlan({ waveGrid });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    const updated = await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(updated.waveGrid).toBe(waveGrid);
+    const args = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(args).toHaveLength(2);
+    expect(Object.hasOwn(args[0] as object, 'waveGrid')).toBe(false);
+    expect(Object.hasOwn(args[1] as object, 'waveGrid')).toBe(false);
   });
 });

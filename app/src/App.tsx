@@ -17,7 +17,8 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
-import { cloneWindGrid, useLiveReroute } from './state/reroute';
+import { useLiveReroute } from './state/reroute';
+import { storedForecastRunOptions } from './state/storedForecast';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
@@ -1385,7 +1386,7 @@ function AppShell() {
     void run(
       request,
       `${origin.label} → ${destination.label}`,
-      activeSeed && plan ? { storedWindGrid: cloneWindGrid(plan.windGrid) } : {},
+      activeSeed && plan ? storedForecastRunOptions(plan) : {},
     );
   }, [
     activeSeed,
@@ -1730,6 +1731,7 @@ function AppShell() {
             onRouteLineInsert={handleRouteLineInsert}
             viaArmed={tapTarget === 'via'}
             onArmedRouteTapInsert={handleRouteLineArmedTap}
+            mapPickArmed={tapTarget !== null}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),

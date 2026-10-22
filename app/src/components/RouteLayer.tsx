@@ -34,6 +34,8 @@ import { harborHandoverLines, type HarborHandoverLine } from '../lib/harborHando
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
+import WaveLayer from './WaveLayer';
+import { seaStateUnavailable, waveHourIndexAt } from '../lib/waves';
 import Disclosure from './Disclosure';
 import Button from './Button';
 import type { LatLon, Leg, Plan, SailId } from '../types';
@@ -91,6 +93,9 @@ export interface RouteLayerProps {
   // "extra step" over handleSelectSavedWaypoint), where the desktop drag
   // gesture has no arming to clear.
   onArmedRouteTapInsert: (point: LatLon) => void;
+  // #1699: any map pick (origin/destination/via) is armed; the sea-state
+  // popup then yields the tap to it.
+  mapPickArmed: boolean;
 }
 
 // jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
@@ -1004,6 +1009,7 @@ export default function RouteLayer({
   onRouteLineInsert,
   viaArmed,
   onArmedRouteTapInsert,
+  mapPickArmed,
 }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
@@ -1153,6 +1159,9 @@ export default function RouteLayer({
   // #324: map-only overlay of the OTHER rig's route, default OFF (settled
   // design — showing two routes by default clutters harbour-approach zoom).
   const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
+  // #1699: sea-state overlay, default ON; only a plan with a wave grid has one.
+  const [wavesVisible, setWavesVisible] = usePersistedToggle('sc-waves-visible', true);
+  const hasWaveGrid = plan !== null && !seaStateUnavailable(plan);
   // Depth-overlay rows (#1541): DataLayers.tsx applies these flags to the map;
   // the persisted-toggle registry keeps both components in step.
   const [depthVisible] = usePersistedToggle('sc-depth-visible', true);
@@ -1162,10 +1171,10 @@ export default function RouteLayer({
     subscribeContoursFetchState,
     getContoursFetchState,
   );
-  // Real land/depth mask for barb land-culling — loaded once, best-effort.
+  // Real land/depth mask for barb and sea-state land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
-  // transferred, never mutated). null until it resolves; sampling skips
-  // culling gracefully in the meantime.
+  // transferred, never mutated). null until it resolves: barbs skip culling
+  // in the meantime, and the sea-state overlay draws nothing.
   const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
   // Reference "now" for the slider label's day-vs-today tier decision
@@ -1255,10 +1264,11 @@ export default function RouteLayer({
     };
   }, [map]);
 
-  // Load the real mask once (for barb land-culling). new Uint8Array(buffer) is
-  // a read-only VIEW over the module-cached maskBuffer — no copy, no transfer,
-  // no mutation; NavMask only reads. Best-effort: on failure, barbs still
-  // render without land-culling.
+  // Load the real mask once (for barb and sea-state land-culling). new
+  // Uint8Array(buffer) is a read-only VIEW over the module-cached maskBuffer —
+  // no copy, no transfer, no mutation; NavMask only reads. Best-effort: on
+  // failure, barbs still render without land-culling and the sea-state
+  // overlay stays empty.
   useEffect(() => {
     let cancelled = false;
     loadRoutingAssets()
@@ -1267,7 +1277,7 @@ export default function RouteLayer({
         setMask(new NavMask(assets.maskMeta, new Uint8Array(assets.maskBuffer)));
       })
       .catch(() => {
-        /* leave mask null — barbs render un-culled */
+        /* leave mask null — barbs render un-culled, waves not at all */
       });
     return () => {
       cancelled = true;
@@ -1512,6 +1522,9 @@ export default function RouteLayer({
 
   const clampedHourIdx = Math.min(hourIdx, Math.max(0, hourOptions.length - 1));
   const tMs = hourOptions[clampedHourIdx] ?? plan?.request.departureMs ?? 0;
+  // #1699 R2-6: explains an empty overlay, so only while it is switched on.
+  const wavesOutOfRange =
+    wavesVisible && plan?.waveGrid !== undefined && waveHourIndexAt(plan.waveGrid, tMs) === null;
 
   // Viewport-scoped adaptive barbs (#36): recomputed on debounced moveend/
   // zoomend and on slider/plan/rig/mask changes — but ONLY while visible (no
@@ -1837,6 +1850,13 @@ export default function RouteLayer({
           regardless of collapse state, so it sits OUTSIDE the Disclosure
           below rather than inside its collapsible body. */}
       <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
+      <WaveLayer
+        grid={plan.waveGrid}
+        tMs={tMs}
+        visible={wavesVisible}
+        mapPickArmed={mapPickArmed}
+        mask={mask}
+      />
       {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
           this Disclosure on an unresponded `isWide` change (see that state's
           own comment above) — do not remove the key thinking it is inert. */}
@@ -1876,6 +1896,21 @@ export default function RouteLayer({
           />
           {t('route.windBarbs.toggle')}
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={wavesVisible && hasWaveGrid}
+            disabled={!hasWaveGrid}
+            onChange={(e) => setWavesVisible(e.target.checked)}
+            aria-describedby={hasWaveGrid && !wavesOutOfRange ? undefined : 'route-waves-note'}
+          />
+          {t('route.waves.toggle')}
+        </label>
+        {(!hasWaveGrid || wavesOutOfRange) && (
+          <p id="route-waves-note" className="route-waves-note">
+            {t(hasWaveGrid ? 'route.waves.outOfRange' : 'route.waves.unavailable')}
+          </p>
+        )}
         <label>
           <input
             type="checkbox"
@@ -1941,6 +1976,7 @@ export default function RouteLayer({
         <RouteLegend
           hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false}
           hasHandover={result !== null && handoverLines.length > 0}
+          hasWaveGrid={hasWaveGrid}
         />
       </Disclosure>
     </div>

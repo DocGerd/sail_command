@@ -837,6 +837,34 @@ export const de = {
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
   'route.altRig.singleSail': 'Nur ein Vorsegel geplant',
+  // #1699: Seegang-Overlay (nur Anzeige, ohne Einfluss auf die Route).
+  'route.waves.toggle': 'Seegang anzeigen',
+  'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
+  'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
+  'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
+  'route.legend.seaStateBelow': 'unter {max} m',
+  'route.legend.seaStateRange': '{min} bis {max} m',
+  'route.legend.seaStateAbove': 'ab {min} m',
+  'route.legend.seaStateNoData': 'Keine Färbung bedeutet keine Daten oder Land, nicht ruhige See.',
+  'route.legend.seaStateArrow':
+    'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
+  'route.legend.seaStateCaveat':
+    'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe ungenau.',
+  // Douglas-scale wording per NLWKN, Anlage 7.1 Wellenauflaufberechnung
+  // (https://nlwkn.niedersachsen.de/download/213307/Anlage_7.1_Wellenauflaufberechnung.pdf.pdf).
+  // Rejected for 'smooth': 'glatt', which reads calmer than 'ruhig'.
+  'seaState.band.calm': 'ruhig',
+  'seaState.band.smooth': 'schwach bewegt',
+  'seaState.band.slight': 'leicht bewegt',
+  'seaState.band.moderate': 'mäßig bewegt',
+  'seaState.band.rough': 'grob',
+  'map.waves.popup.title': 'Seegang',
+  'map.waves.popup.height': 'Signifikante Wellenhöhe',
+  'map.waves.popup.band': 'Seegangsstufe',
+  'map.waves.popup.period': 'Wellenperiode',
+  'map.waves.popup.direction': 'Laufrichtung',
+  'map.waves.popup.noData': 'keine Daten',
+  'map.waves.popup.disclaimer': 'Modellschätzung, keine amtliche Angabe.',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
@@ -1242,7 +1270,8 @@ export const de = {
   'about.sources.heading': 'Datenquellen',
   'about.sources.protomaps': 'Kartendarstellung: Protomaps',
   'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
-  'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
+  'about.sources.openMeteo':
+    'Wind- und Seegangsvorhersage: Wetter- und Meeresdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
   'about.sources.seamarks':

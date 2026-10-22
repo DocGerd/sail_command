@@ -568,7 +568,7 @@ const WIDE_CTA_VIEWPORTS = Object.entries(ATTRIBUTION_VIEWPORTS).filter(
 const CTA_CORNER_INSET_PX = 10;
 
 // The map's attribution carries exactly four credit links: OpenStreetMap,
-// Protomaps, EMODnet Bathymetry, and "Weather data by Open-Meteo.com".
+// Protomaps, EMODnet Bathymetry, and "Weather and marine data by Open-Meteo.com".
 // MEASURED 2026-09-01: four at every narrow row, in both planner states.
 // Pinned as an exact count, not a non-vacuity floor: attribution reachability
 // is an ODbL/CC-BY obligation, so a credit silently disappearing from the
@@ -671,8 +671,9 @@ async function ctaCornerTopmost(page: Page, insetPx: number): Promise<string> {
  * rect per line box while its bounding box spans both lines PLUS the gap
  * between them — and that gap belongs to the parent. MEASURED 2026-09-01 with
  * this control expanded: every anchor with two client rects
- * ("Weather data by Open-Meteo.com" at six of the nine narrow rows and
- * "EMODnet Bathymetry" additionally at deepPortrait320 and wrapForcing280 —
+ * (the Open-Meteo credit, worded "Weather data by Open-Meteo.com" at the time, at six of
+ * the nine narrow rows and "EMODnet Bathymetry" additionally at
+ * deepPortrait320 and wrapForcing280 —
  * the set is deterministic but NOT monotonic in viewport width) hit-tested its
  * bounding-box centre to `div.maplibregl-ctrl-attrib-inner`, its own parent,
  * while BOTH of its line-box centres hit-tested to the anchor. That is a
