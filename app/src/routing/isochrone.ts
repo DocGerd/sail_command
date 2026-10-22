@@ -988,14 +988,36 @@ export function solve(p: SolveParams): SolveResult {
   }
   return {
     status: 'ok',
-    legs: backtrack(best.last, p.departureMs, mask, gate),
+    legs: backtrack(best.last, p.departureMs, mask, gate, p.comfortDepthM),
     etaMs: best.etaMs,
     costMs: best.costMs,
   };
 }
 
+/** #1754: tryMerge's comfort rule for joining a->b with c->d into a->d. */
+function mergeKeepsClearance(
+  mask: NavMask,
+  a: LatLon,
+  b: LatLon,
+  c: LatLon,
+  d: LatLon,
+  gate: DepthGate,
+): boolean {
+  const merged = mask.segmentClearanceM(a, d, gate);
+  if (merged === null) return false;
+  const first = mask.segmentClearanceM(a, b, gate) ?? Infinity;
+  const second = mask.segmentClearanceM(c, d, gate) ?? Infinity;
+  return merged >= Math.min(first, second);
+}
+
 /** Exported for tests only. */
-export function backtrack(last: Node, departureMs: number, mask: NavMask, gate: DepthGate): Leg[] {
+export function backtrack(
+  last: Node,
+  departureMs: number,
+  mask: NavMask,
+  gate: DepthGate,
+  comfortDepthM: number | undefined,
+): Leg[] {
   const chain: Node[] = [];
   for (let n: Node | null = last; n && n.kind !== 'start'; n = n.parent) chain.unshift(n);
   const legs: Leg[] = [];
@@ -1008,13 +1030,17 @@ export function backtrack(last: Node, departureMs: number, mask: NavMask, gate: 
     // Merges the solver's own per-step bookkeeping, but only where the merged chord
     // itself passes the gate: the sub-steps' validity does not imply the chord's (#1705).
     // This is NOT the CLAUDE.md-governed collinear merge pass (postprocess.ts).
+    // With a comfort preference the chord must also not cross shallower water than
+    // either part did, as postprocess.ts's tryMerge requires (#1754).
     const collinear =
       prev &&
       prev.kind === n.kind &&
       prev.board === n.board &&
       n.maneuverAtStart === null &&
       Math.abs(normalizeDeg180(prev.headingDeg - n.headingDeg)) < 0.5 &&
-      mask.segmentNavigable(prev.start, end, gate);
+      (comfortDepthM === undefined
+        ? mask.segmentNavigable(prev.start, end, gate)
+        : mergeKeepsClearance(mask, prev.start, prev.end, start, end, gate));
     if (collinear) {
       prev.end = end;
       prev.endTimeMs = n.tMs;
