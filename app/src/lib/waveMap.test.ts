@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatSeaStateM,
   travelDeg,
+  WAVE_ARROW_COLOR,
   WAVE_ARROW_IMAGE_PX,
   waveArrowImage,
   waveFeaturesAt,
@@ -135,6 +136,12 @@ describe('waveArrowImage (#1699)', () => {
     // Transparent corners.
     expect(alphaAt(0, 0)).toBe(0);
     expect(alphaAt(img.width - 1, img.height - 1)).toBe(0);
+  });
+
+  it('draws in WAVE_ARROW_COLOR, not the barbs’ black ink', () => {
+    const mid = (Math.round(img.height * 0.75) * img.width + img.width / 2) * 4;
+    const hex = `#${[0, 1, 2].map((c) => img.data[mid + c]!.toString(16).padStart(2, '0')).join('')}`;
+    expect(hex.toUpperCase()).toBe(WAVE_ARROW_COLOR);
   });
 });
 

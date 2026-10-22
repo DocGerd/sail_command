@@ -41,13 +41,15 @@
   --sc-motor: #5b5b5b;
   --sc-ink: #1a1a1a;
   --sc-halo: #ffffff;
-  /* #1699: WMO sea-state band fills (lib/waveMap.ts's SEA_STATE_COLORS,
-     twinned by mapColors.test.ts). Map semantics, theme-invariant. */
+  /* #1699: WMO sea-state band fills and the wave-arrow ink (lib/waveMap.ts's
+     SEA_STATE_COLORS and WAVE_ARROW_COLOR, twinned by mapColors.test.ts).
+     Map semantics, theme-invariant. */
   --sc-sea-calm: #edf8fb;
   --sc-sea-smooth: #b3cde3;
   --sc-sea-slight: #8c96c6;
   --sc-sea-moderate: #8856a7;
   --sc-sea-rough: #810f7c;
+  --sc-wave-arrow: #1e3a8a;
   /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
@@ -88,6 +90,7 @@
     --sc-sea-slight: #8c96c6;
     --sc-sea-moderate: #8856a7;
     --sc-sea-rough: #810f7c;
+    --sc-wave-arrow: #1e3a8a;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
@@ -2761,10 +2764,14 @@ select {
   background: color-mix(in srgb, var(--sc-sea-rough) 45%, var(--sc-halo));
 }
 
+/* The map arrow's navy on its white halo, so it reads on the dark panel too. */
 .route-legend-sea-arrow {
   width: 1rem;
   height: 1rem;
-  fill: currentColor;
+  fill: var(--sc-wave-arrow);
+  stroke: var(--sc-halo);
+  stroke-width: 1.5px;
+  paint-order: stroke;
 }
 
 .sc-boat-marker {
