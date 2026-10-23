@@ -3542,6 +3542,7 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
   it('maps the sibling planning phases to their own panel phases', () => {
     expect(toPlannerStatus({ phase: 'idle' }, t)).toEqual({ phase: 'idle' });
     expect(toPlannerStatus({ phase: 'fetching-wind' }, t)).toEqual({ phase: 'fetching' });
+    expect(toPlannerStatus({ phase: 'starting' }, t)).toEqual({ phase: 'starting' });
     expect(toPlannerStatus({ phase: 'error', messageKey: 'error.internal' }, t)).toEqual({
       phase: 'error',
       message: 'error.internal',
@@ -3621,6 +3622,8 @@ describe('planErrorGroup / planErrorBannerKind (§3.5 error presentation)', () =
       'error.routingInterrupted',
       'error.planSaveFailed',
       'error.windUnknown',
+      'error.workerStartupTimeout',
+      'error.planSaveSlow',
     ] as const) {
       expect(planErrorGroup(key)).toBe('unexpected');
       expect(planErrorBannerKind(key)).toBe('error');
@@ -3644,6 +3647,7 @@ describe('planErrorRetryMayHelp (#433: per-cause retry eligibility)', () => {
       'error.routingMessageError',
       'error.routingInterrupted',
       'error.planSaveFailed',
+      'error.workerStartupTimeout',
     ] as const) {
       expect(planErrorRetryMayHelp(key), `expected retry to help for ${key}`).toBe(true);
     }
@@ -3653,6 +3657,8 @@ describe('planErrorRetryMayHelp (#433: per-cause retry eligibility)', () => {
     for (const key of [
       'error.internal',
       'error.workerInit',
+      // #1776: a re-plan while the slow save may still land stores a second copy.
+      'error.planSaveSlow',
       'error.routingTimeout',
       'error.routingFailed',
       'error.noRoute.unreachable',

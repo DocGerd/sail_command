@@ -179,6 +179,26 @@ describe('RoutingClient promise settling', () => {
   );
 
   it(
+    '#1794: a fatal tagged messageerror rejects as messageerror, targeted or global',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p1 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      const sent = w.posted.at(-1);
+      if (sent?.type !== 'plan') throw new Error('expected a plan message');
+      w.emit({ type: 'fatal', id: sent.id, message: 'lost', kind: 'messageerror' });
+      await expectRoutingError(p1, 'messageerror', /lost/);
+      const p2 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      w.emit({ type: 'fatal', id: null, message: 'lost too', kind: 'messageerror' });
+      await expectRoutingError(p2, 'messageerror', /lost too/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
     'global fatal rejects an in-flight plan',
     async () => {
       const w = fakeWorker();
