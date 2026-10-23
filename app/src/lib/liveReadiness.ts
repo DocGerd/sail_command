@@ -40,31 +40,43 @@ export function gpsCheck(permission: GpsPermission, denied: boolean): ReadinessC
   return { id: 'gps', ready: false, detailKey: 'live.ready.gps.unknown' };
 }
 
+/** How the stored forecast relates to the passage; `unknown` = the inputs cannot be checked. */
+export type ForecastCoverage = 'covers' | 'starts-late' | 'ends-early' | 'unknown';
+
 /**
  * Whether the plan's stored forecast covers the passage if it starts now (or
  * at the planned departure, whichever is later): the grid must start at or
- * before that time and its last hour must reach the shifted arrival.
+ * before that time and its last hour must reach the shifted arrival. A grid
+ * that both starts late and ends early reports `starts-late`.
  */
-export function forecastCovers(
+export function forecastCoverage(
   timesMs: ArrayLike<number>,
   departureMs: number,
   arrivalMs: number,
   nowMs: number,
-): boolean {
+): ForecastCoverage {
   const first = timesMs[0];
   const last = timesMs[timesMs.length - 1];
   // Also rejects an empty grid (undefined) and an unbounded last hour.
-  if (![first, last, departureMs, arrivalMs, nowMs].every(Number.isFinite)) return false;
-  if (arrivalMs < departureMs) return false;
+  if (![first, last, departureMs, arrivalMs, nowMs].every(Number.isFinite)) return 'unknown';
+  if (arrivalMs < departureMs) return 'unknown';
   const startMs = Math.max(nowMs, departureMs);
   const endMs = startMs + (arrivalMs - departureMs);
-  return first <= startMs && endMs <= last;
+  if (first > startMs) return 'starts-late';
+  if (endMs > last) return 'ends-early';
+  return 'covers';
 }
 
-export function forecastCheck(covers: boolean): ReadinessCheck {
-  return covers
+const FORECAST_DETAIL: Record<Exclude<ForecastCoverage, 'covers'>, MsgKey> = {
+  'starts-late': 'live.ready.forecast.startsLate',
+  'ends-early': 'live.ready.forecast.endsEarly',
+  unknown: 'live.ready.forecast.unknown',
+};
+
+export function forecastCheck(coverage: ForecastCoverage): ReadinessCheck {
+  return coverage === 'covers'
     ? { id: 'forecast', ready: true, detailKey: 'live.ready.forecast.ok' }
-    : { id: 'forecast', ready: false, detailKey: 'live.ready.forecast.no' };
+    : { id: 'forecast', ready: false, detailKey: FORECAST_DETAIL[coverage] };
 }
 
 export function wakeLockCheck(supported: boolean): ReadinessCheck {

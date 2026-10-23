@@ -1248,10 +1248,10 @@ export const de = {
   'live.ready.regions.label': 'Offline-Karte',
   'live.ready.regions.ok': 'Für diese Route gespeichert.',
   'live.ready.regions.pinning': 'Wird gespeichert…',
-  'live.ready.regions.no': 'Nicht als gespeichert bestätigt. Im Plan-Tab online speichern.',
+  'live.ready.regions.no': 'Nicht als gespeichert bestätigt. Im Tab „Routen“ online speichern.',
   'live.ready.glyphs.label': 'Kartenbeschriftung',
   'live.ready.glyphs.ok': 'Offline verfügbar.',
-  'live.ready.glyphs.no': 'Nicht als offline verfügbar bestätigt. App online geöffnet lassen.',
+  'live.ready.glyphs.no': 'Nicht als offline verfügbar bestätigt. App online neu öffnen.',
   'live.ready.gps.label': 'Standort',
   'live.ready.gps.ok': 'Standortzugriff erlaubt.',
   'live.ready.gps.prompt': 'Noch nicht erlaubt. Beim Start der Live-Ansicht erlauben.',
@@ -1260,8 +1260,12 @@ export const de = {
   'live.ready.gps.unknown': 'Standortzugriff lässt sich nicht prüfen.',
   'live.ready.forecast.label': 'Windvorhersage',
   'live.ready.forecast.ok': 'Die gespeicherte Vorhersage deckt die Passage ab.',
-  'live.ready.forecast.no':
+  'live.ready.forecast.endsEarly':
     'Die gespeicherte Vorhersage endet vor der voraussichtlichen Ankunft. Route online neu planen.',
+  'live.ready.forecast.startsLate':
+    'Die gespeicherte Vorhersage beginnt nach der voraussichtlichen Abfahrt. Route online neu planen.',
+  'live.ready.forecast.unknown':
+    'Die gespeicherte Vorhersage lässt sich nicht prüfen. Route online neu planen.',
   'live.ready.wakeLock.label': 'Bildschirm an',
   'live.ready.wakeLock.ok': 'Dieser Browser kann den Bildschirm anlassen.',
   'live.ready.wakeLock.no': 'Dieser Browser kann den Bildschirm nicht anlassen.',

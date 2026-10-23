@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   aisCheck,
   forecastCheck,
-  forecastCovers,
+  forecastCoverage,
   glyphsCheck,
   gpsCheck,
   regionsCheck,
   wakeLockCheck,
 } from './liveReadiness';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
 
 const H = 3_600_000;
 
@@ -49,51 +51,58 @@ describe('#1807 gpsCheck', () => {
   });
 });
 
-describe('#1807 forecastCovers', () => {
+describe('#1807 forecastCoverage', () => {
   const times = [0, H, 2 * H, 3 * H, 4 * H, 5 * H];
 
   it('covers a passage that fits the grid, departing on time', () => {
-    expect(forecastCovers(times, H, 3 * H, 0)).toBe(true);
+    expect(forecastCoverage(times, H, 3 * H, 0)).toBe('covers');
   });
 
   it('shifts the passage to start now when now is after the planned departure', () => {
     // 2 h passage starting now at 2.5 h ends at 4.5 h: inside the 5 h grid.
-    expect(forecastCovers(times, H, 3 * H, 2.5 * H)).toBe(true);
+    expect(forecastCoverage(times, H, 3 * H, 2.5 * H)).toBe('covers');
     // Starting now at 3.5 h it would end at 5.5 h: past the last hour.
-    expect(forecastCovers(times, H, 3 * H, 3.5 * H)).toBe(false);
+    expect(forecastCoverage(times, H, 3 * H, 3.5 * H)).toBe('ends-early');
   });
 
   it('accepts an arrival exactly on the last hour', () => {
-    expect(forecastCovers(times, 3 * H, 5 * H, 0)).toBe(true);
+    expect(forecastCoverage(times, 3 * H, 5 * H, 0)).toBe('covers');
   });
 
-  it('rejects a grid that starts after the passage', () => {
-    expect(forecastCovers([2 * H, 5 * H], H, 3 * H, 0)).toBe(false);
+  it('reports a grid that starts after the passage, also when it ends early too', () => {
+    expect(forecastCoverage([2 * H, 5 * H], H, 3 * H, 0)).toBe('starts-late');
+    expect(forecastCoverage([2 * H, 3 * H], H, 4 * H, 0)).toBe('starts-late');
   });
 
-  it('fails closed on an empty grid, non-finite values or arrival before departure', () => {
-    expect(forecastCovers([], H, 2 * H, 0)).toBe(false);
-    expect(forecastCovers([0, Number.NaN], H, 2 * H, 0)).toBe(false);
-    expect(forecastCovers(times, H, Number.NaN, 0)).toBe(false);
-    expect(forecastCovers(times, 3 * H, 2 * H, 0)).toBe(false);
-    expect(forecastCovers([0, Number.POSITIVE_INFINITY], H, 2 * H, 0)).toBe(false);
+  it('cannot check an empty grid, non-finite values or arrival before departure', () => {
+    expect(forecastCoverage([], H, 2 * H, 0)).toBe('unknown');
+    expect(forecastCoverage([0, Number.NaN], H, 2 * H, 0)).toBe('unknown');
+    expect(forecastCoverage(times, H, Number.NaN, 0)).toBe('unknown');
+    expect(forecastCoverage(times, 3 * H, 2 * H, 0)).toBe('unknown');
+    expect(forecastCoverage([0, Number.POSITIVE_INFINITY], H, 2 * H, 0)).toBe('unknown');
   });
 
   it('reads a Float64Array grid', () => {
-    expect(forecastCovers(new Float64Array(times), H, 3 * H, 0)).toBe(true);
+    expect(forecastCoverage(new Float64Array(times), H, 3 * H, 0)).toBe('covers');
   });
 
-  it('maps to the check', () => {
-    expect(forecastCheck(true)).toEqual({
-      id: 'forecast',
-      ready: true,
-      detailKey: 'live.ready.forecast.ok',
-    });
-    expect(forecastCheck(false)).toEqual({
-      id: 'forecast',
-      ready: false,
-      detailKey: 'live.ready.forecast.no',
-    });
+  it.each([
+    ['covers', true, 'live.ready.forecast.ok'],
+    ['starts-late', false, 'live.ready.forecast.startsLate'],
+    ['ends-early', false, 'live.ready.forecast.endsEarly'],
+    ['unknown', false, 'live.ready.forecast.unknown'],
+  ] as const)('maps %s to its own detail', (coverage, ready, detailKey) => {
+    expect(forecastCheck(coverage)).toEqual({ id: 'forecast', ready, detailKey });
+  });
+});
+
+describe('#1807 offline-map remedy names the tab that holds the save control', () => {
+  it.each([
+    ['de', de],
+    ['en', en],
+  ] as const)('%s', (_lang, dict) => {
+    expect(dict['live.ready.regions.no']).toContain(dict['nav.routes']);
+    expect(dict['live.ready.regions.no']).not.toContain(dict['nav.plan']);
   });
 });
 

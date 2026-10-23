@@ -1253,10 +1253,10 @@ export const en = {
   'live.ready.regions.label': 'Offline map',
   'live.ready.regions.ok': 'Saved for this route.',
   'live.ready.regions.pinning': 'Saving…',
-  'live.ready.regions.no': 'Not confirmed saved. Save it online from the Plan tab.',
+  'live.ready.regions.no': 'Not confirmed saved. Save it online from the Routes tab.',
   'live.ready.glyphs.label': 'Map labels',
   'live.ready.glyphs.ok': 'Available offline.',
-  'live.ready.glyphs.no': 'Not confirmed available offline. Keep the app open while online.',
+  'live.ready.glyphs.no': 'Not confirmed available offline. Reopen the app while online.',
   'live.ready.gps.label': 'Location',
   'live.ready.gps.ok': 'Location access allowed.',
   'live.ready.gps.prompt': 'Not allowed yet. Allow it when you start Live view.',
@@ -1264,8 +1264,12 @@ export const en = {
   'live.ready.gps.unknown': 'Location access cannot be checked.',
   'live.ready.forecast.label': 'Wind forecast',
   'live.ready.forecast.ok': 'The stored forecast covers the passage.',
-  'live.ready.forecast.no':
+  'live.ready.forecast.endsEarly':
     'The stored forecast ends before you would arrive. Plan the route again online.',
+  'live.ready.forecast.startsLate':
+    'The stored forecast starts after you would set off. Plan the route again online.',
+  'live.ready.forecast.unknown':
+    'The stored forecast cannot be checked. Plan the route again online.',
   'live.ready.wakeLock.label': 'Screen on',
   'live.ready.wakeLock.ok': 'This browser can keep the screen on.',
   'live.ready.wakeLock.no': 'This browser cannot keep the screen on.',

@@ -65,15 +65,16 @@ export function whenIdle(): Promise<void> {
   });
 }
 
+function parseManifest(data: unknown): string[] | null {
+  return Array.isArray(data) && data.every((p): p is string => typeof p === 'string') ? data : null;
+}
+
 async function fetchManifest(): Promise<string[] | null> {
   let manifest: string[] | null = null;
   try {
     const res = await fetch(import.meta.env.BASE_URL + GLYPH_MANIFEST_PATH);
     if (res.ok) {
-      const data: unknown = await res.json();
-      if (Array.isArray(data) && data.every((p): p is string => typeof p === 'string')) {
-        manifest = data;
-      }
+      manifest = parseManifest(await res.json());
     }
   } catch {
     // fall through to the shared warn below
@@ -120,13 +121,19 @@ async function missingGlyphUrls(paths: string[]): Promise<string[]> {
 
 /**
  * #1807: whether every manifest glyph range is in the runtime cache, read
- * from CacheStorage on each call. Any "can't tell" (no Cache API, no
- * manifest, a throw) is false.
+ * from CacheStorage on each call. The manifest comes from the precache, never
+ * the network, so a pass also proves the manifest is available offline. Any
+ * "can't tell" (no Cache API, no precached manifest, a throw) is false.
  */
 export async function glyphCacheComplete(): Promise<boolean> {
   try {
     if (!('caches' in window)) return false;
-    const paths = await fetchManifest();
+    // Workbox keys an unhashed precache entry with `?__WB_REVISION__=…` (regionPinning.ts).
+    const res = await caches.match(import.meta.env.BASE_URL + GLYPH_MANIFEST_PATH, {
+      ignoreSearch: true,
+    });
+    if (!res) return false;
+    const paths = parseManifest(await res.json());
     if (!paths || paths.length === 0) return false;
     return (await missingGlyphUrls(paths)).length === 0;
   } catch {

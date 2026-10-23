@@ -275,7 +275,8 @@ function cspMeta(): Plugin {
 // Build-only (apply: 'build'): fine for `vite dev`, where the warm-up never
 // runs at all — no SW ever registers, so it parks waiting for a controller
 // and never reaches the manifest fetch; the 404→warn+skip path only occurs
-// under a stale controlling SW from an older deploy.
+// under a stale controlling SW from an older deploy. The #1807 readiness
+// probe reads only the precached copy, so in dev it misses quietly.
 function glyphManifest(): Plugin {
   return {
     name: 'sailcommand:glyph-manifest',

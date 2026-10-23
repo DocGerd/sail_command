@@ -10,7 +10,7 @@ import { glyphCacheComplete, glyphWarmupSettled } from '../services/glyphWarmup'
 import {
   aisCheck,
   forecastCheck,
-  forecastCovers,
+  forecastCoverage,
   glyphsCheck,
   gpsCheck,
   regionsCheck,
@@ -45,7 +45,6 @@ function useGlyphsComplete(probe: () => Promise<boolean>): boolean | null {
 
   // A warm-up finishing during this mount re-checks once.
   useEffect(() => {
-    // Set here, not only in cleanup: StrictMode runs cleanup then setup on the same component.
     let cancelled = false;
     void glyphWarmupSettled()?.then(() => {
       if (!cancelled) setChecks((n) => n + 1);
@@ -56,7 +55,6 @@ function useGlyphsComplete(probe: () => Promise<boolean>): boolean | null {
   }, []);
 
   useEffect(() => {
-    // Set here, not only in cleanup: StrictMode runs cleanup then setup on the same component.
     let cancelled = false;
     void probe()
       .catch(() => false)
@@ -80,7 +78,6 @@ function useGeolocationPermission(): GpsPermission {
   );
   useEffect(() => {
     if (!hasPermissionsApi()) return;
-    // Set here, not only in cleanup: StrictMode runs cleanup then setup on the same component.
     let cancelled = false;
     let status: PermissionStatus | null = null;
     // useGpsSource assigns `onchange` on its own status object; a listener cannot clobber it.
@@ -127,12 +124,17 @@ export function useLiveReadiness(
   const glyphs = useGlyphsComplete(probe);
   const permission = useGeolocationPermission();
   const nowMs = useNow(now);
-  const covers = forecastCovers(plan.windGrid.timesMs, plan.request.departureMs, arrivalMs, nowMs);
+  const coverage = forecastCoverage(
+    plan.windGrid.timesMs,
+    plan.request.departureMs,
+    arrivalMs,
+    nowMs,
+  );
   return [
     regionsCheck(regions.status),
     glyphsCheck(glyphs),
     gpsCheck(permission, input.gpsDenied),
-    forecastCheck(covers),
+    forecastCheck(coverage),
     wakeLockCheck(input.wakeLockSupported),
     aisCheck(input.aisStatus),
   ];
