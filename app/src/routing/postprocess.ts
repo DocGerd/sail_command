@@ -1,4 +1,4 @@
-import type { Leg } from '../types';
+import type { LatLon, Leg } from '../types';
 import type { NavMask } from '../lib/mask';
 import type { DepthGate } from '../lib/depthGate';
 import type { WindField } from '../lib/wind';
@@ -7,9 +7,52 @@ import { boardOf } from './maneuver';
 
 const MAX_MERGE_DEG = 10;
 
+/** One input leg of mergeCollinearLegs, with its clearance computed once (#1842). */
+interface Step {
+  start: LatLon;
+  end: LatLon;
+  distanceNm: number;
+  clearanceM: number;
+}
+
+/**
+ * #1842: each covered step must keep its own clearance along the part of the
+ * merged chord that replaces it. The chord is split by the steps' cumulative
+ * length fraction; lerping in lat/lon is linear in the mask's grid space.
+ */
+function chordKeepsStepClearances(
+  start: LatLon,
+  end: LatLon,
+  steps: readonly Step[],
+  mask: NavMask,
+  gate: DepthGate,
+): boolean {
+  const totalNm = steps.reduce((sum, s) => sum + s.distanceNm, 0);
+  if (!(totalNm > 0)) return true;
+  const at = (f: number): LatLon =>
+    f <= 0
+      ? start
+      : f >= 1
+        ? end
+        : {
+            lat: start.lat + (end.lat - start.lat) * f,
+            lon: start.lon + (end.lon - start.lon) * f,
+          };
+  let doneNm = 0;
+  for (const s of steps) {
+    const from = at(doneNm / totalNm);
+    doneNm += s.distanceNm;
+    const part = mask.segmentClearanceM(from, at(doneNm / totalNm), gate);
+    if (part === null || part < s.clearanceM) return false;
+  }
+  return true;
+}
+
 function tryMerge(
   a: Leg,
   b: Leg,
+  aSteps: readonly Step[],
+  bSteps: readonly Step[],
   mask: NavMask,
   wind: WindField,
   gate: DepthGate,
@@ -46,6 +89,10 @@ function tryMerge(
     const aClearanceM = mask.segmentClearanceM(a.start, a.end, gate) ?? Infinity;
     const bClearanceM = mask.segmentClearanceM(b.start, b.end, gate) ?? Infinity;
     if (mergedClearanceM < Math.min(aClearanceM, bClearanceM)) return null;
+    // #1842: `a` may already be a merge, so the check above lets one shallow
+    // step anywhere in it lower the bar for the whole chord. This conjoined
+    // check is local to each original step; it can only reject more merges.
+    if (!chordKeepsStepClearances(a.start, b.end, [...aSteps, ...bSteps], mask, gate)) return null;
   }
   const headingDeg = initialBearingDeg(a.start, b.end);
   if (a.kind === 'sail') {
@@ -77,21 +124,41 @@ export function mergeCollinearLegs(
   comfortDepthM?: number,
 ): Leg[] {
   let out = [...legs];
+  // #1842: the input legs are the "original steps"; each output leg keeps the
+  // list it covers across passes, so later merges are judged against them.
+  let outSteps: Step[][] = legs.map((leg) => [
+    {
+      start: leg.start,
+      end: leg.end,
+      distanceNm: haversineNm(leg.start, leg.end),
+      clearanceM:
+        comfortDepthM === undefined
+          ? Infinity
+          : (mask.segmentClearanceM(leg.start, leg.end, gate) ?? Infinity),
+    },
+  ]);
   let changed = true;
   while (changed) {
     changed = false;
     const next: Leg[] = [];
-    for (const leg of out) {
-      const prev = next[next.length - 1];
-      const merged = prev ? tryMerge(prev, leg, mask, wind, gate, comfortDepthM) : null;
+    const nextSteps: Step[][] = [];
+    out.forEach((leg, i) => {
+      const last = next.length - 1;
+      const merged =
+        last >= 0
+          ? tryMerge(next[last], leg, nextSteps[last], outSteps[i], mask, wind, gate, comfortDepthM)
+          : null;
       if (merged) {
-        next[next.length - 1] = merged;
+        next[last] = merged;
+        nextSteps[last] = [...nextSteps[last], ...outSteps[i]];
         changed = true;
       } else {
         next.push(leg);
+        nextSteps.push(outSteps[i]);
       }
-    }
+    });
     out = next;
+    outSteps = nextSteps;
   }
   return out;
 }
