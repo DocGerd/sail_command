@@ -76,7 +76,8 @@ describe('#1822: Live card priority over the bottom sheet', () => {
   it('the panel cap is scoped to a docked card, narrow only', () => {
     const m = PANEL_CAP_RE.exec(FLAT_CSS);
     expect(m, 'panel cap rule missing or its gate changed').not.toBeNull();
-    expect(Number(m![1])).toBeGreaterThan(0);
+    // 10rem is a judgement call (app.css's #1822 comment), pinned so any change is deliberate.
+    expect(Number(m![1])).toBe(10);
   });
 
   it('a capped panel hands the card more than a sheet at its own 55vh cap', () => {

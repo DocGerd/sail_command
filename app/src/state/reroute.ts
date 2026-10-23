@@ -272,8 +272,8 @@ export const REROUTE_SUCCESS_CUE_MS = 8_000;
  * #1806 cancel mirrors usePlanFlow's #1193 design: a flag checked after
  * ensureClient() (client.cancel() is a no-op with nothing pending) plus
  * client.cancel(), which terminates the worker. A cancel ends in idle with no
- * error. One landing during save() is too late — the plan is persisted, so it
- * is returned rather than orphaned.
+ * error. One landing during save() cannot unsave the plan: it stays in the
+ * saved list, but is neither returned (so not activated) nor cued as a success.
  *
  * `deps.now` is injectable for tests only; production uses Date.now() —
  * departure of the reroute is the moment the skipper pressed the button.
@@ -337,6 +337,10 @@ export function useLiveReroute(
           ...(deps.save ? { save: deps.save } : {}),
           ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
         });
+        if (cancelRequestedRef.current) {
+          setBase(IDLE_STATE);
+          return null;
+        }
         setBase({ rerouting: false, error: null, succeeded: true });
         cueTimerRef.current = setTimeout(() => {
           cueTimerRef.current = null;

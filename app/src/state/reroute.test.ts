@@ -821,14 +821,16 @@ describe('#1806 reroute progress, cancel and success cue', () => {
     let onProgress: Parameters<RerouteClient['plan']>[2];
     let onProbe: Parameters<RerouteClient['plan']>[4];
     const client = {
-      plan: vi.fn((_req: PlanRequest, _grid: unknown, progress?: unknown, _t?: unknown, probe?: unknown) => {
-        onProgress = progress as typeof onProgress;
-        onProbe = probe as typeof onProbe;
-        return new Promise<PlanResultOk>((res, rej) => {
-          resolvePlan = res;
-          rejectPlan = rej;
-        });
-      }),
+      plan: vi.fn(
+        (_req: PlanRequest, _grid: unknown, progress?: unknown, _t?: unknown, probe?: unknown) => {
+          onProgress = progress as typeof onProgress;
+          onProbe = probe as typeof onProbe;
+          return new Promise<PlanResultOk>((res, rej) => {
+            resolvePlan = res;
+            rejectPlan = rej;
+          });
+        },
+      ),
       cancel: vi.fn(() => rejectPlan(new RoutingError('cancelled', 'plan cancelled by user'))),
     } satisfies RerouteClient;
     return {
@@ -926,6 +928,41 @@ describe('#1806 reroute progress, cancel and success cue', () => {
     expect(c.client.plan).not.toHaveBeenCalled();
     expect(result.current.state.rerouting).toBe(false);
     expect(result.current.state.error).toBeNull();
+  });
+
+  it('cancel() during save() neither returns the plan nor cues success', async () => {
+    const client: RerouteClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), cancel: vi.fn() };
+    let resolveSave!: () => void;
+    const save = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveSave = res;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(client), { save, now: () => NOW_MS }),
+    );
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+
+    let outcome: Plan | null | undefined;
+    await act(async () => {
+      result.current.cancel();
+      resolveSave();
+      outcome = await pending;
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: null,
+      succeeded: false,
+    });
   });
 
   it('a reroute after a cancelled one runs normally (the cancel does not linger)', async () => {
