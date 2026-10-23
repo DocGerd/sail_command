@@ -66,7 +66,7 @@ import { harborHandoverEndsOf } from './lib/harborHandover';
 import { recalcRequest } from './lib/recalc';
 import { planViaPoints } from './lib/planViaPoints';
 import {
-  departureSeedMs,
+  departureAfterSyncMs,
   pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
@@ -626,7 +626,7 @@ function AppShell() {
   // #301: also written by the plan-form sync effect below (next to
   // planIdRef) whenever a NEW plan.id becomes active — origin/destination
   // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
-  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs).
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs), unless the form already holds the plan's departure (#1761).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
@@ -804,7 +804,8 @@ function AppShell() {
       setDestination(syncedDestination);
     }
     if (baseline === null || departureMs === baseline.departureMs) {
-      setDepartureMs(departureSeedMs(plan));
+      // #1761: a form already on this plan's departure keeps it (see departureAfterSyncMs).
+      setDepartureMs(departureAfterSyncMs(plan, departureMs));
     }
     // #885: vias and segment modes sync as ONE field — modes index the via
     // list, so keeping a user-edited half beside a synced half would misalign.

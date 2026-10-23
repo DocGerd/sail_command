@@ -83,6 +83,21 @@ export function departureSeedMs(plan: Plan, nowMs: number = Date.now()): number 
   return plan.request.departureMs > nowMs ? plan.request.departureMs : nextFullHourMs(nowMs);
 }
 
+/**
+ * #1761: the departure the form holds once a plan has synced. A form already
+ * on the plan's own departure keeps it, even when it is now past, so a plan
+ * just run from the form never reads stale. Any other plan re-seeds.
+ */
+export function departureAfterSyncMs(
+  plan: Plan,
+  formDepartureMs: number,
+  nowMs: number = Date.now(),
+): number {
+  return formDepartureMs === plan.request.departureMs
+    ? formDepartureMs
+    : departureSeedMs(plan, nowMs);
+}
+
 /** First local 10:00 strictly after both the ETA and now. Calendar math, never +24 h: DST days are 23/25 h. */
 export function nextPassageDepartureMs(etaMs: number, nowMs: number): number {
   const d = new Date(Math.max(etaMs, nowMs));
