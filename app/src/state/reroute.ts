@@ -49,6 +49,8 @@ export type ReroutePhase = 'starting' | 'routing' | 'routing-second-pass' | 'pro
 export interface RerouteDeps extends ReplanDeps {
   client: RerouteClient;
   onPhase?: (phase: ReroutePhase) => void;
+  /** #1806: true once the skipper pressed Stop; a stopped reroute is saved but not pinned. */
+  isCancelled?: () => boolean;
 }
 
 /**
@@ -236,6 +238,7 @@ export async function rerouteFromFix(
   // #1233: never awaited — pinning cannot delay or fail the reroute. A
   // mid-passage reroute is exactly the case most likely to move the
   // corridor into a region the original pin never fetched.
+  if (deps.isCancelled?.()) return rerouted;
   const pinRegions = deps.pinRegions ?? pinRegionsAfterReroute;
   pinRegions(rerouted);
   return rerouted;
@@ -273,7 +276,8 @@ export const REROUTE_SUCCESS_CUE_MS = 8_000;
  * ensureClient() (client.cancel() is a no-op with nothing pending) plus
  * client.cancel(), which terminates the worker. A cancel ends in idle with no
  * error. One landing during save() cannot unsave the plan: it stays in the
- * saved list, but is neither returned (so not activated) nor cued as a success.
+ * saved list, but is neither returned (so not activated), cued as a success, nor
+ * pinned for offline regions.
  *
  * `deps.now` is injectable for tests only; production uses Date.now() —
  * departure of the reroute is the moment the skipper pressed the button.
@@ -334,6 +338,7 @@ export function useLiveReroute(
         const rerouted = await rerouteFromFix(plan, fixPoint, nowMs, name, {
           client,
           onPhase: setPhase,
+          isCancelled: () => cancelRequestedRef.current,
           ...(deps.save ? { save: deps.save } : {}),
           ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
         });

@@ -930,7 +930,7 @@ describe('#1806 reroute progress, cancel and success cue', () => {
     expect(result.current.state.error).toBeNull();
   });
 
-  it('cancel() during save() neither returns the plan nor cues success', async () => {
+  it('cancel() during save() neither returns the plan, cues success nor pins regions', async () => {
     const client: RerouteClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), cancel: vi.fn() };
     let resolveSave!: () => void;
     const save = vi.fn(
@@ -939,8 +939,9 @@ describe('#1806 reroute progress, cancel and success cue', () => {
           resolveSave = res;
         }),
     );
+    const pinRegions = vi.fn<PinAfterSave>();
     const { result } = renderHook(() =>
-      useLiveReroute(() => Promise.resolve(client), { save, now: () => NOW_MS }),
+      useLiveReroute(() => Promise.resolve(client), { save, now: () => NOW_MS, pinRegions }),
     );
 
     let pending!: Promise<Plan | null>;
@@ -957,6 +958,7 @@ describe('#1806 reroute progress, cancel and success cue', () => {
     });
 
     expect(outcome).toBeNull();
+    expect(pinRegions).not.toHaveBeenCalled();
     expect(result.current.state).toEqual({
       rerouting: false,
       phase: null,
