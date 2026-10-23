@@ -9,12 +9,15 @@ import {
 
 // #1822: with a long, expanded AIS list the Live card keeps priority over the
 // bottom sheet. From the 820px design floor up its reroute control and reason
-// stay on screen without the card scrolling; at narrow widths the list scrolls
-// inside the sheet. At every width the card's top stays clear of the Tier 2 map
-// chrome, with the AIS list empty and capped. Fake aisstream via
-// routeWebSocket; no socket leaves the box.
+// stay on screen without the card scrolling, with a fresh GPS fix; at narrow
+// widths the list scrolls inside the sheet. From 820px up, toast dismissed, the
+// card's top stays clear of the Tier 2 map chrome with the AIS list empty and
+// capped. Fake aisstream via routeWebSocket; no socket leaves the box.
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
 const VESSELS = 40;
+const FIX = { latitude: 54.8237, longitude: 9.6524, accuracy: 5 };
+// Well under GPS_STALE_AFTER_MS, so the card never drops its readouts.
+const FIX_REFRESH_MS = 2_000;
 
 function classBPosition(mmsi: number, lat: number, lon: number, name: string): string {
   return JSON.stringify({
@@ -34,36 +37,37 @@ function classBPosition(mmsi: number, lat: number, lon: number, name: string): s
 
 test.use({
   permissions: ['geolocation'],
-  geolocation: { latitude: 54.8237, longitude: 9.6524, accuracy: 5 },
+  geolocation: FIX,
 });
 
 test.beforeEach(async ({ page }) => {
   await seedFreshProfileDefaults(page);
 });
 
-interface Sample {
-  cardScrollOverflow: number;
-  controlsBelowFold: number;
-}
-
-// Re-sampled inside every poll attempt (#412/#422): a box read once before the
-// layout settles proves nothing.
-async function sample(page: Page): Promise<Sample> {
+// Offenders, re-sampled inside every poll attempt (#412/#422): a box read once
+// before the layout settles proves nothing. The GPS check shares the sample, so
+// the geometry is always the readouts-shown card a skipper sees while tracking.
+async function controlsOffenders(page: Page): Promise<string[]> {
   return page.evaluate(() => {
+    const out: string[] = [];
+    if (!document.querySelector('.live-view-data:not(.live-view-data--stale)')) {
+      out.push('no fresh .live-view-data');
+    }
+    if (document.querySelector('.live-view-gps--lost')) out.push('GPS lost block shown');
+    if (document.querySelector('.live-view-gps-stale')) out.push('GPS stale chip shown');
     const card = document.querySelector<HTMLElement>('.live-view');
     const button = document.querySelector('.live-view-reroute button');
     const reason = document.querySelector('#live-reroute-reason');
-    if (!card || !button || !reason) {
-      return { cardScrollOverflow: 1e6, controlsBelowFold: 1e6 };
-    }
+    if (!card || !button || !reason) return [...out, 'card, reroute button or reason missing'];
     const c = card.getBoundingClientRect();
     const b = button.getBoundingClientRect();
     const r = reason.getBoundingClientRect();
     const visibleBottom = Math.min(window.innerHeight, c.bottom);
-    return {
-      cardScrollOverflow: card.scrollHeight - card.clientHeight,
-      controlsBelowFold: Math.round(Math.max(b.bottom, r.bottom) - visibleBottom),
-    };
+    const below = Math.round(Math.max(b.bottom, r.bottom) - visibleBottom);
+    if (below > 0) out.push(`controlsBelowFold:${below}`);
+    const overflow = card.scrollHeight - card.clientHeight;
+    if (overflow > 1) out.push(`cardScrollOverflow:${overflow}`);
+    return out;
   });
 }
 
@@ -84,6 +88,10 @@ async function topClearance(page: Page): Promise<TopClearance> {
     if (!card) return { overlaps: ['no .live-view'], occluders: [] };
     const c = card.getBoundingClientRect();
     const overlaps: string[] = [];
+    // The probe below assumes the toast is gone; a late one is #1843's case, not this one.
+    if (document.querySelector('.reload-prompt')) overlaps.push('toast up');
+    // elementFromPoint is null off-viewport, which would report a hidden band as clear.
+    if (c.top < 0 || c.top + 20 > window.innerHeight) overlaps.push(`card top off-screen:${c.top}`);
     for (const sel of chrome) {
       for (const el of Array.from(document.querySelectorAll(sel))) {
         const r = el.getBoundingClientRect();
@@ -138,6 +146,7 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
   test.setTimeout(360_000);
   await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
   const server = await startPreview(page);
+  let keepFresh: ReturnType<typeof setInterval> | undefined;
   try {
     const sockets: WebSocketRoute[] = [];
     await page.routeWebSocket(/.*/, (ws) => {
@@ -158,12 +167,30 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
 
     await page.getByRole('tab', { name: 'Boot' }).click();
     await page.getByLabel('AIS-API-Schlüssel (aisstream.io)').fill('FAKE-KEY');
+    // The SW's one-shot "offline ready" toast has long appeared by now (planning
+    // took seconds); <820 px and the toast case: #1843.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+    await expect(page.locator('.reload-prompt')).toHaveCount(0);
+
+    // A single static fix ages past GPS_LOST_AFTER_MS mid-test and hides the
+    // readouts, which shortens the card the rows measure.
+    keepFresh = setInterval(() => {
+      void page
+        .context()
+        .setGeolocation(FIX)
+        .catch(() => {});
+    }, FIX_REFRESH_MS);
+
     await page.getByRole('tab', { name: 'Live' }).click();
     await page.getByRole('button', { name: 'Live-Ansicht' }).click();
     await expect(page.locator('.live-view-data')).toBeVisible({ timeout: 30_000 });
 
     await expect.poll(() => sockets.length).toBe(1);
     for (const [name, viewport] of Object.entries(STANDARD_VIEWPORTS)) {
+      if (viewport.width < 820) continue;
       await page.setViewportSize(viewport);
       await expectTopClear(page, `empty AIS ${name} ${viewport.width}x${viewport.height}`);
     }
@@ -176,7 +203,6 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
       await openAisList(page);
 
       const label = `${name} ${viewport.width}x${viewport.height}`;
-      await expectTopClear(page, `capped AIS ${label}`);
 
       // Narrow only: on wide the list sits in the side panel, which the cap does not touch.
       if (viewport.width < 1024) {
@@ -184,35 +210,40 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
           .poll(
             () =>
               page.evaluate(() => {
-                const panel = document.querySelector('.app-panel');
-                return panel ? panel.scrollHeight - panel.clientHeight : -1;
+                const panel = document.querySelector<HTMLElement>('.app-panel:has(.app-panel-ais)');
+                if (!panel) return 'no AIS panel';
+                const { overflowY } = getComputedStyle(panel);
+                if (overflowY !== 'auto' && overflowY !== 'scroll')
+                  return `overflow-y:${overflowY}`;
+                if (panel.scrollHeight - panel.clientHeight <= 0)
+                  return 'list fits, nothing to scroll';
+                const before = panel.scrollTop;
+                panel.scrollTo({ top: before + 50, behavior: 'instant' });
+                const moved = panel.scrollTop !== before;
+                panel.scrollTo({ top: before, behavior: 'instant' });
+                return moved ? 'scrolls' : 'scrollTop did not move';
               }),
             {
-              message: `${label}: sheet panel px of AIS list beyond its scrollport`,
+              message: `${label}: the AIS list scrolls inside the sheet panel`,
               timeout: 30_000,
             },
           )
-          .toBeGreaterThan(0);
+          .toBe('scrolls');
       }
 
-      // 820 CSS px is the design floor and spans both layouts. Below it the card
-      // cannot both clear the map chrome and fit its controls, so it scrolls.
+      // 820 CSS px is the design floor and spans both layouts; below it, #1843.
       if (viewport.width >= 820) {
+        await expectTopClear(page, `capped AIS ${label}`);
         await expect
-          .poll(async () => (await sample(page)).controlsBelowFold, {
-            message: `${label}: reroute button/reason px below the visible card`,
+          .poll(() => controlsOffenders(page), {
+            message: `${label}: fresh fix, reroute control and reason on screen, card not scrolling`,
             timeout: 30_000,
           })
-          .toBeLessThanOrEqual(0);
-        await expect
-          .poll(async () => (await sample(page)).cardScrollOverflow, {
-            message: `${label}: card content px beyond its scrollport`,
-            timeout: 30_000,
-          })
-          .toBeLessThanOrEqual(1);
+          .toEqual([]);
       }
     }
   } finally {
+    clearInterval(keepFresh);
     server.kill();
   }
 });
