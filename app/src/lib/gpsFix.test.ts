@@ -75,6 +75,44 @@ describe('gpsState', () => {
     expect(gpsState(cached, 12_000)).toBe('stale');
   });
 
+  // #1821: providers that stamp fixes on their own (GNSS) clock.
+  it('a GNSS-stamped stream stays fresh while the system clock steps under it (pin)', () => {
+    const T0 = 1_700_000_000_000;
+    let track = emptyTrack<TimedFix>();
+    for (let i = 0; i < 60; i++) {
+      const mono = 1_000 * i;
+      const wall = T0 + mono - (i >= 5 ? 120_000 : 0) + (i >= 20 ? 300_000 : 0);
+      track = acceptFix(track, fix(T0 + mono), mono, wall);
+      expect(track.receivedMonoMs).toBe(mono);
+    }
+  });
+
+  it('a stamp-source regression re-bases on the second in-step fix', () => {
+    const T0 = 1_700_000_000_000;
+    let track = emptyTrack<TimedFix>();
+    for (let i = 0; i < 60; i++) {
+      const mono = 1_000 * i;
+      // System clock 60 s ahead of GNSS time; it steps a further 30 s at i = 11.
+      const wall = T0 + mono + 60_000 + (i >= 11 ? 30_000 : 0);
+      // Fix 9 is stamped by the system clock, every other one by GNSS time.
+      const ts = i === 9 ? wall : T0 + mono;
+      track = acceptFix(track, fix(ts), mono, wall);
+      // Only fix 10, the first behind the regression, waits for confirmation.
+      expect(track.receivedMonoMs).toBe(i === 10 ? 9_000 : mono);
+      expect(gpsState(track, mono + 900)).toBe('fresh');
+    }
+  });
+
+  it('an old cached fix after live fixes does not pair with an earlier rejected one', () => {
+    const T0 = 1_700_000_000_000;
+    let track = acceptFix(emptyTrack<TimedFix>(), fix(T0), 0, T0);
+    track = acceptFix(track, fix(T0 - 60_000), 12_000, T0 + 12_000);
+    track = acceptFix(track, fix(T0 + 13_000), 13_000, T0 + 13_000);
+    track = acceptFix(track, fix(T0 - 30_000), 42_000, T0 + 42_000);
+    expect(track.receivedMonoMs).toBe(13_000);
+    expect(gpsState(track, 42_000)).toBe('stale');
+  });
+
   it('a fix without a device timestamp always counts as new', () => {
     const a = acceptFix(emptyTrack<TimedFix>(), { accuracyM: 5 }, 0, 0);
     const b = acceptFix(a, { accuracyM: 5 }, 20_000, 0);
