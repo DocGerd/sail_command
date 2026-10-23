@@ -22,6 +22,8 @@ export interface GpsTrack<F extends TimedFix> {
   receivedMonoMs: number | null;
   /** Wall clock (Date.now) at receipt, for display and ETA projection. */
   receivedWallMs: number | null;
+  /** Last fix rejected as behind `deviceTimestampMs`, kept to detect a stamp-source regression (#1821). */
+  rejected: { timestampMs: number; monoMs: number } | null;
   denied: boolean;
 }
 
@@ -31,6 +33,7 @@ export function emptyTrack<F extends TimedFix>(): GpsTrack<F> {
     deviceTimestampMs: null,
     receivedMonoMs: null,
     receivedWallMs: null,
+    rejected: null,
     denied: false,
   };
 }
@@ -43,8 +46,17 @@ export const GPS_CLOCK_STEP_TOLERANCE_MS = 5_000;
  * one, so a re-delivered cached position cannot refresh the age. A timestamp
  * that went backwards is accepted only as a device clock step: the wall clock
  * stepped back with it, so their offset is unchanged, whereas an older cached
- * fix shifts that offset by its age. Returns the same object when the fix is
- * not new.
+ * fix shifts that offset by its age.
+ *
+ * A provider stamping its own (GNSS) clock can regress against the system
+ * clock, e.g. after one fix stamped by a clock that runs ahead (#1821). A
+ * single fix behind the last accepted one is indistinguishable from a cached
+ * replay, so it is held back; the next one is accepted if its timestamp
+ * advanced past it in step with the receipt clock, as a live stream does.
+ * Residual: two or more old fixes replayed at real-time pace pass too.
+ *
+ * A rejected fix never changes `fix` or the receipt clocks; a re-delivered
+ * timestamp returns the same object.
  */
 export function acceptFix<F extends TimedFix>(
   track: GpsTrack<F>,
@@ -55,18 +67,27 @@ export function acceptFix<F extends TimedFix>(
   const ts = fix.timestampMs;
   const lastTs = track.deviceTimestampMs;
   if (ts !== undefined && lastTs !== null && ts <= lastTs) {
+    if (ts === lastTs) return track;
     const lastWall = track.receivedWallMs;
     const clockStepped =
-      ts !== lastTs &&
       lastWall !== null &&
       Math.abs(wallNowMs - ts - (lastWall - lastTs)) <= GPS_CLOCK_STEP_TOLERANCE_MS;
-    if (!clockStepped) return track;
+    const prev = track.rejected;
+    const inStep =
+      prev !== null &&
+      ts > prev.timestampMs &&
+      Math.abs(ts - prev.timestampMs - (monoNowMs - prev.monoMs)) <= GPS_CLOCK_STEP_TOLERANCE_MS;
+    if (!clockStepped && !inStep) {
+      if (prev !== null && prev.timestampMs === ts) return track;
+      return { ...track, rejected: { timestampMs: ts, monoMs: monoNowMs } };
+    }
   }
   return {
     fix,
     deviceTimestampMs: ts ?? null,
     receivedMonoMs: monoNowMs,
     receivedWallMs: wallNowMs,
+    rejected: null,
     denied: false,
   };
 }

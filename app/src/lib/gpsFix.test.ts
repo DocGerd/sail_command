@@ -71,7 +71,8 @@ describe('gpsState', () => {
     const T0 = 1_700_000_000_000;
     const first = acceptFix(emptyTrack<TimedFix>(), fix(T0), 0, T0);
     const cached = acceptFix(first, fix(T0 - 60_000), 12_000, T0 + 12_000);
-    expect(cached).toBe(first);
+    expect(cached.fix).toBe(first.fix);
+    expect(cached.receivedMonoMs).toBe(first.receivedMonoMs);
     expect(gpsState(cached, 12_000)).toBe('stale');
   });
 
