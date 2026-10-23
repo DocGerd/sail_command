@@ -927,9 +927,14 @@ making design-level decisions; do not silently deviate.
   1.6px/8px → 0.8px/6.4px). The markup, the tokens and the rule each look
   correct in isolation and only the RESOLVED style shows it, so verify with
   `getComputedStyle` (real browser or jsdom against the real `app.css`),
-  never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
-  `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
-  `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
+  never by reading the CSS. **jsdom caveat: it resolves no `var()`**, so a
+  token in a `background` SHORTHAND expands to initial longhands:
+  `backgroundColor` reads `rgba(0, 0, 0, 0)` in BOTH the broken and fixed
+  states. Under jsdom 30.1.2 the shorthand itself still carried the declared
+  text and discriminated; at #1773 (jsdom 30.1.3) it reads the initial value
+  too. Read the winner with `app/src/test/cssBackgroundSentinels.ts`, which
+  rewrites each `var()` inside a `background`/`background-color` value to a
+  unique literal colour per token.
   The same cascade kept `.chip-shallow`'s amber hazard fill from ever
   rendering until PR #509 raised it to the compound `.chip.chip-shallow`
   (#506, closed 2026-08-11) — the same narrow route #504 took, again in
@@ -4346,10 +4351,11 @@ making design-level decisions; do not silently deviate.
   RoutingFailureKind` — EIGHT members (`timeout`, `worker-fatal`,
   `worker-error`, `messageerror`, `disposed`, `boat-not-in-catalogue` added by
   #54 §I.3, `cancelled` added by #1193, `wind-grid-coverage` added by #295 for
-  a stored plan whose grid predates the widened mask), and that eight-vs-eleven
-  distinction IS the layering, not a detail: `ROUTING_FAILURE_MESSAGE_KEY`
-  (`replan.ts`) keys on `RoutingFailureKind | 'worker-init' |
-  'persist-failed' | 'wind-unclassified'`, and those three extra causes
+  a stored plan whose grid predates the widened mask), and the split between
+  those eight and the extra keys below IS the layering, not a detail:
+  `ROUTING_FAILURE_MESSAGE_KEY` (`replan.ts`) keys on `RoutingFailureKind`
+  plus causes raised in the `state/` layer — read them off its key type
+  (#1776 added `startup-timeout` and `persist-slow`) — and those extra causes
   NEVER REACH `workerClient.ts` at all — `new RoutingError('persist-failed',
   …)` does not typecheck. `protocol.ts`'s `fatal` arm carries `stack?:
   string`, and the banner's remedy differs PER PATH with each one true of
@@ -4900,6 +4906,12 @@ making design-level decisions; do not silently deviate.
   `startPreviewSwAssertCallSites.test.ts` (#976) fails any test body calling
   bare `startPreview()` without `assertCleanServiceWorkerState(page)` unless
   its `EXEMPT_SITES` lists the site (#1578).
+- **A cloud-container restart kills every running background Bash task,
+  agent and detached process, and loses uncommitted worktree work** (twice
+  in the v0.59.0 cycle; an environment property, re-check after a harness
+  change). Commit and push in small steps, re-run only a sweep's unfinished
+  arms with `app/sweep/README.md`'s positional arm filter, and arm a
+  `send_later` check-in before any long wait.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
