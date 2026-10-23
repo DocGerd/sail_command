@@ -108,6 +108,8 @@ describe('backtrack collinear merge honours the comfort preference (#1754)', () 
   const COMFORT = 5;
   // Cells above the chord that only A->B crosses (B->C enters that row east of B).
   const UNDER_FIRST_STEP = (col: number) => (col >= 100 && col <= 110 ? 100 : 200);
+  // Mirror image: cells only B->C crosses.
+  const UNDER_SECOND_STEP = (col: number) => (col >= 146 && col <= 156 ? 100 : 200);
 
   it('scenario preconditions: the chord passes the low gate, shallower than either step', () => {
     const { A, B, C, mask } = scenario();
@@ -135,6 +137,15 @@ describe('backtrack collinear merge honours the comfort preference (#1754)', () 
     const { A, B, C, mask, c } = scenario(150, UNDER_FIRST_STEP);
     expect(mask.segmentClearanceM(A, B, LOW)).toBeCloseTo(10, 5);
     expect(mask.segmentClearanceM(B, C, LOW)).toBeCloseTo(20, 5);
+    expect(mask.segmentClearanceM(A, C, LOW)).toBeCloseTo(15, 5);
+    expect(backtrack(c, 0, mask, LOW, COMFORT)).toHaveLength(1);
+  });
+
+  it('merges when only the second step is shallower than the chord', () => {
+    // Steps 20 m and 10 m, chord 15 m: pins the second step's term of the bound.
+    const { A, B, C, mask, c } = scenario(150, UNDER_SECOND_STEP);
+    expect(mask.segmentClearanceM(A, B, LOW)).toBeCloseTo(20, 5);
+    expect(mask.segmentClearanceM(B, C, LOW)).toBeCloseTo(10, 5);
     expect(mask.segmentClearanceM(A, C, LOW)).toBeCloseTo(15, 5);
     expect(backtrack(c, 0, mask, LOW, COMFORT)).toHaveLength(1);
   });
@@ -180,8 +191,8 @@ describe('backtrack collinear merge honours the comfort preference (#1754)', () 
   });
 });
 
-// #1753: a backtrack handed any gate but the solve's own would silently disable the
-// merge check above, and open-water results would not show it.
+// #1753: a backtrack handed any gate but the solve's own would run the merge checks
+// above against the wrong depth, and open-water results would not show it.
 describe('solve hands backtrack its own gate (#1753)', () => {
   it('every mask query, merge checks included, uses the gate solve was given', () => {
     const mask = openWaterMask();
@@ -216,8 +227,9 @@ describe('solve hands backtrack its own gate (#1753)', () => {
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
     expect(calls).toBeGreaterThan(0);
-    // Longer than the solver's longest step (dtS): only backtrack's merge, which must
-    // pass segmentNavigable, can produce it, so backtrack's queries were recorded.
+    // Longer than the solver's longest step (dtS): in this fixture only backtrack's
+    // merge, which must pass segmentNavigable, can produce it, so backtrack's queries
+    // were recorded.
     expect(Math.max(...r.legs.map((l) => l.endTimeMs - l.startTimeMs))).toBeGreaterThan(600_000);
     expect(foreign).toBe(0);
   });
