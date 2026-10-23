@@ -63,7 +63,7 @@ describe('LiveReadiness (#1807)', () => {
     await waitFor(() =>
       expect(screen.getByText('Pre-sail check: 6 of 6 ready')).toBeInTheDocument(),
     );
-    const items = [...document.querySelectorAll('.live-readiness-item')];
+    const items = Array.from(document.querySelectorAll('.live-readiness-item'));
     expect(items.map((li) => li.querySelector('.live-readiness-label')?.textContent)).toEqual([
       'Offline map',
       'Map labels',
