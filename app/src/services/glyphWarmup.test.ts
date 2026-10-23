@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runGlyphWarmup } from './glyphWarmup';
+import { glyphCacheComplete, runGlyphWarmup } from './glyphWarmup';
 import { GLYPH_CACHE_NAME } from '../lib/glyphs';
 
 // jsdom provides neither navigator.serviceWorker nor the Cache API — both
@@ -211,5 +211,46 @@ describe('scheduleGlyphWarmup', () => {
       .map((c) => c[0] as string)
       .filter((u) => u.includes('glyph-manifest.json'));
     expect(manifestFetches).toHaveLength(1);
+  });
+});
+
+describe('glyphCacheComplete (#1807)', () => {
+  const base = 'http://localhost:3000/basemap-assets/fonts/Noto%20Sans%20Regular';
+  const manifest = [
+    'basemap-assets/fonts/Noto Sans Regular/0-255.pbf',
+    'basemap-assets/fonts/Noto Sans Regular/256-511.pbf',
+  ];
+
+  it('is true only when every manifest range is cached', async () => {
+    stubEnv({ manifest, cachedUrls: [`${base}/0-255.pbf`, `${base}/256-511.pbf`] });
+    await expect(glyphCacheComplete()).resolves.toBe(true);
+  });
+
+  it('is false with one range missing', async () => {
+    stubEnv({ manifest, cachedUrls: [`${base}/0-255.pbf`] });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+  });
+
+  it('fails closed without a manifest, with an empty one, or when the cache throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubEnv({ manifest: null });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+
+    stubEnv({ manifest: [] });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+
+    const { cachesOpen } = stubEnv({ manifest });
+    cachesOpen.mockRejectedValue(new Error('cache gone'));
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+  });
+
+  it('answers without a controlling service worker and while offline', async () => {
+    stubEnv({
+      controlled: false,
+      online: false,
+      manifest,
+      cachedUrls: [`${base}/0-255.pbf`, `${base}/256-511.pbf`],
+    });
+    await expect(glyphCacheComplete()).resolves.toBe(true);
   });
 });

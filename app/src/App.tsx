@@ -54,6 +54,7 @@ import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
 import SeamarksInView from './components/SeamarksInView';
 import AisTraffic from './components/AisTraffic';
+import type { AisStatus } from './state/useAisTraffic';
 import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
@@ -404,6 +405,8 @@ function AppShell() {
   // LiveView; false whenever the Live tab is not mounted). The setting itself
   // is never written. See useOwnshipGps.ts and OwnshipMarker.tsx.
   const [liveTracking, setLiveTracking] = useState(false);
+  // #1807: AIS status for Live's readiness panel; null while AisTraffic is unmounted.
+  const [aisStatus, setAisStatus] = useState<AisStatus | null>(null);
   const gps = useOwnshipGps(settings.showOwnship, liveTracking);
   const { fix: ownshipFix, hintVisible: ownshipHintVisible, dismissHint: dismissOwnshipHint } = gps;
 
@@ -1773,10 +1776,12 @@ function AppShell() {
                 route={aisRoute}
                 activeLegIndex={activeLegIndex}
                 panelSlot={aisInViewSlot}
+                onStatusChange={setAisStatus}
               />
               <LiveView
                 gps={gps}
                 onTrackingChange={setLiveTracking}
+                aisStatus={aisStatus}
                 panelSlot={isWide ? liveSlot : null}
                 reroute={{
                   busy: runBusy,

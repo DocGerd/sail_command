@@ -236,13 +236,14 @@ function renderLive(
   watchPosition: ReturnType<typeof fakeWatchPosition>['wp'],
   plan?: Plan,
   extra?: ReactNode,
+  liveProps: Pick<ComponentProps<typeof LiveView>, 'aisStatus'> = {},
 ) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
       <AppStateProvider>
         {plan && <TestSetPlan plan={plan} />}
-        <LiveViewHost watchPosition={watchPosition} />
+        <LiveViewHost watchPosition={watchPosition} {...liveProps} />
         {extra}
       </AppStateProvider>
     </I18nProvider>,
@@ -609,6 +610,50 @@ describe('LiveView', () => {
       renderLive(wp, TEST_PLAN);
       await screen.findByRole('button', { name: 'Start live view' });
       expect(screen.queryByText(/the route is not computed/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('pre-sail readiness (#1807)', () => {
+    const summary = () => document.querySelector('.live-readiness summary');
+    const row = (id: string) => document.querySelector(`.live-readiness [data-check="${id}"]`);
+
+    it('shows the checklist before tracking, hides it while tracking, and brings it back on stop', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
+      // jsdom has no caches, permissions or wake lock, and the fixture grid
+      // ends before the passage: every check fails closed.
+      expect(summary()).toHaveTextContent('Pre-sail check: 0 of 6 ready');
+      expect(row('forecast')).toHaveTextContent('Not ready');
+
+      fireEvent.click(toggle);
+      expect(document.querySelector('.live-readiness')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      expect(summary()).toHaveTextContent('Pre-sail check: 0 of 6 ready');
+    });
+
+    it('reads the AIS status App.tsx passes down', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN, undefined, { aisStatus: 'live' });
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(summary()).toHaveTextContent('Pre-sail check: 1 of 6 ready');
+      expect(row('ais')).toHaveTextContent('AISReadyKey working, traffic received.');
+    });
+
+    it("reads the wake lock support LiveView's own useWakeLock reports", async () => {
+      Object.defineProperty(navigator, 'wakeLock', {
+        configurable: true,
+        value: { request: vi.fn(() => new Promise(() => {})) },
+      });
+      try {
+        const { wp } = fakeWatchPosition();
+        renderLive(wp, TEST_PLAN);
+        await screen.findByRole('button', { name: 'Start live view' });
+        expect(row('wakeLock')).toHaveTextContent('Screen onReady');
+      } finally {
+        Reflect.deleteProperty(navigator, 'wakeLock');
+      }
     });
   });
 

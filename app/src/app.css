@@ -728,6 +728,55 @@ select {
   margin: 0.15rem 0 0;
 }
 
+/* #1807: pre-sail readiness checklist. State is carried by the word and the
+   icon shape; colour only reinforces it. */
+.sc-disclosure.live-readiness {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+.live-readiness-intro {
+  margin: 0 0 0.5rem;
+}
+
+.live-readiness-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.live-readiness-item {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr auto;
+  column-gap: 0.5rem;
+  align-items: center;
+  color: var(--sc-banner-warning-fg);
+}
+
+.live-readiness-item--ok {
+  color: var(--sc-fg);
+}
+
+.live-readiness-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.live-readiness-label {
+  font-weight: 700;
+}
+
+.live-readiness-state {
+  font-weight: 700;
+}
+
+.live-readiness-detail {
+  grid-column: 2 / -1;
+  color: var(--sc-fg);
+}
+
 /* Stale: values stay readable but visibly not current. */
 .live-view-data--stale {
   opacity: 0.6;

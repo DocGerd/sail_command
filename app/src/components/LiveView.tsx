@@ -39,8 +39,10 @@ import { useWakeLock } from '../state/useWakeLock';
 import { isLiveSimRequested } from '../dev/liveSimulator';
 import LiveSimulatorControls from '../dev/LiveSimulatorControls';
 import { liveSimDict } from '../dev/LiveSimulatorControls.dict';
+import type { AisStatus } from '../state/useAisTraffic';
 import Button from './Button';
 import Chip from './Chip';
+import LiveReadiness from './LiveReadiness';
 import type { LatLon, Leg, ManeuverKind } from '../types';
 
 // #143: dev/UAT-only Live-view simulator gate — mirrors App.tsx's
@@ -98,6 +100,8 @@ export interface LiveViewProps {
   // #115: absent (tests/contexts without the plan-flow wiring) = no reroute
   // action rendered.
   reroute?: LiveRerouteControls | null;
+  // #1807: AisTraffic's status for the readiness panel; null/absent = AIS not mounted.
+  aisStatus?: AisStatus | null;
 }
 
 // Set when the user starts tracking, cleared only by an explicit Stop, so a
@@ -145,7 +149,13 @@ function WarningIcon() {
 // re-render the whole app); they arrive via the `gps` prop. Only the
 // much-lower-frequency derived activeLegIndex is pushed up, for RouteLayer's
 // highlight.
-export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: LiveViewProps) {
+export default function LiveView({
+  gps,
+  onTrackingChange,
+  panelSlot,
+  reroute,
+  aisStatus = null,
+}: LiveViewProps) {
   const t = useT();
   const [lang] = useLang();
   const { plan, rig, setActiveLegIndex } = useActivePlan();
@@ -467,6 +477,16 @@ export default function LiveView({ gps, onTrackingChange, panelSlot, reroute }: 
             {t('live.resume.action')}
           </Button>
         </div>
+      )}
+
+      {!active && (
+        <LiveReadiness
+          plan={plan}
+          arrivalMs={legs[legs.length - 1].endTimeMs}
+          wakeLockSupported={wakeLock.supported}
+          aisStatus={aisStatus}
+          gpsDenied={gps.denied}
+        />
       )}
 
       {handover && <p className="live-view-handover">{t('live.handover')}</p>}
