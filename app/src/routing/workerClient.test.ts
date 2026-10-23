@@ -991,13 +991,21 @@ describe('#295: stored wind grid must cover the mask domain', () => {
   );
 });
 
+
 // #1669: planRoute's over-cap throw (#1661) travels the REAL protocol.ts handler
 // (catch -> fatal) into RoutingClient, so the fake worker forwards every posted
-// message to createHandler. The throw sits in openLadder, before any polar
-// lookup, so the missing third polar key is irrelevant.
-describe('#1669: MAX_HEADSAILS throw reaches the client as worker-fatal', () => {
+// message to createHandler. Two rows, because protocol.ts has two separate
+// catch sites: the pool-size-1 sync arm and the async arm production defaults to.
+// The throw sits in openLadder (planRoute.ts), before any polar lookup. SailId only admits genoa|fock, so a third entry has to repeat one; the guard counts entries (sailIds.length), not distinct sails.
+describe("#1669: MAX_HEADSAILS throw reaches the client as worker-fatal", () => {
+  const OVER_CAP_REQUEST: PlanRequest = {
+    ...PLAN_REQUEST,
+    sailIds: ["genoa", "fock", "genoa"],
+  };
+  const OVER_CAP_MESSAGE = /#1661: 3 headsails requested, MAX_HEADSAILS is 2/;
+
   it(
-    'a 3-sail plan request rejects with RoutingError kind worker-fatal',
+    "a 3-sail plan request rejects with RoutingError kind worker-fatal (pool size 1, sync arm)",
     async () => {
       const w = fakeWorker();
       const handle = createHandler((m) => w.emit(m));
@@ -1007,13 +1015,49 @@ describe('#1669: MAX_HEADSAILS throw reaches the client as worker-fatal', () => 
       };
       const client = new RoutingClient(() => w as unknown as Worker);
       await client.init(INIT_ASSETS);
-      const request: PlanRequest = { ...PLAN_REQUEST, sailIds: ['genoa', 'fock', 'genoa'] };
       await expectRoutingError(
-        client.plan(request, uniformWindGrid(12, 0)),
-        'worker-fatal',
-        /#1661: 3 headsails requested, MAX_HEADSAILS is 2/,
+        client.plan(OVER_CAP_REQUEST, uniformWindGrid(12, 0)),
+        "worker-fatal",
+        OVER_CAP_MESSAGE,
       );
-      expect(client.isDisposed).toBe(false);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "a 3-sail plan request rejects with RoutingError kind worker-fatal (pool size 2, async arm)",
+    async () => {
+      const ladder = fakeWorker();
+      const handle = createHandler((m) => ladder.emit(m));
+      ladder.postMessage = function (m: WorkerRequest) {
+        this.posted.push(m);
+        handle(m);
+      };
+      // The throw precedes any solve step, so the sibling only has to answer
+      // its init; it never receives work.
+      const solver = fakeWorker();
+      let solverPort: MessagePort | undefined;
+      solver.postMessage = function (m: WorkerRequest) {
+        this.posted.push(m);
+        solverPort = (m as unknown as { port: MessagePort }).port;
+        this.emit({ type: "ready" });
+      };
+      const client = new RoutingClient(() => ladder as unknown as Worker, {
+        solverFactory: () => solver as unknown as Worker,
+        poolSize: 2,
+      });
+      try {
+        await client.init(INIT_ASSETS);
+        await expectRoutingError(
+          client.plan(OVER_CAP_REQUEST, uniformWindGrid(12, 0)),
+          "worker-fatal",
+          OVER_CAP_MESSAGE,
+        );
+      } finally {
+        const init = ladder.posted[0];
+        if (init.type === "init") init.solverPort?.close();
+        solverPort?.close();
+      }
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
