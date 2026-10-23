@@ -348,11 +348,19 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Routenberechnung wird vorbereitet — Routingdaten werden geladen…',
+  'planner.status.elapsed': 'Verstrichene Zeit: {time}',
+  'planner.status.longRunning':
+    'Diese Route braucht länger. Routen mit mehreren Wegpunkten können einige Minuten dauern; Sie können jederzeit abbrechen.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Route wird für alle Segel berechnet…',
   // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
   'planner.status.routingSailSecondPass': 'Keine Route gefunden — zweiter Suchlauf für alle Segel…',
+  // #1794: dieselben Phasen für eine Anfrage mit nur einem Segel
+  'planner.status.routingSingle': 'Route wird berechnet…',
+  'planner.status.routingSingleSecondPass': 'Keine Route gefunden — zweiter Suchlauf…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
@@ -381,6 +389,9 @@ export const de = {
   // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
   'error.workerInit':
     'Der Routenplaner konnte nicht gestartet werden — erforderliche Daten konnten nicht geladen werden. App neu laden und erneut versuchen.',
+  // #1776: siehe die englische Fassung.
+  'error.workerStartupTimeout':
+    'Der Routenplaner ist nicht innerhalb des Zeitlimits gestartet. Seine Daten werden bei langsamer Verbindung womöglich noch geladen, oder der Planer hat nicht geantwortet. Erneut versuchen; ein laufender Download wird fortgesetzt.',
   'error.routingTimeout':
     'Die Routenberechnung hat das Zeitlimit überschritten. Ein erneuter Versuch dürfte genauso am Zeitlimit scheitern — eine einfachere Route oder ein schnelleres Gerät könnten helfen.',
   // #433 review Minor 1: behauptet NICHT, dass ein erneuter Versuch
@@ -410,6 +421,9 @@ export const de = {
     'Die gespeicherte Windvorhersage dieser Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und reicht für diese Aktion nicht aus. Route neu berechnen oder neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
+  // #1776: siehe die englische Fassung.
+  'error.planSaveSlow':
+    'Die Route wurde berechnet, das Speichern dauert aber ungewöhnlich lange. Wird das Speichern abgeschlossen, bleibt die Route bei den gespeicherten Routen. Eine erneute Planung jetzt könnte eine zweite Kopie speichern.',
   'error.windUnknown':
     'Windvorhersage konnte aufgrund eines unerwarteten Fehlers nicht geladen werden. Bitte in Kürze erneut versuchen.',
   // #265/#866: siehe die englische Fassung — 'mask-blocked' kann ein

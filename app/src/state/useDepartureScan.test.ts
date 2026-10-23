@@ -100,6 +100,21 @@ describe('useDepartureScan', () => {
     expect(result.current.state.candidates).toEqual([]);
   });
 
+  // #1776: a start-up timeout must not advise a reload that discards the download.
+  it.each([
+    ['worker-init', 'error.workerInit'],
+    ['startup-timeout', 'error.workerStartupTimeout'],
+  ] as const)('a %s start-up failure surfaces %s', async (failure, key) => {
+    const { result } = renderHook(() => useDepartureScan(() => Promise.resolve({ failure })));
+
+    await act(async () => {
+      await result.current.scan(makeRequest());
+    });
+
+    expect(result.current.state.error).toBe(key);
+    expect(result.current.state.candidates).toEqual([]);
+  });
+
   // #356a §2.2 — THE key correctness constraint: every candidate solve must
   // request the genoa ALONE, regardless of what sailIds the active plan
   // itself carries (a plan typically requests both). Mutation-checked below.

@@ -107,6 +107,9 @@ import { startPreview, mapReady } from './helpers';
 
 interface ScTestMap {
   jumpTo(options: { center: [number, number]; zoom: number }): unknown;
+  getCenter(): { lng: number; lat: number };
+  getZoom(): number;
+  getCanvas(): HTMLCanvasElement;
   getLayer(id: string): unknown;
   project(lngLat: [number, number]): { x: number; y: number };
   setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
@@ -205,6 +208,62 @@ async function jumpToCluster(page: Page, zoom: number): Promise<void> {
       (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap.jumpTo({ center, zoom }),
     { center: CLUSTER_CENTER, zoom },
   );
+}
+
+/** Re-asserts the camera, projects the target and queries the layer in ONE
+ * page round trip, retrying until the waypoint is under the returned pixel.
+ * With a plan active RouteLayer re-fits (to the route) whenever chrome resizes
+ * until a user gesture, and a programmatic `jumpTo` is not one, so a pixel
+ * sampled once after a single jump can go stale (#1758). The jump is skipped
+ * while the camera is already on target, so the render can settle between polls:
+ * `queryRenderedFeatures` straight after a `jumpTo` in the same task reads the
+ * previous frame's placement. The returned pixel is verified inside the poll
+ * but the caller's click follows a CDP round trip later, so a re-fit landing
+ * in that gap is narrowed, not closed. */
+async function aimAtWaypoint(
+  page: Page,
+  target: { id: string; lon: number; lat: number },
+  zoom: number,
+  message: string,
+): Promise<{ x: number; y: number }> {
+  let aimed: { x: number; y: number; ids: string[] } = { x: 0, y: 0, ids: [] };
+  await expect
+    .poll(
+      async () => {
+        aimed = await page.evaluate(
+          ({ center, zoom, ll }) => {
+            const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+            const c = map.getCenter();
+            if (
+              Math.abs(c.lng - center[0]) > 1e-9 ||
+              Math.abs(c.lat - center[1]) > 1e-9 ||
+              Math.abs(map.getZoom() - zoom) > 1e-9
+            ) {
+              map.jumpTo({ center, zoom });
+            }
+            const local = map.project(ll);
+            const box = map.getCanvas().getBoundingClientRect();
+            const ids = map.getLayer('sc-saved-waypoints')
+              ? map
+                  .queryRenderedFeatures(
+                    [
+                      [local.x - 2, local.y - 2],
+                      [local.x + 2, local.y + 2],
+                    ],
+                    { layers: ['sc-saved-waypoints'] },
+                  )
+                  .map((f) => String(f.properties.id))
+              : [];
+            return { x: box.left + local.x, y: box.top + local.y, ids };
+          },
+          { center: CLUSTER_CENTER, zoom, ll: [target.lon, target.lat] as [number, number] },
+        );
+        return aimed.ids;
+      },
+      { timeout: 30_000, message },
+    )
+    .toContain(target.id);
+  return { x: aimed.x, y: aimed.y };
 }
 
 /** Sorted `<layerId>:<identity>` strings for every feature rendered inside
@@ -708,7 +767,6 @@ test('#1016: a via-armed tap on a saved waypoint still inserts it BY NAME once a
       'sc-saved-waypoint-labels must paint below the route stack (sc-route-shallow is its bottom layer)',
     ).toBeLessThan(atRoute('sc-route-shallow'));
 
-    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
     const target = SEED_WAYPOINTS[4];
     const viaSection = page.getByRole('region', { name: 'Wegpunkte' });
     const armButton = viaSection.getByRole('button', {
@@ -720,13 +778,12 @@ test('#1016: a via-armed tap on a saved waypoint still inserts it BY NAME once a
     await armButton.click();
     await expect(tapPickBanner).toBeVisible();
 
-    const point = await pagePointOf(page, [target.lon, target.lat]);
-    await expect
-      .poll(() => waypointIdsAtPoint(page, point), {
-        timeout: 30_000,
-        message: `with a plan active, no sc-saved-waypoints feature at the projected pixel for ${target.id}`,
-      })
-      .toContain(target.id);
+    const point = await aimAtWaypoint(
+      page,
+      target,
+      ZOOM_AT_OR_ABOVE_12,
+      `with a plan active, no sc-saved-waypoints feature at the projected pixel for ${target.id}`,
+    );
     await page.mouse.click(point.x, point.y);
 
     // THE discriminator, same as #924: the row carries the SAVED NAME, not

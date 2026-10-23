@@ -5331,3 +5331,16 @@ select {
     align-self: flex-start;
   }
 }
+
+/* #1775: elapsed readout under the planner status; not a live region. */
+.planner-elapsed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.planner-elapsed p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}

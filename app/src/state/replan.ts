@@ -214,7 +214,12 @@ export class ReplanError extends Error {
  * exists to prevent.
  */
 export const ROUTING_FAILURE_MESSAGE_KEY: Record<
-  RoutingFailureKind | 'worker-init' | 'persist-failed' | 'wind-unclassified',
+  | RoutingFailureKind
+  | 'worker-init'
+  | 'startup-timeout'
+  | 'persist-failed'
+  | 'persist-slow'
+  | 'wind-unclassified',
   MsgKey
 > = {
   timeout: 'error.routingTimeout',
@@ -238,7 +243,11 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   // special-cases 'cancelled' straight back to idle before reaching here.
   cancelled: 'error.routingCancelled',
   'worker-init': 'error.workerInit',
+  // #1776: usePlanFlow's start-up and save timeouts. Raised there, never by
+  // workerClient.ts.
+  'startup-timeout': 'error.workerStartupTimeout',
   'persist-failed': 'error.planSaveFailed',
+  'persist-slow': 'error.planSaveSlow',
   'wind-unclassified': 'error.windUnknown',
 };
 
@@ -252,6 +261,22 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
  */
 export function routingFailureKey(err: unknown): MsgKey {
   return err instanceof RoutingError ? ROUTING_FAILURE_MESSAGE_KEY[err.kind] : 'error.internal';
+}
+
+/** #1776: why usePlanFlow's start-up produced no client, by type rather than message. */
+export interface ClientStartFailure {
+  failure: 'worker-init' | 'startup-timeout';
+}
+
+export function isStartedClient(
+  started: ReplanClient | ClientStartFailure | null,
+): started is ReplanClient {
+  return started !== null && !('failure' in started);
+}
+
+/** A bare null (the plain ensureClient form) counts as a load/init failure. */
+export function clientStartFailureKey(failed: ClientStartFailure | null): MsgKey {
+  return ROUTING_FAILURE_MESSAGE_KEY[failed?.failure ?? 'worker-init'];
 }
 
 /**

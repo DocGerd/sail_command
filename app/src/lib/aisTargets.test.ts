@@ -48,6 +48,21 @@ describe('mergeAisMessage', () => {
     expect(t?.lastUpdateMs).toBe(2000);
   });
 
+  it('carries shipType from an Extended Class B position and keeps it across a type-less position', () => {
+    const store = new Map<string, AisTarget>();
+    mergeAisMessage(store, { ...POS, shipType: 37 }, 1000);
+    expect(store.get('211234560')?.shipType).toBe(37);
+    mergeAisMessage(store, { ...POS, lat: 54.8 }, 2000);
+    expect(store.get('211234560')?.shipType).toBe(37);
+  });
+
+  it('a position-carried shipType replaces a previously known one', () => {
+    const store = new Map<string, AisTarget>();
+    mergeAisMessage(store, STATIC, 500);
+    mergeAisMessage(store, { ...POS, shipType: 37 }, 1000);
+    expect(store.get('211234560')?.shipType).toBe(37);
+  });
+
   it('a ShipStaticData before any position creates a position-less (unrenderable) stub', () => {
     const store = new Map<string, AisTarget>();
     mergeAisMessage(store, STATIC, 500);

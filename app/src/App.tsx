@@ -163,7 +163,7 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
 // how long the passage takes): a realistic passage completed at a few
 // percent by construction, and it reset to 0 at every genoa->fock switch and
 // #53 depth-relaxation retry. `rig` alone is now the phase signal, honest
-// and bounded ("sail N of 2" — PlannerPanel.tsx renders it).
+// and bounded (a phase line — PlannerPanel.tsx renders it).
 // Exported for a focused unit test of the phase mapping (App.test.tsx) — the
 // full render can't easily hold the transient 'probing-depth' phase, and the
 // adapter is the single point where a phase-mapping typo would slip through.
@@ -177,6 +177,8 @@ export function toPlannerStatus(
       return { phase: 'idle' };
     case 'fetching-wind':
       return { phase: 'fetching' };
+    case 'starting':
+      return { phase: 'starting' };
     case 'routing':
       return {
         phase: 'routing',
@@ -240,6 +242,9 @@ const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
   'error.routingMessageError',
   'error.routingInterrupted',
   'error.planSaveFailed',
+  // #1776: a retry joins a download still in flight, or builds a fresh worker.
+  // error.planSaveSlow is deliberately absent: a re-plan could store a second copy.
+  'error.workerStartupTimeout',
 ]);
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -382,7 +387,14 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
-  const { planning, run, ensureClient, cancel } = usePlanFlow();
+  const {
+    planning,
+    startedAtMs: planningStartedAtMs,
+    run,
+    ensureClient,
+    ensureClientOrFailure,
+    cancel,
+  } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -2186,6 +2198,7 @@ function AppShell() {
                   onPlan={handlePlan}
                   onCancelPlan={cancel}
                   planning={plannerStatus}
+                  planningStartedAtMs={planningStartedAtMs}
                   plan={plan}
                   rig={rig}
                   formDirty={formDirty}
@@ -2203,7 +2216,7 @@ function AppShell() {
                 {/* #356 part (a): "Compare departure times" — its own card
                     below the main planner form, gated internally on `plan`
                     (renders nothing before a first plan exists). Reuses the
-                    same shared worker singleton via `ensureClient`.
+                    same shared worker singleton via `ensureClientOrFailure`.
                     #937 (part c): a confirmed window's two-rig solve becomes
                     the active plan unconditionally on success, the same
                     precedent handleLiveReroute follows for its own
@@ -2215,7 +2228,7 @@ function AppShell() {
                     #983 announcer any other way). */}
                 <DepartureCompare
                   plan={plan}
-                  ensureClient={ensureClient}
+                  ensureClient={ensureClientOrFailure}
                   onConfirmed={handleDepartureConfirmed}
                 />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView

@@ -64,6 +64,8 @@ async function setMovingFix(cdp: CDPSession, fix: MovingFix): Promise<void> {
 interface LegGeo {
   start: { lat: number; lon: number };
   end: { lat: number; lon: number };
+  startTimeMs: number;
+  endTimeMs: number;
 }
 
 /** The recommended rig's legs of the first stored plan (the rig the app shows first), read from IndexedDB. */
@@ -91,7 +93,14 @@ function readRecommendedLegs(page: Page): Promise<LegGeo[]> {
               reject(new Error('recommended rig has no stored legs'));
               return;
             }
-            resolve(legs.map((l) => ({ start: l.start, end: l.end })));
+            resolve(
+              legs.map((l) => ({
+                start: l.start,
+                end: l.end,
+                startTimeMs: l.startTimeMs,
+                endTimeMs: l.endTimeMs,
+              })),
+            );
           };
         };
       }),
@@ -99,36 +108,47 @@ function readRecommendedLegs(page: Page): Promise<LegGeo[]> {
 }
 
 /**
- * Independent oracle for the heading-to-steer readout: nearest leg by planar
- * (equirectangular) point-to-segment distance, then the initial great-circle
- * bearing from the fix to that leg's end.
+ * Nearest leg by planar (equirectangular) point-to-segment distance, with the
+ * clamped along-track fraction of the fix on it. Deliberately not the app's
+ * great-circle projection, so the oracles below stay independent of it.
+ */
+function nearestLeg(
+  legs: LegGeo[],
+  fix: { latitude: number; longitude: number },
+): { index: number; fraction: number } {
+  const kx = Math.cos((fix.latitude * Math.PI) / 180);
+  const toXY = (p: { lat: number; lon: number }) => ({
+    x: (p.lon - fix.longitude) * kx,
+    y: p.lat - fix.latitude,
+  });
+  let best = { index: 0, fraction: 0 };
+  let bestDist = Number.POSITIVE_INFINITY;
+  legs.forEach((leg, index) => {
+    const a = toXY(leg.start);
+    const b = toXY(leg.end);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const fraction = len2 === 0 ? 0 : Math.max(0, Math.min(1, (-a.x * dx - a.y * dy) / len2));
+    const d = Math.hypot(a.x + fraction * dx, a.y + fraction * dy);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { index, fraction };
+    }
+  });
+  return best;
+}
+
+/**
+ * Independent oracle for the heading-to-steer readout: the initial
+ * great-circle bearing from the fix to the nearest leg's end.
  */
 function expectedHeadingToSteerDeg(
   legs: LegGeo[],
   fix: { latitude: number; longitude: number },
 ): number {
   const rad = Math.PI / 180;
-  const kx = Math.cos(fix.latitude * rad);
-  const toXY = (p: { lat: number; lon: number }) => ({
-    x: (p.lon - fix.longitude) * kx,
-    y: p.lat - fix.latitude,
-  });
-  let bestIdx = 0;
-  let bestDist = Number.POSITIVE_INFINITY;
-  legs.forEach((leg, i) => {
-    const a = toXY(leg.start);
-    const b = toXY(leg.end);
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len2 = dx * dx + dy * dy;
-    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, (-a.x * dx - a.y * dy) / len2));
-    const d = Math.hypot(a.x + t * dx, a.y + t * dy);
-    if (d < bestDist) {
-      bestDist = d;
-      bestIdx = i;
-    }
-  });
-  const end = legs[bestIdx].end;
+  const end = legs[nearestLeg(legs, fix).index].end;
   const phi1 = fix.latitude * rad;
   const phi2 = end.lat * rad;
   const dLon = (end.lon - fix.longitude) * rad;
@@ -147,6 +167,76 @@ function headingError(
   if (Number.isNaN(deg)) return Number.POSITIVE_INFINITY;
   const d = Math.abs(deg - expectedHeadingToSteerDeg(legs, fix)) % 360;
   return Math.min(d, 360 - d);
+}
+
+/**
+ * Independent oracle for the projected ETA: the plan's arrival shifted by how
+ * far the fix time is from the plan's own time at the fix's position, which
+ * is the plan's stored leg times interpolated along the nearest leg. The fix
+ * time is not observable from outside, so it is bracketed by page clock reads
+ * taken before the fix and after the readout settled.
+ */
+function expectedEta(
+  legs: LegGeo[],
+  fix: { latitude: number; longitude: number },
+  fixAtMs: number,
+): { etaMs: number; driftMs: number } {
+  const { index, fraction } = nearestLeg(legs, fix);
+  const leg = legs[index];
+  const plannedAtFixMs = leg.startTimeMs + fraction * (leg.endTimeMs - leg.startTimeMs);
+  const driftMs = fixAtMs - plannedAtFixMs;
+  return { etaMs: legs[legs.length - 1].endTimeMs + driftMs, driftMs };
+}
+
+/** Distance in whole minutes from `value` to the closed range [lo, hi] on a circle of `period`. */
+function circularRangeGap(value: number, lo: number, hi: number, period: number): number {
+  const mod = (n: number) => ((n % period) + period) % period;
+  const v = mod(value - lo);
+  const width = hi - lo;
+  if (v <= width) return 0;
+  return Math.min(v - width, period - v);
+}
+
+/**
+ * Compares the shown "HH:MM (±N min)" ETA to the oracle over the fix-time
+ * bracket. Returns 'ok' or a description naming the shown and expected values.
+ * Tolerance is the readout's one-minute rounding.
+ */
+async function etaVerdict(
+  page: Page,
+  eta: Locator,
+  legs: LegGeo[],
+  fix: { latitude: number; longitude: number },
+  fixBeforeMs: number,
+): Promise<string> {
+  const text = (await eta.textContent()) ?? '';
+  const match = /(\d{2}):(\d{2}) \(([+-]?\d+) min\)/.exec(text);
+  if (!match) return `unparseable ETA readout "${text}"`;
+  const shownMinuteOfDay = Number.parseInt(match[1], 10) * 60 + Number.parseInt(match[2], 10);
+  const shownDriftMin = Number.parseInt(match[3], 10);
+
+  const fixLatestMs = await page.evaluate(() => Date.now());
+  const early = expectedEta(legs, fix, fixBeforeMs);
+  const late = expectedEta(legs, fix, fixLatestMs);
+  const minuteOfDay = (ms: number): Promise<number> =>
+    page.evaluate((t) => {
+      const d = new Date(t);
+      return d.getHours() * 60 + d.getMinutes();
+    }, ms);
+  const loMinute = await minuteOfDay(early.etaMs);
+  const etaGap = circularRangeGap(
+    shownMinuteOfDay,
+    loMinute,
+    loMinute + (late.etaMs - early.etaMs) / 60_000,
+    1440,
+  );
+  const driftGap = Math.max(
+    0,
+    early.driftMs / 60_000 - shownDriftMin,
+    shownDriftMin - late.driftMs / 60_000,
+  );
+  if (etaGap <= 1 && driftGap <= 1) return 'ok';
+  return `shown "${text.trim()}"; expected ETA minute-of-day from ${loMinute} (gap ${etaGap}), drift ${(early.driftMs / 60_000).toFixed(1)}..${(late.driftMs / 60_000).toFixed(1)} min (gap ${driftGap.toFixed(1)})`;
 }
 
 /**
@@ -197,6 +287,8 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
 
     await page.getByRole('tab', { name: 'Live' }).click();
     const liveToggle = page.getByRole('button', { name: 'Live-Ansicht' });
+    const fixBeforeMs = () => page.evaluate(() => Date.now());
+    let fixSentAtMs = await fixBeforeMs();
     await setMovingFix(cdp, { ...FIX_ORIGIN, heading: 90, speed: 3 });
     await liveToggle.click();
     await expect(liveToggle).toHaveAttribute('aria-pressed', 'true');
@@ -224,21 +316,31 @@ test('motion: a moving fix drives COG, SOG, heading-to-steer and ETA', async ({
     const htsAtOrigin = await hts.textContent();
     await expect(eta).toContainText('Voraussichtliche Ankunft');
     await expect(eta).not.toContainText('—');
-    const etaAtOrigin = await eta.textContent();
+    const expectEta = (fix: { latitude: number; longitude: number }, sentAtMs: number) =>
+      expect
+        .poll(() => etaVerdict(page, eta, legs, fix, sentAtMs), {
+          message: 'ETA readout vs plan-time oracle',
+          timeout: 30_000,
+        })
+        .toBe('ok');
+    await expectEta(FIX_ORIGIN, fixSentAtMs);
 
     // 2.5 m/s = 4.86 kn.
+    fixSentAtMs = await fixBeforeMs();
     await setMovingFix(cdp, { ...FIX_FJORD_MOUTH, heading: 45, speed: 2.5 });
     await expect(cog).toHaveText('045°T', { timeout: 30_000 });
     await expect(sog).toHaveText('4,9 kn');
     await expect.poll(async () => hts.textContent(), { timeout: 30_000 }).not.toBe(htsAtOrigin);
-    await expect.poll(async () => eta.textContent(), { timeout: 30_000 }).not.toBe(etaAtOrigin);
     await expectHeadingToSteer(FIX_FJORD_MOUTH);
+    await expectEta(FIX_FJORD_MOUTH, fixSentAtMs);
 
     // 4.1 m/s = 7.97 kn; heading wraps through north (355).
+    fixSentAtMs = await fixBeforeMs();
     await setMovingFix(cdp, { ...FIX_OFF_SOENDERBORG, heading: 355, speed: 4.1 });
     await expect(cog).toHaveText('355°T', { timeout: 30_000 });
     await expect(sog).toHaveText('8,0 kn');
     await expectHeadingToSteer(FIX_OFF_SOENDERBORG);
+    await expectEta(FIX_OFF_SOENDERBORG, fixSentAtMs);
 
     await expect(page.locator('[role="alert"]')).toHaveCount(0);
   } finally {
