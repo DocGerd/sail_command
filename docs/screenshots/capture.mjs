@@ -443,7 +443,9 @@ while (Date.now() < wavesDeadline) {
   if (
     (await wavesToggle.count()) > 0 &&
     (await wavesToggle.first().isEnabled()) &&
-    (await wavesToggle.first().isChecked())
+    (await wavesToggle.first().isChecked()) &&
+    // RouteLayer sets aria-describedby exactly when the grid is missing or misses the slider hour.
+    (await wavesToggle.first().getAttribute('aria-describedby')) === null
   ) {
     wavesReady = true;
     break;
