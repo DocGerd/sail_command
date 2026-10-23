@@ -18,6 +18,7 @@ vi.mock('../lib/harborReachability', async (importOriginal) => {
 });
 import HarborPicker, {
   harborAccessCopy,
+  orderBandScanIds,
   unreachableBand,
   useUnreachableBandOf,
   normalizeHarborSearch,
@@ -626,6 +627,43 @@ describe('unreachableBand (#1721)', { timeout: solverTimeoutMs(20_000) }, () => 
     const floods = countFloods(mask);
     expect(unreachableBand(mask, ALL, easyGo, 'pocket', 3.5)).toBeNull();
     expect(floods()).toBe(1);
+  });
+});
+
+describe('orderBandScanIds (#1749)', () => {
+  it('puts selected ids first, then visible, then the rest in order', () => {
+    expect(orderBandScanIds(['a', 'b', 'c', 'd'], ['d'], ['c', 'b'])).toEqual(['d', 'c', 'b', 'a']);
+  });
+
+  it('drops ids outside the scan list and keeps each id once', () => {
+    expect(orderBandScanIds(['a', 'b'], ['x', 'b'], ['b', 'y', 'a'])).toEqual(['b', 'a']);
+  });
+});
+
+describe('HarborPicker onVisibleIdsChange (#1749)', () => {
+  const mount = (onVisibleIdsChange: (ids: readonly string[]) => void) => {
+    localStorage.setItem('sc-lang', 'en');
+    return render(
+      <I18nProvider>
+        <HarborPicker
+          harbors={RANK_SET}
+          recentIds={[]}
+          onSelect={vi.fn()}
+          onVisibleIdsChange={onVisibleIdsChange}
+        />
+      </I18nProvider>,
+    );
+  };
+
+  it('reports the shown rows while open and clears on unmount', () => {
+    const spy = vi.fn();
+    const { unmount } = mount(spy);
+    expect(spy).not.toHaveBeenCalled();
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'Marstal' } });
+    expect(spy).toHaveBeenLastCalledWith(['marstal']);
+    unmount();
+    expect(spy).toHaveBeenLastCalledWith([]);
   });
 });
 

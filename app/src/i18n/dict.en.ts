@@ -336,11 +336,19 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Preparing route calculation — loading routing data…',
+  'planner.status.elapsed': 'Elapsed: {time}',
+  'planner.status.longRunning':
+    'This route is taking a while. Routes with several waypoints can take a few minutes; you can cancel at any time.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Calculating route for all sails…',
   // #1136: the motor-off salvage re-run after a failed first search
   'planner.status.routingSailSecondPass': 'No route found — second search pass for all sails…',
+  // #1794: the same phases for a request with a single sail
+  'planner.status.routingSingle': 'Calculating route…',
+  'planner.status.routingSingleSecondPass': 'No route found — second search pass…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
@@ -364,6 +372,11 @@ export const en = {
   // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
   'error.workerInit':
     'The route planner could not be started — required data failed to load. Reload the app and try again.',
+  // #1776: start-up exceeded STARTUP_TIMEOUT_MS. True whether the data is
+  // still downloading or the worker never answered; a retry joins a download
+  // still in flight (assets.ts keeps it) and builds a fresh worker.
+  'error.workerStartupTimeout':
+    'The route planner did not start within the time limit. Its data may still be downloading over a slow connection, or the planner did not respond. Try again; a download still in progress continues.',
   'error.routingTimeout':
     'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
   // #433 review Minor 1: does NOT claim retry is futile — this cause also
@@ -394,6 +407,10 @@ export const en = {
     'The wind forecast saved with this route covers a smaller area than the current chart data, so this action cannot use it. Recalculate or plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
+  // #1776: the save outlived SAVE_TIMEOUT_MS and may still land. No retry is
+  // offered: a re-plan would store a second copy.
+  'error.planSaveSlow':
+    'The route was calculated, but saving it is taking unusually long. If the save completes, the route is kept with your saved routes. Planning again now could store a second copy.',
   'error.windUnknown':
     'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
   // #265/#866: 'mask-blocked' cannot distinguish a destination that is

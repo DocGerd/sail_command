@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withBackgroundSentinels } from './cssBackgroundSentinels';
 
 // `node:fs`, not a `?raw` static import: Vitest's default CSS handling mocks
 // any `.css`-matching module id to an empty string regardless of a `?raw`
@@ -32,10 +33,13 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function withAppCss(): void {
+// jsdom does not resolve `var()`; see cssBackgroundSentinels.ts.
+function withAppCss(): (name: string) => string {
+  const { css, sentinel } = withBackgroundSentinels(readFileSync(APP_CSS_PATH, 'utf8'));
   const style = document.createElement('style');
-  style.textContent = readFileSync(APP_CSS_PATH, 'utf8');
+  style.textContent = css;
   document.head.appendChild(style);
+  return sentinel;
 }
 
 function renderNotice(text: string): HTMLParagraphElement {
@@ -65,30 +69,27 @@ describe('#54 the clamp announcement stays in the accessibility tree while empty
     // The original `display: none` was there to stop an idle region occupying
     // a padded, coloured row. Zeroing the box has to actually achieve that, or
     // the accessibility fix would have traded one visible defect for another.
-    withAppCss();
+    const sentinel = withAppCss();
     const empty = renderNotice('');
     const cs = getComputedStyle(empty);
     expect(cs.marginTop).toBe('0px');
     expect(cs.paddingTop).toBe('0px');
     expect(cs.paddingBottom).toBe('0px');
-    // NOT `toBe('none')`: MEASURED, jsdom normalises the `background: none`
-    // shorthand to `rgba(0, 0, 0, 0)`, so that assertion fails against a
-    // correct stylesheet. What matters here is that the base rule's warning
-    // fill is OVERRIDDEN, which is what the next row's positive control
-    // confirms this check can actually distinguish.
-    expect(cs.background).not.toContain('--sc-banner-warning-bg');
+    // What matters is that the base rule's warning fill is OVERRIDDEN; the
+    // next row's positive control shows this check can tell the difference.
+    expect(cs.backgroundColor).not.toBe(sentinel('--sc-banner-warning-bg'));
   });
 
   it('still paints its warning box once it has text', () => {
     // The discriminating control for the row above: without it, a rule that
     // zeroed the box unconditionally would pass "costs no layout" and silently
     // render the real announcement as unstyled body text.
-    withAppCss();
+    const sentinel = withAppCss();
     const filled = renderNotice('Safety depth raised to 3.2 m — the default for Deep 46.');
     const cs = getComputedStyle(filled);
     expect(cs.display).not.toBe('none');
     expect(cs.paddingTop).not.toBe('0px');
-    expect(cs.background).toContain('--sc-banner-warning-bg');
+    expect(cs.backgroundColor).toBe(sentinel('--sc-banner-warning-bg'));
   });
 });
 
@@ -105,13 +106,10 @@ describe('#54 the clamp announcement stays in the accessibility tree while empty
 // the computed `borderLeft` shorthand text collapse to their CSS-initial
 // values (`16px none rgba(0, 0, 0, 0)`) rather than the declared `2px solid
 // var(--sc-border)`, so no getComputedStyle probe in jsdom can discriminate
-// that half of the rule (a SHARPER limitation than the one
-// chipShallowFill.test.ts documents for `background`, where the shorthand's
-// raw declared TEXT at least survives and only the colour resolution is
-// lost). `padding-left: 0.5rem` involves no `var()` at all and resolves
-// cleanly to `8px` (16px root font-size x 0.5), so it is the one half of the
-// #701 visual change this file can actually verify. A real-browser pass is
-// what confirms the border renders; do not read this test as covering that.
+// that half of the rule. `padding-left: 0.5rem` involves no `var()` at all and
+// resolves cleanly to `8px` (16px root font-size x 0.5), so it is the one half
+// of the #701 visual change this file can actually verify. A real-browser pass
+// is what confirms the border renders; do not read this test as covering that.
 function renderDraftNote(): HTMLParagraphElement {
   const el = document.createElement('p');
   el.className = 'boat-option-draft-note';

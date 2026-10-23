@@ -338,6 +338,7 @@ interface Overrides {
   onPlan?: () => void;
   onCancelPlan?: () => void;
   planning?: PlannerStatus;
+  planningStartedAtMs?: number | null;
   plan?: Plan | null;
   rig?: SailId | null;
   formDirty?: boolean;
@@ -1027,6 +1028,7 @@ describe('PlannerPanel', () => {
 
   it.each([
     ['fetching', { phase: 'fetching' } as PlannerStatus],
+    ['starting', { phase: 'starting' } as PlannerStatus],
     ['routing', { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } as PlannerStatus],
     ['probing', { phase: 'probing' } as PlannerStatus],
   ])(
@@ -1044,6 +1046,28 @@ describe('PlannerPanel', () => {
     expect(plannerStatus()).toHaveTextContent('Fetching wind forecast');
   });
 
+  // #1775: start-up reads differently from both wind fetch and solving.
+  it('renders a distinct start-up status message during planning.phase "starting"', () => {
+    renderPanel({ planning: { phase: 'starting' } });
+    expect(plannerStatus()).toHaveTextContent('Preparing route calculation');
+    expect(plannerStatus()).not.toHaveTextContent('Fetching wind forecast');
+    expect(plannerStatus()).not.toHaveTextContent('Calculating route');
+  });
+
+  it('#1775: shows the elapsed readout while planning, outside the live region', () => {
+    renderPanel({ planning: { phase: 'fetching' }, planningStartedAtMs: Date.now() });
+    const elapsed = screen.getByText(/^Elapsed: \d+:\d{2}$/);
+    expect(plannerStatus()).not.toContainElement(elapsed);
+  });
+
+  it('#1775: shows no elapsed readout while idle or without a start time', () => {
+    renderPanel({ planning: { phase: 'idle' }, planningStartedAtMs: Date.now() });
+    expect(screen.queryByText(/Elapsed:/)).not.toBeInTheDocument();
+    cleanup();
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
+    expect(screen.queryByText(/Elapsed:/)).not.toBeInTheDocument();
+  });
+
   // #340: the readout is a bounded phase indicator, not a percentage. Rigs
   // may solve concurrently, so it names the phase, never a rig: progress
   // from either rig must read the same.
@@ -1057,6 +1081,18 @@ describe('PlannerPanel', () => {
       expect(plannerStatus()).not.toHaveTextContent(/Genoa|Fock|\bof 2\b/);
     },
   );
+
+  it('#1794: a single-sail request does not claim "all sails"', () => {
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 1 } });
+    expect(plannerStatus()).toHaveTextContent('Calculating route…');
+    expect(plannerStatus()).not.toHaveTextContent('all sails');
+    cleanup();
+    renderPanel({
+      planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 1, secondPass: true },
+    });
+    expect(plannerStatus()).toHaveTextContent('No route found — second search pass…');
+    expect(plannerStatus()).not.toHaveTextContent('all sails');
+  });
 
   it('#1136: renders a second-pass routing phase distinctly from the first pass', () => {
     renderPanel({
@@ -2908,6 +2944,41 @@ describe('#1291 per-boat harbour access markers on the selected-endpoint row', (
     ).not.toBeInTheDocument();
     // The lowest gate is already reachable, so the scan ends after one flood.
     expect(vi.mocked(harborAccessAt).mock.calls.map((c) => c[3])).toEqual([2.2]);
+  });
+
+  // #1749: scan order is selected endpoints, then visible rows, then the rest.
+  it('#1749: scans the selected endpoint before earlier harbours in map order', async () => {
+    vi.mocked(computeHarborAccess).mockImplementation(
+      () =>
+        new Map([
+          ['flensburg', 'unreachable'],
+          ['marstal', 'unreachable'],
+        ]),
+    );
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+
+    renderPanel({ navMask: fakeMask, destination: marstalDestination });
+    await waitFor(() => expect(harborAccessAt).toHaveBeenCalled());
+    expect(vi.mocked(harborAccessAt).mock.calls[0]?.[1].id).toBe('marstal');
+  });
+
+  it('#1749: scans the rows an open picker shows before the rest', async () => {
+    vi.mocked(computeHarborAccess).mockImplementation(
+      () =>
+        new Map([
+          ['flensburg', 'unreachable'],
+          ['marstal', 'unreachable'],
+        ]),
+    );
+    vi.mocked(harborAccessAt).mockReturnValue('unreachable');
+    vi.mocked(findLowerSettingHint).mockReturnValue({ kind: 'not-found' });
+
+    renderPanel({ navMask: fakeMask });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Marstal' } });
+    await waitFor(() => expect(harborAccessAt).toHaveBeenCalled());
+    expect(vi.mocked(harborAccessAt).mock.calls[0]?.[1].id).toBe('marstal');
   });
 
   // #1724: PlannerPanel builds no mask of its own. A hook-returned mask that

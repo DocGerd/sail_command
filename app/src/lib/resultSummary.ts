@@ -38,13 +38,10 @@ export function sailLabelKey(id: string): MsgKey {
   return (RIG_LABEL_KEY as Record<string, MsgKey | undefined>)[id] ?? 'route.rig.unknown';
 }
 
-// #340/#54: the router's actual, fixed solve order used to drive the
-// planner panel's "sail N of 2" phase readout is now `request.sailIds`
-// itself (types.ts's PlanRequest field) — no longer a module constant here
-// or in types.ts (the deleted RIG_ORDER). usePlanFlow.ts computes index/total
-// from it directly; that coupling is enforced by
+// #340/#54: the router's solve order is `request.sailIds` itself (types.ts's
+// PlanRequest field), not a module constant (the deleted RIG_ORDER);
 // routing/planRoute.test.ts's "#340/#54: solve order matches
-// request.sailIds" guard test.
+// request.sailIds" guard test pins it for the sync driver.
 
 export interface ResultSummary {
   arrivalText: string;

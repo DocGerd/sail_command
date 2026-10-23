@@ -8,6 +8,9 @@ import {
   failureLeavesWorkerHealthy,
   routingFailureKey,
   ROUTING_FAILURE_MESSAGE_KEY,
+  clientStartFailureKey,
+  isStartedClient,
+  type ClientStartFailure,
   type ReplanClient,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
@@ -63,7 +66,7 @@ export interface DepartureConfirmDeps {
  * since React state only commits on the next render).
  */
 export function useDepartureConfirm(
-  ensureClient: () => Promise<ReplanClient | null>,
+  ensureClient: () => Promise<ReplanClient | ClientStartFailure | null>,
   deps: DepartureConfirmDeps = {},
 ): {
   state: DepartureConfirmState;
@@ -98,15 +101,12 @@ export function useDepartureConfirm(
       };
 
       try {
-        const client = await ensureClient();
-        if (!client) {
-          setState({
-            confirming: false,
-            departureMs,
-            error: ROUTING_FAILURE_MESSAGE_KEY['worker-init'],
-          });
+        const started = await ensureClient();
+        if (!isStartedClient(started)) {
+          setState({ confirming: false, departureMs, error: clientStartFailureKey(started) });
           return null;
         }
+        const client = started;
 
         let result: PlanResult;
         try {

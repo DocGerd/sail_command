@@ -116,7 +116,9 @@ export type WorkerResponse =
   // throw site inside planRoute() — populated below, consumed by
   // workerClient.ts's RoutingError so the resulting client-side error names
   // where the failure actually happened, not just where it was reported.
-  | { type: 'fatal'; id: string | null; message: string; stack?: string };
+  // `kind` is set when the failure is a lost port message, so the client can
+  // type it `messageerror` instead of `worker-fatal`.
+  | { type: 'fatal'; id: string | null; message: string; stack?: string; kind?: 'messageerror' };
 
 /**
  * Main thread -> sibling solve worker. The sibling is solve-only: it keeps its
@@ -167,6 +169,9 @@ export type SolverPortResponse =
   | { type: 'solved'; stepId: number; run: RunOut }
   | { type: 'solve-failed'; stepId: number; message: string; stack?: string };
 
+/** A message on the ladder<->sibling port could not be deserialized. */
+export class PortMessageError extends Error {}
+
 function fatalOf(err: unknown, id: string | null): WorkerResponse {
   // exactOptionalPropertyTypes: `stack` must be OMITTED, not set to
   // `undefined`, when the throw carries none.
@@ -176,6 +181,7 @@ function fatalOf(err: unknown, id: string | null): WorkerResponse {
     id,
     message: err instanceof Error ? err.message : String(err),
     ...(stack !== undefined ? { stack } : {}),
+    ...(err instanceof PortMessageError ? { kind: 'messageerror' as const } : {}),
   };
 }
 
@@ -220,7 +226,7 @@ function attachSolver(port: MessagePort): SolverLink {
   };
   port.onmessageerror = () => {
     for (const entry of link.pending.values()) {
-      entry.reject(new Error('solver message could not be deserialized'));
+      entry.reject(new PortMessageError('solver message could not be deserialized'));
     }
     link.pending.clear();
   };
@@ -542,6 +548,13 @@ export function createSolverHandler(
         } satisfies SolverPortResponse);
       }
     };
+    // The lost message's plan is unknown, so fail every pending plan (id null)
+    // instead of leaving the ladder worker to time out.
+    port.onmessageerror = () =>
+      safePost(
+        post,
+        fatalOf(new PortMessageError('ladder message could not be deserialized'), null),
+      );
     post({ type: 'ready' });
   };
 }

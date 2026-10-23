@@ -3,7 +3,9 @@ import {
   disposeAfterFailure,
   failureLeavesWorkerHealthy,
   routingFailureKey,
-  ROUTING_FAILURE_MESSAGE_KEY,
+  clientStartFailureKey,
+  isStartedClient,
+  type ClientStartFailure,
   type ReplanClient,
 } from './replan';
 import { GENOA_SAIL_ID } from '../data/boats';
@@ -67,9 +69,10 @@ export interface DepartureScanState {
   index: number;
   total: number;
   candidates: DepartureCandidate[];
-  // Set only when ensureClient() itself failed (asset load / worker init) —
-  // a per-candidate failure lives in that candidate's own outcome, never
-  // here, mirroring useViaReplan's ViaReplanState.error split.
+  // Set only when ensureClient() itself failed (asset load, worker init or
+  // a start-up timeout) — a per-candidate failure lives in that candidate's
+  // own outcome, never here, mirroring useViaReplan's ViaReplanState.error
+  // split.
   error: MsgKey | null;
   // True when the last scan stopped before reaching `total` candidates
   // because cancel() was called. A worker-killing failure (see scan()) also
@@ -126,7 +129,9 @@ export interface DepartureScanRequest {
  * loop iteration, i.e. after the previous candidate's `await` has already
  * settled, never mid-solve.
  */
-export function useDepartureScan(ensureClient: () => Promise<ReplanClient | null>): {
+export function useDepartureScan(
+  ensureClient: () => Promise<ReplanClient | ClientStartFailure | null>,
+): {
   state: DepartureScanState;
   scan: (req: DepartureScanRequest) => Promise<void>;
   cancel: () => void;
@@ -159,19 +164,20 @@ export function useDepartureScan(ensureClient: () => Promise<ReplanClient | null
       const scanSailIds = scanSailIdsFor(req.aboardSailIds);
       setState({ scanning: true, index: 0, total, candidates: [], error: null, cancelled: false });
 
-      const client = await ensureClient();
-      if (!client) {
+      const started = await ensureClient();
+      if (!isStartedClient(started)) {
         busyRef.current = false;
         setState({
           scanning: false,
           index: 0,
           total,
           candidates: [],
-          error: ROUTING_FAILURE_MESSAGE_KEY['worker-init'],
+          error: clientStartFailureKey(started),
           cancelled: false,
         });
         return;
       }
+      const client = started;
 
       const candidates: DepartureCandidate[] = [];
       let stoppedByWorkerFailure = false;
