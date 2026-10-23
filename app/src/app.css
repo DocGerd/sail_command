@@ -915,8 +915,8 @@ select {
 }
 
 /* No --sc-muted token exists in app.css (checked the :root token block), so
-   muting is opacity 0.75 over the default foreground. Since #1806 this note is
-   the only muted Live text left. */
+   muting is opacity 0.75 over the default foreground. #1806 kept it here
+   only; the other Live labels are at full contrast. */
 .live-view-hts-note--muted {
   color: var(--sc-fg);
   opacity: 0.75;
