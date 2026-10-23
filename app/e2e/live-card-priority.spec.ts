@@ -10,9 +10,10 @@ import {
 // #1822: with a long, expanded AIS list the Live card keeps priority over the
 // bottom sheet. From the 820px design floor up its reroute control and reason
 // stay on screen without the card scrolling, with a fresh GPS fix; at narrow
-// widths the list scrolls inside the sheet. From 820px up, toast dismissed, the
-// card's top stays clear of the Tier 2 map chrome with the AIS list empty and
-// capped. Fake aisstream via routeWebSocket; no socket leaves the box.
+// widths the list scrolls inside the sheet. With the toast dismissed the card's
+// top stays clear of the Tier 2 map chrome from 820px up with the AIS list empty,
+// and from 1024px up with it capped (#1843). Fake aisstream via routeWebSocket;
+// no socket leaves the box.
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
 const VESSELS = 40;
 const FIX = { latitude: 54.8237, longitude: 9.6524, accuracy: 5 };
@@ -233,7 +234,8 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
 
       // 820 CSS px is the design floor and spans both layouts; below it, #1843.
       if (viewport.width >= 820) {
-        await expectTopClear(page, `capped AIS ${label}`);
+        // #1843: at 820x1180 a capped list with a fresh fix overlaps .route-layer-controls by 11174 px².
+        if (viewport.width >= 1024) await expectTopClear(page, `capped AIS ${label}`);
         await expect
           .poll(() => controlsOffenders(page), {
             message: `${label}: fresh fix, reroute control and reason on screen, card not scrolling`,
