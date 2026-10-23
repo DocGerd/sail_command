@@ -151,8 +151,7 @@
 // fixture, with F the open-water distance upwind of each lattice point,
 // walked on the committed mask.bin. Open water therefore comes out
 // smooth-to-slight, rising eastward with the wind, and the inner fjord and
-// lee shores stay smoother. Land lattice points keep a minimum fetch rather
-// than going null, so no cell reads as "no data" under the route.
+// lee shores stay smoother. A minimum fetch keeps every point finite.
 
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -204,23 +203,22 @@ function windAt(lat, lon) {
   return { speedKn, dirDeg };
 }
 
-
 // ---- #1846 sea-state field ----
 const G = 9.81;
 const KN_TO_MS = 0.514444;
 const FETCH_STEP_M = 200;
 const FETCH_MAX_M = 60_000;
-const FETCH_MIN_M = 1_500; // lee-shore floor; land lattice points never read null
+const FETCH_MIN_M = 1_500; // keeps every point finite
 const M_PER_DEG_LAT = 111_320;
 const HS_FETCH_COEFF = 0.0016; // JONSWAP: gHs/U^2 = 0.0016 * sqrt(gF/U^2)
-const HS_MAX_M = 3; // sane ceiling for the extrapolated far-east wind
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(__dirname, '../public/data');
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8'));
 const maskBytes = readFileSync(resolve(dataDir, 'mask.bin'));
-const cpdLon = maskMeta.cols / (maskMeta.east - maskMeta.west);
-const cpdLat = maskMeta.rows / (maskMeta.north - maskMeta.south);
+// Integer cells per degree, as lib/mask.ts's cellsPerDegree.
+const cpdLon = Math.round(maskMeta.cols / (maskMeta.east - maskMeta.west));
+const cpdLat = Math.round(maskMeta.rows / (maskMeta.north - maskMeta.south));
 
 // null outside the mask, true for water (byte 0 = land/unknown)
 function isWater(lat, lon) {
@@ -255,7 +253,7 @@ function waveAt(lat, lon) {
   const { speedKn, dirDeg } = windAt(lat, lon);
   const u = speedKn * KN_TO_MS;
   const fetchM = upwindFetchM(lat, lon, dirDeg);
-  const hs = Math.min(HS_MAX_M, HS_FETCH_COEFF * u * Math.sqrt(fetchM / G));
+  const hs = HS_FETCH_COEFF * u * Math.sqrt(fetchM / G);
   const period = 1.8 + 2.4 * Math.sqrt(hs); // short wind-sea periods
   return { hs, period, dirFromDeg: dirDeg };
 }

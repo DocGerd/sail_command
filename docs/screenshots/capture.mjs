@@ -432,6 +432,33 @@ while ((await planButton.isDisabled()) && Date.now() < planDeadline) {
 // the "Routes" tab, not inline on "Plan" (App.tsx).
 await page.getByRole('tab', { name: 'Routes' }).click();
 
+// #1846: fail closed if the sea-state overlay is not available and on. A missing
+// or stale wave fixture otherwise degrades silently to the "not available" hero
+// with exit code 0. `.count()` does not auto-wait, so a missing toggle cannot
+// stall on Playwright's 30s default.
+const wavesToggle = page.getByRole('checkbox', { name: 'Show sea state' });
+const wavesDeadline = Date.now() + 20_000;
+let wavesReady = false;
+while (Date.now() < wavesDeadline) {
+  if (
+    (await wavesToggle.count()) > 0 &&
+    (await wavesToggle.first().isEnabled()) &&
+    (await wavesToggle.first().isChecked())
+  ) {
+    wavesReady = true;
+    break;
+  }
+  await page.waitForTimeout(300);
+}
+if (!wavesReady) {
+  throw new Error(
+    `"Show sea state" is not enabled and checked, so the hero would show the overlay as ` +
+      `unavailable. Check the wave fixture (${WAVE_FIXTURE_PATH}, written by ` +
+      'app/scripts/gen-docs-wind-fixture.mjs): missing, not loadable, or its time axis is ' +
+      'out of range. Run `node app/scripts/gen-docs-wind-fixture.mjs` and retry.',
+  );
+}
+
 // #428/#459/#462: poll the rig-comparison chip's own TEXT rather than
 // blindly waiting on `getByText('★')`'s boolean presence — a timeout here
 // prints what the chip actually says instead of hanging silently for two
