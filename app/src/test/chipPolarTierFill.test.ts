@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withBackgroundSentinels } from './cssBackgroundSentinels';
 
 // `node:fs`, not a `?raw` static import: Vitest's default CSS handling mocks
 // any `.css`-matching module id to an empty string regardless of a `?raw`
@@ -16,12 +17,9 @@ const APP_CSS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../app.cs
 // the tier chips are written as compound `.chip.chip-polar-tier-*` selectors.
 //
 // This asserts the RESOLVED style against the REAL app.css. A selector-only
-// grep would pass on the broken bare-modifier form too. jsdom parses neither
-// `color-mix()` nor `var()`, so `getComputedStyle(el).backgroundColor` reads
-// `rgba(0, 0, 0, 0)` in BOTH the broken and the fixed state and cannot
-// discriminate (CLAUDE.md's documented jsdom caveat for this exact cascade);
-// only the `background` SHORTHAND carries the winning declaration's raw text
-// through jsdom's cascade resolution.
+// grep would pass on the broken bare-modifier form too. jsdom does not
+// resolve `var()`, so the stylesheet goes through `withBackgroundSentinels`
+// first (see its header).
 //
 // The ESTIMATED tier is the one that must not fail silently: it is the
 // caution label spec N.5 requires at the picker, and a tier-C polar rendering
@@ -40,36 +38,38 @@ function renderChip(className: string): HTMLSpanElement {
   return el;
 }
 
-function withAppCss(): void {
+function withAppCss(): (name: string) => string {
+  const { css, sentinel } = withBackgroundSentinels(readFileSync(APP_CSS_PATH, 'utf8'));
   const style = document.createElement('style');
-  style.textContent = readFileSync(APP_CSS_PATH, 'utf8');
+  style.textContent = css;
   document.head.appendChild(style);
+  return sentinel;
 }
+
+const bg = (el: Element): string => getComputedStyle(el).backgroundColor;
 
 describe('#54 polar-provenance tier chips resolve their own fill', () => {
   it('the estimated tier renders the caution fill, not .chip’s neutral one', () => {
-    withAppCss();
+    const sentinel = withAppCss();
     const neutral = renderChip('chip');
     const estimated = renderChip('chip chip-polar-tier chip-polar-tier-estimated');
 
-    const neutralBackground = getComputedStyle(neutral).background;
-    const estimatedBackground = getComputedStyle(estimated).background;
-
     expect(
-      estimatedBackground,
-      `#54 guard: .chip.chip-polar-tier-estimated's resolved "background" was ` +
-        `"${estimatedBackground}", identical to plain .chip's "${neutralBackground}" — ` +
-        `the tier-C caution fill is being overridden by .chip's own neutral ` +
-        `color-mix fill (the #506/#493 cascade).`,
-    ).not.toBe(neutralBackground);
-    expect(estimatedBackground).toContain('--sc-depth-warning-bg');
+      bg(estimated),
+      `#54 guard: .chip.chip-polar-tier-estimated resolved backgroundColor ` +
+        `"${bg(estimated)}" (plain .chip: "${bg(neutral)}") instead of ` +
+        `--sc-depth-warning-bg's sentinel — the tier-C caution fill is being ` +
+        `overridden by .chip's own neutral color-mix fill (the #506/#493 cascade).`,
+    ).toBe(sentinel('--sc-depth-warning-bg'));
   });
 
   it('the certificate tier renders the accent fill', () => {
     withAppCss();
     const neutral = renderChip('chip');
     const certificate = renderChip('chip chip-polar-tier chip-polar-tier-certificate');
-    expect(getComputedStyle(certificate).background).not.toBe(getComputedStyle(neutral).background);
+    // Both are color-mix() over a token, so neither has a sentinel of its own;
+    // a different mix is what distinguishes the accent fill.
+    expect(bg(certificate)).not.toBe(bg(neutral));
   });
 
   it('the modelled tier DELIBERATELY inherits .chip’s neutral fill', () => {
@@ -81,6 +81,6 @@ describe('#54 polar-provenance tier chips resolve their own fill', () => {
     withAppCss();
     const neutral = renderChip('chip');
     const modelled = renderChip('chip chip-polar-tier chip-polar-tier-modelled');
-    expect(getComputedStyle(modelled).background).toBe(getComputedStyle(neutral).background);
+    expect(bg(modelled)).toBe(bg(neutral));
   });
 });

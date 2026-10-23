@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, afterEach } from 'vitest';
+import { withBackgroundSentinels } from './test/cssBackgroundSentinels';
 
 // #711: MapLibre's own AttributionControl chrome hardcodes
 // `.maplibregl-ctrl-attrib.maplibregl-compact{background-color:#fff;
@@ -135,59 +136,55 @@ describe('#711: app.css themes the MapLibre attribution control in dark mode', (
 // PR #763 review Major 4: the `[role='alert']` qualifier on
 // `.planner-guidance[role='alert']` / `.options-help[role='alert']`
 // (#703) had NO test at all — the reviewer's mutation "delete both
-// qualifiers" left the whole focused suite 235/235 GREEN. Same pattern as
-// #506's `.chip-shallow` guard above and CLAUDE.md's own documented jsdom
-// caveat: `getComputedStyle(el).backgroundColor` reads `rgba(0, 0, 0, 0)`
-// for a plain hint AND for an alert-role element ALIKE (jsdom parses
-// neither `color-mix()` nor `var()`), so only the `background` SHORTHAND
-// discriminates between "no rule matched" and "the error-wash rule won".
+// qualifiers" left the whole focused suite 235/235 GREEN. jsdom does not
+// resolve `var()`, so the stylesheet goes through `withBackgroundSentinels`
+// first (see its header): an alert must resolve to the error-wash token's
+// sentinel while a plain hint does not.
 describe("#703: role='alert' overrides require the [role='alert'] qualifier, not the bare class", () => {
   afterEach(() => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
 
-  function mountWithRealCss(className: string, role: string | null): HTMLParagraphElement {
+  function mountWithRealCss(
+    className: string,
+    role: string | null,
+  ): {
+    el: HTMLParagraphElement;
+    sentinel: (name: string) => string;
+  } {
+    const { css, sentinel } = withBackgroundSentinels(readAppCss());
     const style = document.createElement('style');
-    style.textContent = readAppCss();
+    style.textContent = css;
     document.head.appendChild(style);
     const el = document.createElement('p');
     el.className = className;
     if (role !== null) el.setAttribute('role', role);
     document.body.appendChild(el);
-    return el;
+    return { el, sentinel };
   }
 
-  it(".planner-guidance[role='alert'] resolves a DIFFERENT background than a plain .planner-guidance hint", () => {
-    const hint = mountWithRealCss('planner-guidance', null);
-    const alertEl = mountWithRealCss('planner-guidance', 'alert');
+  it.each(['planner-guidance', 'options-help'])(
+    ".%s[role='alert'] resolves the error wash and a plain hint does not",
+    (className) => {
+      const { el: hint } = mountWithRealCss(className, null);
+      const { el: alertEl, sentinel } = mountWithRealCss(className, 'alert');
 
-    const hintBackground = getComputedStyle(hint).background;
-    const alertBackground = getComputedStyle(alertEl).background;
+      const hintBackground = getComputedStyle(hint).backgroundColor;
+      const alertBackground = getComputedStyle(alertEl).backgroundColor;
+      const errorWash = sentinel('--sc-banner-error-bg');
 
-    expect(
-      alertBackground,
-      `#703 guard: .planner-guidance[role='alert']'s resolved "background" was ` +
-        `"${alertBackground}", identical to the plain hint's "${hintBackground}" ` +
-        `— deleting the [role='alert'] qualifier (or replacing it with a bare ` +
-        `.planner-guidance rule) would give every plain FYI hint the error-wash ` +
-        `treatment too, exactly the mutation this test exists to catch.`,
-    ).not.toBe(hintBackground);
-    expect(alertBackground).toContain('--sc-banner-error-bg');
-  });
-
-  it(".options-help[role='alert'] resolves a DIFFERENT background than a plain .options-help hint", () => {
-    const hint = mountWithRealCss('options-help', null);
-    const alertEl = mountWithRealCss('options-help', 'alert');
-
-    const hintBackground = getComputedStyle(hint).background;
-    const alertBackground = getComputedStyle(alertEl).background;
-
-    expect(
-      alertBackground,
-      `#703 guard: .options-help[role='alert']'s resolved "background" was ` +
-        `"${alertBackground}", identical to the plain hint's "${hintBackground}".`,
-    ).not.toBe(hintBackground);
-    expect(alertBackground).toContain('--sc-banner-error-bg');
-  });
+      expect(
+        alertBackground,
+        `#703 guard: .${className}[role='alert'] resolved backgroundColor ` +
+          `"${alertBackground}" instead of --sc-banner-error-bg's sentinel.`,
+      ).toBe(errorWash);
+      expect(
+        hintBackground,
+        `#703 guard: a plain .${className} hint resolved the error wash — the ` +
+          `[role='alert'] qualifier was dropped or widened to the bare class, ` +
+          `giving every plain FYI hint the error treatment.`,
+      ).not.toBe(errorWash);
+    },
+  );
 });

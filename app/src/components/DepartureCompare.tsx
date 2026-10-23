@@ -2,14 +2,18 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import type { LatLon, Plan, PlanRequest, PlanResultOk, SailId } from '../types';
-import type { ReplanClient } from '../state/replan';
+import type { ClientStartFailure, ReplanClient } from '../state/replan';
 import { noRouteMessageKey, rigEstimateBased } from '../lib/plan';
 import { motorSplit, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
 import { WindField } from '../lib/wind';
 import { GENOA_SAIL_ID } from '../data/boats';
-import { scanSailIdsFor, useDepartureScan, type DepartureCandidate } from '../state/useDepartureScan';
+import {
+  scanSailIdsFor,
+  useDepartureScan,
+  type DepartureCandidate,
+} from '../state/useDepartureScan';
 import { useDepartureConfirm } from '../state/useDepartureConfirm';
 import Card from './Card';
 import Field from './Field';
@@ -46,11 +50,10 @@ export interface DepartureCompareProps {
   // plan", never something that runs standalone off raw form state. The
   // component renders nothing before that.
   plan: Plan | null;
-  // usePlanFlow.ts's own exposed ensureClient — same pattern
-  // state/replan.ts's useViaReplan and state/reroute.ts's useLiveReroute
-  // already take, so this shares the one lazily-created worker singleton
-  // rather than standing up a second one.
-  ensureClient: () => Promise<ReplanClient | null>;
+  // usePlanFlow.ts's ensureClientOrFailure — shares the one lazily-created
+  // worker singleton rather than standing up a second one. No null: the
+  // failure kind keeps a start-up timeout's copy truthful (#1776).
+  ensureClient: () => Promise<ReplanClient | ClientStartFailure>;
   // #937: called with the updated Plan once a two-rig confirm solve
   // succeeds — the ACTIVE plan is replaced (App.tsx passes its own
   // `setPlan`), same "the result you asked for becomes active

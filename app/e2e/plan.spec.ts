@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { startPreview, STANDARD_VIEWPORTS, EDGE_VIEWPORTS } from './helpers';
+import {
+  startPreview,
+  STANDARD_VIEWPORTS,
+  EDGE_VIEWPORTS,
+  localDatetimeValue,
+  nextFullHourPlus,
+} from './helpers';
 
 // Run the full planning flow at a phone viewport so it exercises the
 // bottom-sheet layout — the primary on-boat mode (CLAUDE.md). Before the #24
@@ -91,6 +97,9 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
+    // Explicit departure (#1731): the form default is the next full hour,
+    // which a slow plan can leave in the past.
+    await page.getByLabel('Abfahrt').fill(localDatetimeValue(nextFullHourPlus(2)));
     // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
     // load-state class assertion is the primary regression guard (part 2
     // re-collapses the attribution above, so by this point the control is
@@ -240,17 +249,6 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     server.kill();
   }
 });
-
-function nextFullHourPlus(hours: number): Date {
-  const d = new Date();
-  d.setHours(d.getHours() + 1 + hours, 0, 0, 0);
-  return d;
-}
-
-function localDatetimeValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // #301: re-plan from the Plan view. Loading/planning prefills the form from
 // the active plan; editing an input afterward (here: departure) marks the

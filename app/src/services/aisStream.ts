@@ -89,6 +89,8 @@ export type ParsedAisData =
       cogDeg?: number;
       headingDeg?: number;
       name?: string;
+      // Only ExtendedClassBPositionReport carries a type; 0 = not available.
+      shipType?: number;
     }
   | { kind: 'static'; mmsi: string; name?: string; shipType?: number };
 
@@ -155,6 +157,10 @@ export function parseAisMessage(raw: string): ParsedAisMessage | null {
     const name =
       (messageType === 'ExtendedClassBPositionReport' ? cleanName(pr.Name) : undefined) ?? metaName;
     if (name !== undefined) out.name = name;
+    if (messageType === 'ExtendedClassBPositionReport') {
+      const shipType = num(pr.Type);
+      if (shipType !== undefined && shipType > 0) out.shipType = shipType;
+    }
     return out;
   }
 

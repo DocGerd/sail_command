@@ -726,7 +726,9 @@ export default function RouteSummary({
                 )}
       </Chip>
 
-      <OfflineMapStatus key={`${plan.id}-${plan.createdAtMs}`} plan={plan} />
+      {/* #1833: each plan-keyed child of this Card needs its own key prefix;
+          a shared key leaves the stale sibling's DOM behind on re-render. */}
+      <OfflineMapStatus key={`offline-map-${plan.id}-${plan.createdAtMs}`} plan={plan} />
 
       {/* #703: bare `<p role="alert">` carried no visual treatment at all —
           same muted body-copy problem as `.planner-guidance`/`.options-help`
@@ -781,7 +783,7 @@ export default function RouteSummary({
           remount `plan.id` alone could not guarantee. */}
       {plan.result.shallow && (
         <ShallowWarning
-          key={`${plan.id}-${plan.createdAtMs}`}
+          key={`shallow-warning-${plan.id}-${plan.createdAtMs}`}
           shallow={plan.result.shallow}
           legs={result?.legs ?? null}
           plan={plan}
@@ -1121,7 +1123,7 @@ export default function RouteSummary({
       </div>
       {nextPassage && (
         <NextPassageAction
-          key={`${plan.id}-${plan.createdAtMs}`}
+          key={`next-passage-${plan.id}-${plan.createdAtMs}`}
           plan={plan}
           rig={rig}
           {...nextPassage}

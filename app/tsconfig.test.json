@@ -224,7 +224,10 @@
   // tie the generated contours asset to the mask it was built from — same
   // reason and pattern as maskTolerance.test.ts above.
   // waveFixtureMask.test.ts (#1699): reads the real shipped mask via `node:fs`.
+  // vite-env.d.ts: db.ts (reached via regionPinning.test.ts) reads the
+  // `__SC_APP_VERSION__` define (#1813).
   "include": [
+    "src/vite-env.d.ts",
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/isochrone.frontierCap.test.ts",
     "src/**/basemapArchiveRoute.test.ts",

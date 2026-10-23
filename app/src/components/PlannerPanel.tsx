@@ -34,10 +34,19 @@ import {
 import { activeRigResult, rigComparisonSuppressedByTier } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { usePersistedSailInventory } from '../lib/sailInventory';
-import { renderFasterRig, renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
+import {
+  renderFasterRig,
+  renderRigVerdict,
+  resultSummary,
+  sailLabelKey,
+} from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import { formatDepthM } from '../lib/depthDisclosure';
-import HarborPicker, { harborAccessCopy, useUnreachableBandOf } from './HarborPicker';
+import HarborPicker, {
+  harborAccessCopy,
+  orderBandScanIds,
+  useUnreachableBandOf,
+} from './HarborPicker';
 import type { NavMask } from '../lib/mask';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef, BoatId } from '../data/boats';
@@ -47,6 +56,7 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Skeleton from './Skeleton';
+import PlanningElapsed from './PlanningElapsed';
 import Disclosure from './Disclosure';
 import NextPassageAction, { type NextPassageProps } from './NextPassageAction';
 import SegmentModeControl from './SegmentModeControl';
@@ -76,6 +86,8 @@ export type TapTarget = 'origin' | 'destination' | 'via';
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
+  // #1775: routing assets + worker start-up, before the first solver progress
+  | { phase: 'starting' }
   | { phase: 'routing'; sailId: SailId; index: number; total: number; secondPass?: true }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
@@ -185,6 +197,8 @@ export interface PlannerPanelProps {
   // that in-flight window, alongside the (necessarily disabled) Plan button.
   onCancelPlan: () => void;
   planning: PlannerStatus;
+  // #1775: start of the in-flight run for the elapsed readout; null/absent when idle.
+  planningStartedAtMs?: number | null;
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
   // plan-completion announcement. Null before the first plan.
   plan: Plan | null;
@@ -289,6 +303,7 @@ export default function PlannerPanel({
   onPlan,
   onCancelPlan,
   planning,
+  planningStartedAtMs,
   plan,
   rig,
   formDirty,
@@ -335,14 +350,23 @@ export default function PlannerPanel({
     () => (mask ? computeHarborAccess(mask, harbors, boat, settings.safetyDepthM) : null),
     [mask, harbors, boat, settings.safetyDepthM],
   );
-  // #1721: scans, off the render path, the gate band over which each harbour
-  // unreachable at the live gate stays unreachable.
+  // #1721/#1749: scans, off the render path, the gate band over which each
+  // harbour unreachable at the live gate stays unreachable; selected endpoints
+  // first, then the rows an open picker shows.
+  const [originVisibleIds, setOriginVisibleIds] = useState<readonly string[]>([]);
+  const [destinationVisibleIds, setDestinationVisibleIds] = useState<readonly string[]>([]);
+  const originHarborId = origin?.source === 'harbor' ? origin.harborId : null;
+  const destinationHarborId = destination?.source === 'harbor' ? destination.harborId : null;
   const unreachableIds = useMemo(
     () =>
       harborAccess
-        ? [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : []))
+        ? orderBandScanIds(
+            [...harborAccess].flatMap(([id, state]) => (state === 'unreachable' ? [id] : [])),
+            [originHarborId, destinationHarborId].flatMap((id) => (id === null ? [] : [id])),
+            [...originVisibleIds, ...destinationVisibleIds],
+          )
         : [],
-    [harborAccess],
+    [harborAccess, originHarborId, destinationHarborId, originVisibleIds, destinationVisibleIds],
   );
   const unreachableBandOf = useUnreachableBandOf(
     mask,
@@ -875,18 +899,18 @@ export default function PlannerPanel({
   // region does not attempt to replace.
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
+  else if (planning.phase === 'starting') statusText = t('planner.status.starting');
   else if (planning.phase === 'routing')
-    // #340/#54: phase readout ("sail N of 2") — index/total now come straight
-    // off the PlannerStatus itself (usePlanFlow.ts derives them from
-    // request.sailIds, the router's actual solve order), not a module
-    // constant, so the index always matches which solve is really running.
+    // #340/#1794: a phase readout. The rigs may solve concurrently, so it
+    // names no rig or index; `total` only picks the plural form.
     statusText = t(
-      planning.secondPass ? 'planner.status.routingSailSecondPass' : 'planner.status.routingSail',
-      {
-        index: planning.index,
-        total: planning.total,
-        sail: t(sailLabelKey(planning.sailId)),
-      },
+      planning.total > 1
+        ? planning.secondPass
+          ? 'planner.status.routingSailSecondPass'
+          : 'planner.status.routingSail'
+        : planning.secondPass
+          ? 'planner.status.routingSingleSecondPass'
+          : 'planner.status.routingSingle',
     );
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {
@@ -924,7 +948,10 @@ export default function PlannerPanel({
   // compact Ergebnis card. A replan of an existing plan keeps its card (summary
   // still present), so the skeleton is strictly a first-result placeholder.
   const isPlanningInFlight =
-    planning.phase === 'fetching' || planning.phase === 'routing' || planning.phase === 'probing';
+    planning.phase === 'fetching' ||
+    planning.phase === 'starting' ||
+    planning.phase === 'routing' ||
+    planning.phase === 'probing';
 
   // §3.5 empty/first-run: friendly guidance near the primary action while no
   // plan exists and an endpoint is unpicked. Suppressed offline — the
@@ -1028,6 +1055,7 @@ export default function PlannerPanel({
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
               unreachableBandOf={unreachableBandOf}
+              onVisibleIdsChange={setOriginVisibleIds}
               mask={mask}
               // #737: true only when this mount was caused by the Change
               // button above (see HarborPicker's own `autoFocus` doc comment
@@ -1120,6 +1148,7 @@ export default function PlannerPanel({
               safetyDepthM={settings.safetyDepthM}
               harborAccess={harborAccess}
               unreachableBandOf={unreachableBandOf}
+              onVisibleIdsChange={setDestinationVisibleIds}
               mask={mask}
               // #737: see the matching comment on the origin HarborPicker above.
               autoFocus={editingDestination}
@@ -1604,6 +1633,9 @@ export default function PlannerPanel({
       >
         {statusText}
       </p>
+      {isPlanningInFlight && planningStartedAtMs != null && (
+        <PlanningElapsed key={planningStartedAtMs} startedAtMs={planningStartedAtMs} />
+      )}
       {/* Plan-run errors are NOT rendered inline here: the tab-independent
           <Banner> in App.tsx (banner-area) is the single alert surface, so the
           error isn't announced twice. */}

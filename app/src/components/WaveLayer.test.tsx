@@ -69,6 +69,22 @@ function mapWithQuery(impl: QueryFn = () => []): FakeMap & {
   return Object.assign(makeFakeMap(), { queryRenderedFeatures: vi.fn(impl) });
 }
 
+// Real MapLibre (6.14.0): Map#addImage fires 'styledata' synchronously
+// (Style#_afterImageUpdated), and Map#addSource throws on a duplicate id.
+function withMaplibreEventTiming(map: FakeMap): FakeMap {
+  const addImage = map.addImage.getMockImplementation()!;
+  map.addImage.mockImplementation((id: string) => {
+    addImage(id);
+    map.fire('styledata');
+  });
+  const addSource = map.addSource.getMockImplementation()!;
+  map.addSource.mockImplementation((id, def) => {
+    if (map.sources.has(id)) throw new Error(`Source "${id}" already exists.`);
+    addSource(id, def);
+  });
+  return map;
+}
+
 // Point (0,0) calm, (0,1) no-data Hs, (1,0) rough with no direction, rest slight.
 function grid(): WaveGrid {
   return makeWaveGrid((la, lo, t) => {
@@ -227,6 +243,26 @@ describe('WaveLayer setup (#1699)', () => {
     rerenderWith({ visible: true });
     act(() => simulateStyleReload(map));
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(5);
+  });
+
+  // A setup deferred by a still-loading style runs from 'styledata', and its
+  // own addImage fires 'styledata' again before it returns. The duplicate
+  // addSource then threw; from inside another component's effect that
+  // unmounted the whole app on a reload that restored a wave plan.
+  it('survives setup re-entering through its own addImage', () => {
+    const map = withMaplibreEventTiming(makeFakeMap({ styleLoaded: false }));
+    renderWaves(map);
+    expect(() => act(() => map.fire('styledata'))).not.toThrow();
+    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]);
+    expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(5);
+  });
+
+  it('survives the same re-entry on a style reload', () => {
+    const map = withMaplibreEventTiming(makeFakeMap());
+    renderWaves(map);
+    expect(() => act(() => simulateStyleReload(map))).not.toThrow();
+    expect(map.layerOrder).toEqual([WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]);
     expect(lastData(map, WAVE_CELL_SOURCE).features).toHaveLength(5);
   });
 

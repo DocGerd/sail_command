@@ -41,7 +41,8 @@ export function mergeAisMessage(
   if (msg.kind === 'position') {
     // Course fields come solely from this report (a target that stops
     // reporting SOG shows no vector — honest). Name persists from prior data
-    // when this report omits it; ship type only ever comes from static data.
+    // when this report omits it; ship type comes from static data or an
+    // Extended Class B report, and persists likewise.
     const next: AisTarget = {
       mmsi: msg.mmsi,
       position: { lat: msg.lat, lon: msg.lon },
@@ -52,7 +53,8 @@ export function mergeAisMessage(
     if (msg.cogDeg !== undefined) next.cogDeg = msg.cogDeg;
     if (msg.headingDeg !== undefined) next.headingDeg = msg.headingDeg;
     if (name !== undefined) next.name = name;
-    if (prev?.shipType !== undefined) next.shipType = prev.shipType;
+    const shipType = msg.shipType ?? prev?.shipType;
+    if (shipType !== undefined) next.shipType = shipType;
     store.set(msg.mmsi, next);
     return;
   }

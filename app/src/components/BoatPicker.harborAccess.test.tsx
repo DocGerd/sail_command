@@ -325,14 +325,18 @@ describe('#1325 (#1135 §5.4): endpoint-unreachable clause in the switch announc
 });
 
 describe('#1292/#1321 lower-setting hint: deferred, resumable, never overclaims', () => {
-  // MEASURED against the real committed mask: at salona-45's own 4.0 m
-  // (its default is 3.0 m), Augustenborg reads `unreachable`. Scanning
-  // downward from 4.0 m in 0.1 m steps with HINT_STEPS_PER_SLICE=3 finds
-  // it `ok` at exactly 3.2 m, but only after two `exhausted` resumes
-  // (4.0 -> resume 3.7 -> resume 3.4 -> found 3.2) — three idle ticks.
+  // MEASURED against the real committed mask: at 3.6 m Augustenborg is
+  // salona-45's ONLY `unreachable` harbour, so no sibling search runs ahead
+  // of it. With HINT_STEPS_PER_SLICE=3 the scan exhausts at 3.5/3.4/3.3,
+  // resumes from 3.2 and finds it `ok` — two idle ticks, the cheapest depth
+  // that still exercises `resumeFromDepthM`. That is ONE resume: the 4.0 m
+  // start chained two, so a resume-of-a-resume is no longer exercised.
+  // Every tick pays uncached
+  // floods (each mount builds a fresh NavMask), and the 4.0 m start this
+  // used before outran its wait on a coverage shard (#1832).
   it('resolves a multi-tick hint search to "may route at 3.2 m (depth data only)" via resumeFromDepthM', async () => {
     mockedLoad.mockImplementation(realAssets);
-    renderPicker({ boatId: 'salona-45', safetyDepthM: 4.0 });
+    renderPicker({ boatId: 'salona-45', safetyDepthM: 3.6 });
 
     const option = within(
       document.getElementById('boat-option-salona-45')!.closest('.boat-option')!,
@@ -343,13 +347,18 @@ describe('#1292/#1321 lower-setting hint: deferred, resumable, never overclaims'
       },
       { timeout: solverTimeoutMs(5000) },
     );
+    // This wait spans every remaining flood of the search plus the other
+    // boats' deferred access, which a contended coverage shard cannot fit in
+    // the 5 s base the waits above use (#1832). It waits on deterministic
+    // work, so the ceiling only needs to fire before the file-level test
+    // timeout, keeping the named "Unable to find" diagnostic: half of it.
     await waitFor(
       () => {
         expect(
           option.getByText(/Augustenborg \(may route at 3.2 m \(depth data only\)\)/),
         ).toBeInTheDocument();
       },
-      { timeout: solverTimeoutMs(5000) },
+      { timeout: solverTimeoutMs(60_000) },
     );
     // #1321: never the unqualified over-claim, even transiently once resolved.
     expect(option.queryByText(/at any setting/)).not.toBeInTheDocument();

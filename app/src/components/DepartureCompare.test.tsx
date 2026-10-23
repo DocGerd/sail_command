@@ -122,7 +122,7 @@ function renderCompare(plan: Plan | null, onConfirmed = vi.fn()) {
     <I18nProvider>
       <DepartureCompare
         plan={plan}
-        ensureClient={() => Promise.resolve(null)}
+        ensureClient={() => Promise.resolve({ failure: 'worker-init' })}
         onConfirmed={onConfirmed}
       />
     </I18nProvider>,
@@ -556,7 +556,7 @@ describe('DepartureCompare', () => {
         <I18nProvider>
           <DepartureCompare
             plan={otherPlan}
-            ensureClient={() => Promise.resolve(null)}
+            ensureClient={() => Promise.resolve({ failure: 'worker-init' })}
             onConfirmed={onConfirmed}
           />
         </I18nProvider>,
@@ -599,7 +599,7 @@ describe('DepartureCompare', () => {
           <I18nProvider>
             <DepartureCompare
               plan={plan}
-              ensureClient={() => Promise.resolve(null)}
+              ensureClient={() => Promise.resolve({ failure: 'worker-init' })}
               onConfirmed={onConfirmed}
             />
           </I18nProvider>
