@@ -29,9 +29,10 @@ import type { Map as MaplibreMap } from 'maplibre-gl';
  * idempotent: guard on the presence of its own sources and no-op while they
  * exist. addLayer/setPaintProperty fire it later, from `Style#update`, but
  * addImage fires it SYNCHRONOUSLY, re-entering `setup` mid-call, and addSource
- * throws on a duplicate id. So a setup that adds images must tolerate being
- * re-entered mid-call: re-check `getSource` after the images (WaveLayer) or
- * keep every add presence-guarded (AisLayer, RouteLayer).
+ * throws on a duplicate id. A guard evaluated BEFORE an image call therefore
+ * does not protect the adds after it: evaluate it after the images (WaveLayer;
+ * AisLayer's `setupLayers`) or gate `setup` on a source added before them
+ * (RouteLayer's `missing` check on ROUTE_SOURCE).
  * Idempotence also absorbs the deferral's double one-shot ('load' then 'idle'
  * both firing on an initial load).
  *
