@@ -197,26 +197,20 @@ describe('departureSeedMs (#301, extracted from PlansList.tsx:152)', () => {
 describe('departureAfterSyncMs (#1761)', () => {
   const nowMs = Date.UTC(2026, 6, 15, 14, 23, 10);
 
-  it('keeps a form departure equal to the plan departure even when it is past', () => {
+  it('keeps the departure of a freshly computed plan even when it is past', () => {
     const departureMs = nowMs - 20 * 60_000;
     const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs });
-    expect(departureAfterSyncMs(plan, departureMs, nowMs)).toBe(departureMs);
+    expect(departureAfterSyncMs(plan, true, nowMs)).toBe(departureMs);
   });
 
-  it('keeps a form departure equal to a future plan departure', () => {
-    const departureMs = nowMs + 3_600_000;
-    const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs });
-    expect(departureAfterSyncMs(plan, departureMs, nowMs)).toBe(departureMs);
-  });
-
-  it('re-seeds the next full hour when the form differs and the plan departure is past', () => {
+  it('re-seeds the next full hour for a loaded plan whose departure is past', () => {
     const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs: nowMs - 3_600_000 });
-    expect(departureAfterSyncMs(plan, nowMs + 7_200_000, nowMs)).toBe(nextFullHourMs(nowMs));
+    expect(departureAfterSyncMs(plan, false, nowMs)).toBe(nextFullHourMs(nowMs));
   });
 
-  it('adopts the plan departure when the form differs and it is still in the future', () => {
+  it('keeps the departure of a loaded plan that is still in the future', () => {
     const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs: nowMs + 3_600_000 });
-    expect(departureAfterSyncMs(plan, nowMs + 7_200_000, nowMs)).toBe(nowMs + 3_600_000);
+    expect(departureAfterSyncMs(plan, false, nowMs)).toBe(nowMs + 3_600_000);
   });
 });
 

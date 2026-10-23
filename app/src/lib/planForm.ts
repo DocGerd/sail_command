@@ -84,18 +84,17 @@ export function departureSeedMs(plan: Plan, nowMs: number = Date.now()): number 
 }
 
 /**
- * #1761: the departure the form holds once a plan has synced. A form already
- * on the plan's own departure keeps it, even when it is now past, so a plan
- * just run from the form never reads stale. Any other plan re-seeds.
+ * #1761: the departure the form takes from a newly active plan. A plan the
+ * app just computed (`freshResult`) keeps its own departure, even when it is
+ * now past, so the result never reads stale. A loaded plan re-seeds via
+ * departureSeedMs.
  */
 export function departureAfterSyncMs(
   plan: Plan,
-  formDepartureMs: number,
+  freshResult: boolean,
   nowMs: number = Date.now(),
 ): number {
-  return formDepartureMs === plan.request.departureMs
-    ? formDepartureMs
-    : departureSeedMs(plan, nowMs);
+  return freshResult ? plan.request.departureMs : departureSeedMs(plan, nowMs);
 }
 
 /** First local 10:00 strictly after both the ETA and now. Calendar math, never +24 h: DST days are 23/25 h. */

@@ -480,6 +480,9 @@ function AppShell() {
   // same object survives) — `plan !== null && rig !== null` alone can't,
   // since a re-plan or recalc has both non-null already.
   const planAtBusyStartRef = useRef<Plan | null>(plan);
+  // #1761: the plan object the app itself just computed (run() completion or a
+  // confirmed departure window); the form departure follows it, see below.
+  const freshResultRef = useRef<Plan | null>(null);
   useEffect(() => {
     const prevPhase = prevPlanningPhaseRef.current;
     prevPlanningPhaseRef.current = planning.phase;
@@ -495,6 +498,7 @@ function AppShell() {
       rig !== null &&
       plan !== planAtBusyStartRef.current
     ) {
+      freshResultRef.current = plan;
       announceCompletion(plan, rig);
     }
   }, [planning.phase, plan, rig, announceCompletion]);
@@ -626,7 +630,7 @@ function AppShell() {
   // #301: also written by the plan-form sync effect below (next to
   // planIdRef) whenever a NEW plan.id becomes active — origin/destination
   // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
-  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs), unless the form already holds the plan's departure (#1761).
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs), unless the app just computed the plan (#1761).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
@@ -781,10 +785,21 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id ONLY, deliberately: see the comment above
   }, [plan?.id]);
 
+  // #1761: a fresh result that keeps the active plan's id (recalculate-replace,
+  // confirmed departure window) never reaches the sync effect below, so the
+  // form departure follows it here. A new id is left to the sync effect.
+  useEffect(() => {
+    if (!plan || freshResultRef.current !== plan || syncedPlanIdRef.current !== plan.id) return;
+    freshResultRef.current = null;
+    setDepartureMs(plan.request.departureMs);
+  }, [plan]);
+
   useEffect(() => {
     if (!plan || !harborsLoaded) return;
     if (syncedPlanIdRef.current === plan.id) return;
     syncedPlanIdRef.current = plan.id;
+    const freshResult = freshResultRef.current === plan;
+    freshResultRef.current = null;
     const { origin: syncedOrigin, destination: syncedDestination } = pickedPointsOfPlan(
       plan,
       harbors,
@@ -804,8 +819,8 @@ function AppShell() {
       setDestination(syncedDestination);
     }
     if (baseline === null || departureMs === baseline.departureMs) {
-      // #1761: a form already on this plan's departure keeps it (see departureAfterSyncMs).
-      setDepartureMs(departureAfterSyncMs(plan, departureMs));
+      // #1761: a plan the app just computed keeps its own departure.
+      setDepartureMs(departureAfterSyncMs(plan, freshResult));
     }
     // #885: vias and segment modes sync as ONE field — modes index the via
     // list, so keeping a user-edited half beside a synced half would misalign.
@@ -1462,6 +1477,7 @@ function AppShell() {
   // the two can never observe different data.
   const handleDepartureConfirmed = useCallback(
     (p: Plan) => {
+      freshResultRef.current = p;
       setPlan(p);
       announceCompletion(p, p.result.recommended);
     },
