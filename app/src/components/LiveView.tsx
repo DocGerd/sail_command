@@ -546,8 +546,8 @@ export default function LiveView({
         </div>
       )}
 
-      {/* #1843: above the readouts, so a card capped below the sheet scrolls
-          the readouts, never this action. #115 manual "reroute from here" — an explicit user action producing
+      {/* #1843: above the readouts, so a card capped below the sheet clips
+          the readouts before this action. #115 manual "reroute from here" — an explicit user action producing
           a NEW routed plan (App.tsx wires it to useLiveReroute); only
           meaningful with a current GPS fix, so it is disabled (with an i18n
           hint) until tracking is on and a fix has arrived. It never starts

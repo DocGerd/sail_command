@@ -28,7 +28,7 @@ function declarationBlock(selectorRe: RegExp): string {
 const liveViewBlock = () => declarationBlock(/(?:^|\} )\.live-view \{([^}]*)\}/);
 
 const CAP_RE =
-  /max-height: max\( (\d+(?:\.\d+)?)rem, calc\((\d+(?:\.\d+)?)vh - var\(--sc-toast-height, 0px\) - var\(--live-sheet-h, calc\(var\(--sc-tabbar-h\) \+ 6rem\)\)\) \);/;
+  /max-height: max\( (\d+(?:\.\d+)?)rem, calc\( \((\d+(?:\.\d+)?)vh - var\(--sc-toast-height, 0px\)\) - var\(--live-sheet-h, calc\(var\(--sc-tabbar-h\) \+ 6rem\)\) \) \);/;
 
 function parseCap(): { floorPx: number; budgetVh: number } {
   const m = CAP_RE.exec(liveViewBlock());
@@ -67,6 +67,7 @@ describe('#1822: Live card priority over the bottom sheet', () => {
     // comment); a larger card budget lets the card's top reach it. The sheet's own
     // toast-compensated cap is pinned by toastCompensationTwin.test.ts.
     expect(parseCap().budgetVh).toBe(55);
+    expect(cardCapPx(1180, 213, 60)).toBe(0.55 * 1180 - 60 - 213);
   });
 
   it('bottom and max-height read the same sheet fallback', () => {

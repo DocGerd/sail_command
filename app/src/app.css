@@ -619,7 +619,7 @@ select {
    scrolls inside the sheet. #1843: the card is capped like the sheet, `55vh` minus the toast
    minus the sheet's measured height: the sheet cap is what the Tier 2 map chrome's own
    `max-height` leaves clear, so wherever the cap, not the floor, binds the card's top stays clear
-   of it. The reroute control leads the card (LiveView), so the cap scrolls the readouts, not it.
+   of it. The reroute control precedes the readouts (LiveView), so the cap clips the readouts first.
    The `12rem` floor is the least the card keeps whatever the sheet measures, and it may reach the
    chrome where it binds; pinned by `src/test/liveCardPriority.test.ts`.
    The panel's 10rem cap below is a judgement call, not a measured layout constant. */
@@ -630,7 +630,9 @@ select {
   bottom: var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem));
   max-height: max(
     12rem,
-    calc(55vh - var(--sc-toast-height, 0px) - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem)))
+    calc(
+      (55vh - var(--sc-toast-height, 0px)) - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))
+    )
   );
   overflow-y: auto;
   background: var(--sc-bg);
@@ -5358,7 +5360,7 @@ select {
      sheet by exactly that much. `--sc-toast-height` is the toast's REAL
      rendered height, published by a `ResizeObserver` in `ReloadPrompt.tsx`
      and REMOVED on cleanup, so with no toast this is a plain `55vh`.
-     NAMED COUPLING: one of FOUR sites encoding this compensated cap — see
+     NAMED COUPLING: one of FIVE sites encoding this compensated cap — see
      `app/src/test/toastCompensationTwin.test.ts`, which pins all four
      against each other because no compiler spans CSS and TypeScript. */
   .app-bottom-sheet {

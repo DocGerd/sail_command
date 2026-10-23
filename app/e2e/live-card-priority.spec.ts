@@ -9,9 +9,9 @@ import {
 
 // #1822: with a long, expanded AIS list the Live card keeps priority over the
 // bottom sheet: the list scrolls inside the sheet at narrow widths. #1843: the
-// reroute control leads the card and the card is capped like the sheet, so with a
+// reroute control precedes the readouts and the card is capped like the sheet, so with a
 // fresh GPS fix the control and its reason stay on screen from the 820px design
-// floor up, and the card's top stays clear of the Tier 2 map chrome (expanded, its
+// floor up, and the card's top stays clear of the Tier 2 map chrome (route cluster expanded, its
 // worst case). Fake aisstream via routeWebSocket; no socket
 // leaves the box.
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
@@ -149,8 +149,8 @@ async function openAisList(page: Page): Promise<void> {
   await expect(disclosure.locator('.ais-in-view-row').first()).toBeVisible();
 }
 
-// The cluster is collapsed by default at narrow widths, where its clearance matters
-// least; expanded is the worst case. Read the IDL property, never getAttribute('open').
+// The route cluster is collapsed by default at narrow widths; expanded is its
+// worst case for the card's top. Read the IDL property, never getAttribute('open').
 async function expandRouteChrome(page: Page): Promise<void> {
   for (const sel of ['details.route-layer-controls-disclosure', 'details.route-legend']) {
     const details = page.locator(sel);
