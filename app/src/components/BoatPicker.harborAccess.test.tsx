@@ -329,7 +329,9 @@ describe('#1292/#1321 lower-setting hint: deferred, resumable, never overclaims'
   // salona-45's ONLY `unreachable` harbour, so no sibling search runs ahead
   // of it. With HINT_STEPS_PER_SLICE=3 the scan exhausts at 3.5/3.4/3.3,
   // resumes from 3.2 and finds it `ok` — two idle ticks, the cheapest depth
-  // that still exercises `resumeFromDepthM`. Every tick pays uncached
+  // that still exercises `resumeFromDepthM`. That is ONE resume: the 4.0 m
+  // start chained two, so a resume-of-a-resume is no longer exercised.
+  // Every tick pays uncached
   // floods (each mount builds a fresh NavMask), and the 4.0 m start this
   // used before outran its wait on a coverage shard (#1832).
   it('resolves a multi-tick hint search to "may route at 3.2 m (depth data only)" via resumeFromDepthM', async () => {

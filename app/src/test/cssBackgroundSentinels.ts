@@ -9,6 +9,7 @@
 // `backgroundColor === sentinel('--token')` then means "the rule painting that
 // token won". `background: none` stays as written.
 
+const COMMENT = /\/\*[\s\S]*?\*\//g;
 const BACKGROUND_DECL = /(\bbackground(?:-color)?\s*:)([^;{}]*)/g;
 
 export interface BackgroundSentinels {
@@ -29,9 +30,13 @@ export function withBackgroundSentinels(css: string): BackgroundSentinels {
     return colour;
   };
 
-  const rewritten = css.replace(BACKGROUND_DECL, (_m, prop: string, value: string) => {
-    return prop + replaceVars(value, colourFor);
-  });
+  // Comments are stripped first: a prose "background: … var()" mention must
+  // not be scanned as a declaration.
+  const rewritten = css
+    .replace(COMMENT, '')
+    .replace(BACKGROUND_DECL, (_m, prop: string, value: string) => {
+      return prop + replaceVars(value, colourFor);
+    });
 
   return {
     css: rewritten,

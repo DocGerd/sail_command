@@ -106,10 +106,10 @@ describe('#54 the clamp announcement stays in the accessibility tree while empty
 // the computed `borderLeft` shorthand text collapse to their CSS-initial
 // values (`16px none rgba(0, 0, 0, 0)`) rather than the declared `2px solid
 // var(--sc-border)`, so no getComputedStyle probe in jsdom can discriminate
-// that half of the rule. `padding-left: 0.5rem` involves no `var()` at all and resolves
-// cleanly to `8px` (16px root font-size x 0.5), so it is the one half of the
-// #701 visual change this file can actually verify. A real-browser pass is
-// what confirms the border renders; do not read this test as covering that.
+// that half of the rule. `padding-left: 0.5rem` involves no `var()` at all and
+// resolves cleanly to `8px` (16px root font-size x 0.5), so it is the one half
+// of the #701 visual change this file can actually verify. A real-browser pass
+// is what confirms the border renders; do not read this test as covering that.
 function renderDraftNote(): HTMLParagraphElement {
   const el = document.createElement('p');
   el.className = 'boat-option-draft-note';

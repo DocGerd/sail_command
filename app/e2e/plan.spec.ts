@@ -97,15 +97,15 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
+    // Explicit departure (#1731): the form default is the next full hour,
+    // which a slow plan can leave in the past.
+    await page.getByLabel('Abfahrt').fill(localDatetimeValue(nextFullHourPlus(2)));
     // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
     // load-state class assertion is the primary regression guard (part 2
     // re-collapses the attribution above, so by this point the control is
     // collapsed either way). This click landing without any collapse click
     // before it adds a behavioral backstop via Playwright's actionability
     // check — do not re-add a collapse click above it.
-    // Explicit departure (#1731): the form default is the next full hour,
-    // which a slow plan can leave in the past.
-    await page.getByLabel('Abfahrt').fill(localDatetimeValue(nextFullHourPlus(2)));
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     // Wait for run() to fully settle (button re-enabled: usePlanFlow.ts's

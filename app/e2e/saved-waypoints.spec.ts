@@ -215,7 +215,11 @@ async function jumpToCluster(page: Page, zoom: number): Promise<void> {
  * With a plan active RouteLayer re-fits (to the route) whenever chrome resizes
  * until a user gesture, and a programmatic `jumpTo` is not one, so a pixel
  * sampled once after a single jump can go stale (#1758). The jump is skipped
- * while the camera is already on target, so the render can settle between polls. */
+ * while the camera is already on target, so the render can settle between polls:
+ * `queryRenderedFeatures` straight after a `jumpTo` in the same task reads the
+ * previous frame's placement. The returned pixel is verified inside the poll
+ * but the caller's click follows a CDP round trip later, so a re-fit landing
+ * in that gap is narrowed, not closed. */
 async function aimAtWaypoint(
   page: Page,
   target: { id: string; lon: number; lat: number },
