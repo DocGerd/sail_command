@@ -13,41 +13,44 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.58.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.59.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.58.0
+## Now — v0.59.0
 
-The `v0.58.0` cut (2026-10-21) readied Live mode for a first sail on an Android tablet, from the [`v0.58.0` milestone](https://github.com/DocGerd/sail_command/milestones).
-Live and the boat marker now share one GPS source with waiting, stale, lost and
-denied states, and reroute is disabled without a usable fix
-([#1800](https://github.com/DocGerd/sail_command/issues/1800)). The Live card shows each of those states, a resume prompt after a reload or crash ([#1802](https://github.com/DocGerd/sail_command/issues/1802)); the screen is kept awake while tracking, with an indicator and a toggle to release it ([#1801](https://github.com/DocGerd/sail_command/issues/1801)). It also shows leg N of M, distance to go and the
-cross-track distance ([#1803](https://github.com/DocGerd/sail_command/issues/1803)). Plans saved from now on and backup exports no longer carry the AIS key ([#1799](https://github.com/DocGerd/sail_command/issues/1799)), and AIS shows Class B vessels and tells a quiet sea
-from a dead connection ([#1804](https://github.com/DocGerd/sail_command/issues/1804)). The Live re-fit latch now observes the readout
-before its check ([#1751](https://github.com/DocGerd/sail_command/issues/1751)), and the sea-condition e2e coverage for these states
-([#1805](https://github.com/DocGerd/sail_command/issues/1805)) changed no user-visible behaviour. The glanceable UX pass
-([#1806](https://github.com/DocGerd/sail_command/issues/1806)), the pre-sail readiness panel ([#1807](https://github.com/DocGerd/sail_command/issues/1807)) and the on-water test
-protocol for the first trip ([#1808](https://github.com/DocGerd/sail_command/issues/1808)) moved on to `v0.59.0`.
+The `v0.59.0` cut (2026-10-23) finished the Live work for the first sail and added a sea-state map overlay, from the [`v0.59.0` milestone](https://github.com/DocGerd/sail_command/milestones).
+The Live card got larger, full-contrast readouts and reroute progress, cancel and
+in-card errors ([#1806](https://github.com/DocGerd/sail_command/issues/1806)), and a pre-sail check of offline map, labels, location,
+forecast, screen keep-awake and AIS key before tracking starts ([#1807](https://github.com/DocGerd/sail_command/issues/1807)). It keeps
+priority over the bottom sheet with a long AIS list ([#1822](https://github.com/DocGerd/sail_command/issues/1822)), AIS targets take
+their ship type from Extended Class B reports ([#1823](https://github.com/DocGerd/sail_command/issues/1823)), and plans stored before
+`v0.58.0` lose their AIS key at the next app start ([#1813](https://github.com/DocGerd/sail_command/issues/1813)). Planning start-up and
+plan saving are time-limited and Cancel takes effect while the planner starts
+([#1776](https://github.com/DocGerd/sail_command/issues/1776)); the planner shows elapsed time, a start-up status and a long-route
+notice, the first part of [#1775](https://github.com/DocGerd/sail_command/issues/1775). The parallel-rig residuals ([#1794](https://github.com/DocGerd/sail_command/issues/1794)), the
+order of other-safety-depth checks ([#1749](https://github.com/DocGerd/sail_command/issues/1749)) and duplicated chips on the Routes tab
+([#1833](https://github.com/DocGerd/sail_command/issues/1833)) were fixed. The map shows a plan's forecast sea state, display only, as
+the first slice of [#1699](https://github.com/DocGerd/sail_command/issues/1699), which stays open in `Backlog`. Backtrack's leg merge now
+applies the depth-comfort check ([#1754](https://github.com/DocGerd/sail_command/issues/1754)), not user-visible on its own; the
+remaining postprocess gap is [#1842](https://github.com/DocGerd/sail_command/issues/1842). The test and CI items ([#1753](https://github.com/DocGerd/sail_command/issues/1753), [#1758](https://github.com/DocGerd/sail_command/issues/1758),
+[#1773](https://github.com/DocGerd/sail_command/issues/1773), [#1820](https://github.com/DocGerd/sail_command/issues/1820), [#1832](https://github.com/DocGerd/sail_command/issues/1832)) changed no user-visible behaviour, and [#1350](https://github.com/DocGerd/sail_command/issues/1350) was
+closed as already delivered at `v0.57.0`. The on-water test protocol ([#1808](https://github.com/DocGerd/sail_command/issues/1808)) was
+still open in the milestone at this cut. The remainder of [#1775](https://github.com/DocGerd/sail_command/issues/1775) (leg and stage)
+and the GPS re-render measurement ([#1821](https://github.com/DocGerd/sail_command/issues/1821)) moved on to `v0.60.0`, as did
+[#1708](https://github.com/DocGerd/sail_command/issues/1708) and [#1713](https://github.com/DocGerd/sail_command/issues/1713) at triage.
 
-## Next — v0.59.0
+## Next — v0.60.0
 
-The [`v0.59.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds fifteen issues as of this cut. Three are the Live items moved from
-`v0.58.0`: the glanceable UX pass ([#1806](https://github.com/DocGerd/sail_command/issues/1806)), the pre-sail readiness panel
-([#1807](https://github.com/DocGerd/sail_command/issues/1807)) and the on-water test protocol for the first trip ([#1808](https://github.com/DocGerd/sail_command/issues/1808)). Five are
-follow-ups filed during `v0.58.0`: scrubbing the AIS key from plans stored
-before it ([#1813](https://github.com/DocGerd/sail_command/issues/1813)), asserting the ETA value in the Live e2e ([#1820](https://github.com/DocGerd/sail_command/issues/1820)), measuring
-the per-second GPS re-render ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), keeping the Live card above the bottom
-sheet with a long AIS list ([#1822](https://github.com/DocGerd/sail_command/issues/1822)) and carrying ship type from Extended Class B
-reports ([#1823](https://github.com/DocGerd/sail_command/issues/1823)). Two have been carried since `v0.56.0`: multi-day trip records
-with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and a labelled MET Norway wind fallback
-provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). The remaining five are the review residuals from the
-parallel-rig solve ([#1794](https://github.com/DocGerd/sail_command/issues/1794)) and four follow-ups filed during `v0.56.0`: the
-backtrack collinear merge skipping the depth-comfort check that postprocess
-applies ([#1754](https://github.com/DocGerd/sail_command/issues/1754)), no test pinning that `solve()` hands its own gate to
-`backtrack()` ([#1753](https://github.com/DocGerd/sail_command/issues/1753)), unreachable-band scans running in map order rather than
-selected or visible harbours first ([#1749](https://github.com/DocGerd/sail_command/issues/1749)), and the saved-waypoints e2e losing
-its cluster pixel to the post-plan fit ([#1758](https://github.com/DocGerd/sail_command/issues/1758)). The milestone page is the only
+The [`v0.60.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds seven open issues as of this cut. Four came from earlier milestones: the
+leg and stage part of planning progress ([#1775](https://github.com/DocGerd/sail_command/issues/1775)), the CPU measurement of the
+per-second GPS re-render and GNSS-time timestamps ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), multi-day trip
+records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and a labelled MET Norway wind
+fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Three were filed during `v0.59.0`: map chrome that
+can cover the docked Live card's top below 1024 px with a long AIS list
+([#1843](https://github.com/DocGerd/sail_command/issues/1843)), postprocess's merge lowering the comfort bar after a shallow leg
+([#1842](https://github.com/DocGerd/sail_command/issues/1842)) and the test map fake not matching MapLibre's `styledata` and
+duplicate-source behaviour ([#1840](https://github.com/DocGerd/sail_command/issues/1840)). The milestone page is the only
 authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
@@ -128,7 +131,9 @@ Each issue's milestone field is the current fact:
   make, and also the biggest: it touches the data pipeline, the solver, and
   the UI. No evaluated current source passed the quality gate, and no part of
   this is scheduled; wave effects are in scope of the waves spec, whose §2
-  rules out currents/tides only.
+  rules out currents/tides only. Its first slice, a display-only sea-state
+  map overlay ([#1699](https://github.com/DocGerd/sail_command/issues/1699)),
+  shipped at `v0.59.0`; waves are not a routing input.
 - Multi-day trip planning with overnight stops and arrival-window checks
   ([#19](https://github.com/DocGerd/sail_command/issues/19)), which is bounded
   by the ~6-day forecast horizon.
@@ -145,7 +150,8 @@ scheduled.
 
 Note the tension with "Out of scope (v1)" in [`README.md`](README.md): currents,
 tides, waves, and multi-day passages were excluded from v1 and remain excluded
-from the shipped app. Their presence here marks them as open questions, not
+from routing in the shipped app (the map has shown sea state, display only,
+since `v0.59.0`). Their presence here marks them as open questions, not
 commitments: the v1 exclusion still holds and none of them is scheduled.
 
 ### Live view and on-board use
