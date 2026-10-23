@@ -2024,6 +2024,13 @@ making design-level decisions; do not silently deviate.
   (observed at the v0.57.0 cut). Under a `/goal` Stop hook the turn cannot
   end; at v0.58.0 the maintainer's explicit go let the session follow
   `SKILL.md` by hand, stopping for them at §2 and step 4.
+- **A cloud session cannot sign the release tag**: its signing key file is
+  empty (measured at the v0.59.0 cut), and an unsigned tag would break the
+  Verified record every tag from `v0.8.1` carries. A cut run there stops
+  after the release merge: track the pending tag as an issue in the shipped
+  milestone (#1848) and leave that milestone open until the maintainer tags.
+  Production serves the release meanwhile; only the clean version string,
+  the Release object and the compare link wait on the tag.
 - **`.claude/commands/release-cycle.md` provides `/release-cycle`** (#816, PR
   #817, merged 2026-09-01) — a six-phase (0–5) wrapper for a whole cycle:
   state discovery, approval-gated milestone re-triage, implementing the
@@ -5179,6 +5186,10 @@ making design-level decisions; do not silently deviate.
   `gh api -X POST repos/O/R/actions/runs/<id>/approve` after a static safety
   review; `pulls/N/update-branch` works when `maintainer_can_modify`, and the
   branch tip lives in `head.repo.full_name`, not this repo (#1348).
+- **A cloud session cannot write `.github/workflows/`** (v0.59.0 cut): a git
+  push touching it is rejected for lacking `workflow` scope, the session
+  proxy refuses the contents API on that path, and the session could not
+  delete a remote branch either (API 403, push refused). Put such a change in an issue as a diff (#1852) for the maintainer.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
