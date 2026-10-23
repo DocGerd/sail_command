@@ -74,27 +74,34 @@ const messages = (spy: MockInstance): string[] =>
   spy.mock.calls.map((c: unknown[]) => String(c[0]));
 
 describe('RoutingClient console logging (#1777)', () => {
-  it('logs the plan start with ids only, never coordinates', async () => {
-    const { w, id, outcome } = await started({ ...REQUEST, originHarborId: 'flensburg' });
-    const call = info.mock.calls.find((c) => c[0] === '[SailCommand] plan start');
-    expect(call).toBeDefined();
-    expect(call?.[1]).toMatchObject({
-      planId: id,
-      boat: REQUEST.boat.id,
-      sails: ['genoa', 'fock'],
-      origin: 'flensburg',
-      destination: 'tap',
-      vias: 0,
-      departure: '2026-07-15T08:00:00.000Z',
-      safetyDepthM: DEFAULT_SETTINGS.safetyDepthM,
-      budgetMs: BUDGET_MS,
-    });
-    const text = JSON.stringify(info.mock.calls);
-    expect(text).not.toContain('54.7525');
-    expect(text).not.toContain('10.0025');
-    w.emit({ type: 'result', id, result: NO_ROUTE });
-    await outcome;
-  });
+  it.each([
+    ['a harbour origin and a tapped destination', { originHarborId: 'flensburg' }, 'flensburg', 'tap'],
+    ['a tapped origin and a harbour destination', { destinationHarborId: 'marstal' }, 'tap', 'marstal'],
+  ] as const)(
+    'logs the plan start with ids only, never coordinates (%s)',
+    async (_name, harbours, origin, destination) => {
+      const { w, id, outcome } = await started({ ...REQUEST, ...harbours });
+      const call = info.mock.calls.find((c) => c[0] === '[SailCommand] plan start');
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({
+        planId: id,
+        boat: REQUEST.boat.id,
+        sails: ['genoa', 'fock'],
+        origin,
+        destination,
+        vias: 0,
+        departure: '2026-07-15T08:00:00.000Z',
+        safetyDepthM: DEFAULT_SETTINGS.safetyDepthM,
+        budgetMs: BUDGET_MS,
+      });
+      const text = JSON.stringify(info.mock.calls);
+      expect(text).not.toContain('54.7525');
+      expect(text).not.toContain('10.0025');
+      expect(text).not.toContain('10.3025');
+      w.emit({ type: 'result', id, result: NO_ROUTE });
+      await outcome;
+    },
+  );
 
   it('logs a finished plan at info, and a no-route result at error with its reason', async () => {
     const ok = await started();
