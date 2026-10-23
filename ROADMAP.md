@@ -18,7 +18,7 @@ shipped.
 
 ## Now — v0.59.0
 
-The `v0.59.0` cut (2026-10-23) shipped the [`v0.59.0` milestone](https://github.com/DocGerd/sail_command/milestones)'s Live work ahead of the first sail and a first sea-state map overlay.
+The `v0.59.0` cut (2026-10-23) shipped a first sea-state map overlay and, from the [`v0.59.0` milestone](https://github.com/DocGerd/sail_command/milestones), Live work ahead of the first sail.
 The Live card got larger, full-contrast readouts and reroute progress, cancel and
 in-card errors ([#1806](https://github.com/DocGerd/sail_command/issues/1806)), and a pre-sail check of offline map, labels, location,
 forecast, screen keep-awake and AIS key before tracking starts ([#1807](https://github.com/DocGerd/sail_command/issues/1807)). It keeps
@@ -51,7 +51,7 @@ fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713))
 can cover the docked Live card's top below 1024 px with a long AIS list
 ([#1843](https://github.com/DocGerd/sail_command/issues/1843)), postprocess's merge lowering the comfort bar after a shallow leg
 ([#1842](https://github.com/DocGerd/sail_command/issues/1842)), the test map fake not matching MapLibre's `styledata` and
-duplicate-source behaviour ([#1840](https://github.com/DocGerd/sail_command/issues/1840)), the hands-on check of this release
+duplicate-source behaviour ([#1840](https://github.com/DocGerd/sail_command/issues/1840)), the hands-on check of `v0.59.0`,
 postponed from its cut ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the docs hero screenshot not showing
 the sea-state overlay ([#1846](https://github.com/DocGerd/sail_command/issues/1846)). The milestone page is the only
 authoritative view, check it directly rather than this file.

@@ -562,9 +562,9 @@ selected in §1.
       restored, resize the window, or dismiss the offline-ready notice: the
       route is fitted again and the labels stay clear. A label at or under a
       control or the sheet is a defect.
-- [ ] **2.21 Planning progress names all sails (#1350).** Press "Plan route"
-      and read the planner's status line while it is busy. Once the routing
-      phase starts it refers to all sails ("Calculating route for all sails…"
+- [ ] **2.21 Planning progress names all sails (#1350, #1794).** Press "Plan route"
+      and read the planner's status line while it is busy. With both sails aboard,
+      once the routing phase starts it refers to all sails ("Calculating route for all sails…"
       / "Route wird für alle Segel berechnet…"), never "sail 1 of 2" / "Segel
       1 von 2"; with only one sail aboard it reads "Calculating route…" /
       "Route wird berechnet…". The fetching, start-up and depth-probing

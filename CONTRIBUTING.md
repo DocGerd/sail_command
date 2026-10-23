@@ -237,8 +237,8 @@ labels on **pull requests** are applied automatically from changed paths by
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
 `v0.4.0` through `v0.58.0` are closed (plus the `v0.5.1`, `v0.12.1`,
-`v0.13.1`, `v0.55.1`, and `v0.55.2` patch milestones). Whichever cut is in flight is always the
-exception, and reads the same way every time: its issues are closed while
+`v0.13.1`, `v0.55.1`, and `v0.55.2` patch milestones). Whichever cut is in flight is the
+exception, and normally reads the same way: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
 bullet above) — so throughout the docs sweep that precedes the tag it shows
 zero open issues while still reading open, which is the normal mid-cut state
