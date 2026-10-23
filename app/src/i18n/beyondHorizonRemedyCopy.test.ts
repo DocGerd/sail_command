@@ -37,3 +37,22 @@ describe('#1307: beyond-horizon no-route copy never suggests a LATER departure',
     expect(de[key]).toMatch(/eine neue Vorhersage/i);
   });
 });
+
+// #1806: the Live reroute copy fixes departure (now) and destination, so it
+// names neither a different departure time nor a later one.
+describe('#1806: error.rerouteBeyondHorizon offers only a fresh forecast', () => {
+  it('EN contains no "later" and no departure-time remedy', () => {
+    expect(en['error.rerouteBeyondHorizon']).not.toMatch(/\blater\b/i);
+    expect(en['error.rerouteBeyondHorizon']).not.toMatch(/departure/i);
+  });
+
+  it('DE contains no "später" and no departure-time remedy', () => {
+    expect(de['error.rerouteBeyondHorizon']).not.toMatch(/später/i);
+    expect(de['error.rerouteBeyondHorizon']).not.toMatch(/Abfahrt/i);
+  });
+
+  it('both name a fresh forecast (positive control)', () => {
+    expect(en['error.rerouteBeyondHorizon']).toContain('a fresh forecast');
+    expect(de['error.rerouteBeyondHorizon']).toMatch(/eine neue Vorhersage/i);
+  });
+});

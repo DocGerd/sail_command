@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { noRouteMessageKey } from '../lib/plan';
 import { cloneWaveGrid } from '../lib/waves';
@@ -23,8 +23,35 @@ import {
   type Plan,
   type PlanRequest,
   type PlanResult,
+  type SailId,
   type WindGrid,
 } from '../types';
+
+/**
+ * #1806: the RoutingClient surface a reroute uses — ReplanClient plus the
+ * progress/probe callbacks and cancel(). Structural, so a bare `{ plan }` fake
+ * still satisfies it.
+ */
+export interface RerouteClient extends ReplanClient {
+  plan(
+    request: PlanRequest,
+    windGrid: WindGrid,
+    onProgress?: (sailId: SailId, tMs: number, frontierSize: number, secondPass: boolean) => void,
+    timeoutMs?: number,
+    onProbe?: (probeDepthM: number, done: number, total: number) => void,
+  ): Promise<PlanResult>;
+  cancel?(): void;
+}
+
+/** #1806: what the Live card shows while a reroute runs. */
+export type ReroutePhase = 'starting' | 'routing' | 'routing-second-pass' | 'probing';
+
+export interface RerouteDeps extends ReplanDeps {
+  client: RerouteClient;
+  onPhase?: (phase: ReroutePhase) => void;
+  /** #1806: true once the skipper pressed Stop; a stopped reroute is saved but not pinned. */
+  isCancelled?: () => boolean;
+}
 
 /**
  * Deep copy of a wind grid (arrays and typed arrays re-allocated). The
@@ -87,7 +114,7 @@ export async function rerouteFromFix(
   fixPoint: LatLon,
   nowMs: number,
   name: string,
-  deps: ReplanDeps,
+  deps: RerouteDeps,
 ): Promise<Plan> {
   const { timesMs } = plan.windGrid;
   const horizonMs = timesMs[timesMs.length - 1];
@@ -143,7 +170,17 @@ export async function rerouteFromFix(
     // The stored grid goes to the worker by structured clone (workerClient
     // posts it with no transfer list) — the original plan's forecast
     // survives intact regardless of what the worker does.
-    result = await deps.client.plan(request, plan.windGrid);
+    const onPhase = deps.onPhase;
+    result = onPhase
+      ? await deps.client.plan(
+          request,
+          plan.windGrid,
+          (_sailId, _tMs, _frontierSize, secondPass) =>
+            onPhase(secondPass ? 'routing-second-pass' : 'routing'),
+          undefined,
+          () => onPhase('probing'),
+        )
+      : await deps.client.plan(request, plan.windGrid);
   } catch (err) {
     // #432: mirrors replanWithVias's own plan() catch exactly — bind the
     // error, dispose the client so a retry gets a fresh worker rather than
@@ -163,11 +200,15 @@ export async function rerouteFromFix(
     // A GPS fix outside the mask region (or on land/too-shallow water) comes
     // back as snap-failed-origin — surfaced with reroute-specific copy: the
     // generic snapOrigin text ("pick a point…") addresses a planner pick,
-    // not a position the boat actually is at.
+    // not a position the boat actually is at. #1806: beyond-horizon likewise
+    // gets Live copy — departure (now) and destination are fixed here, so the
+    // planner's "different departure time" remedy does not apply.
     throw new ReplanError(
       result.reason === 'snap-failed-origin'
         ? 'error.rerouteFixOutside'
-        : noRouteMessageKey(result.reason, request),
+        : result.reason === 'beyond-horizon'
+          ? 'error.rerouteBeyondHorizon'
+          : noRouteMessageKey(result.reason, request),
       `no route: ${result.reason}`,
     );
   }
@@ -197,6 +238,7 @@ export async function rerouteFromFix(
   // #1233: never awaited — pinning cannot delay or fail the reroute. A
   // mid-passage reroute is exactly the case most likely to move the
   // corridor into a region the original pin never fetched.
+  if (deps.isCancelled?.()) return rerouted;
   const pinRegions = deps.pinRegions ?? pinRegionsAfterReroute;
   pinRegions(rerouted);
   return rerouted;
@@ -204,16 +246,25 @@ export async function rerouteFromFix(
 
 export interface LiveRerouteState {
   rerouting: boolean;
+  // #1806: null while idle.
+  phase: ReroutePhase | null;
   error: MsgKey | null;
+  // #1806: true for REROUTE_SUCCESS_CUE_MS after a reroute became active.
+  succeeded: boolean;
 }
 
-const IDLE_STATE: LiveRerouteState = { rerouting: false, error: null };
+type BaseState = Omit<LiveRerouteState, 'phase'>;
+
+const IDLE_STATE: BaseState = { rerouting: false, error: null, succeeded: false };
+
+/** How long the Live card's "new route active" cue stays up. */
+export const REROUTE_SUCCESS_CUE_MS = 8_000;
 
 /**
  * Stateful wrapper around rerouteFromFix for LiveView/App to share, mirroring
  * useViaReplan (state/replan.ts): tracks `rerouting`/`error` and guards
  * against overlapping calls with a synchronous ref (a reroute() made while
- * one is already in flight is a no-op — GUARD, not cancel).
+ * one is already in flight is a no-op).
  *
  * Takes usePlanFlow's `ensureClient` (lazily creates/inits the singleton
  * RoutingClient on demand), not a client value — ensureClient only loads
@@ -221,19 +272,38 @@ const IDLE_STATE: LiveRerouteState = { rerouting: false, error: null };
  * what keeps this action available offline (the navigator.onLine gate lives
  * solely in usePlanFlow.run(), the one path that fetches).
  *
+ * #1806 cancel mirrors usePlanFlow's #1193 design: a flag checked after
+ * ensureClient() (client.cancel() is a no-op with nothing pending) plus
+ * client.cancel(), which terminates the worker. A cancel ends in idle with no
+ * error. One landing during save() cannot unsave the plan: it stays in the
+ * saved list, but is neither returned (so not activated), cued as a success, nor
+ * pinned for offline regions.
+ *
  * `deps.now` is injectable for tests only; production uses Date.now() —
  * departure of the reroute is the moment the skipper pressed the button.
  */
 export function useLiveReroute(
-  ensureClient: () => Promise<ReplanClient | null>,
+  ensureClient: () => Promise<RerouteClient | null>,
   deps: { save?: typeof savePlan; now?: () => number; pinRegions?: PinAfterSave } = {},
 ): {
   state: LiveRerouteState;
   reroute: (plan: Plan, fixPoint: LatLon, name: string) => Promise<Plan | null>;
+  cancel: () => void;
   clearError: () => void;
 } {
-  const [state, setState] = useState<LiveRerouteState>(IDLE_STATE);
+  const [base, setBase] = useState<BaseState>(IDLE_STATE);
+  // Separate primitive so repeated progress callbacks bail out unchanged.
+  const [phase, setPhase] = useState<ReroutePhase | null>(null);
   const busyRef = useRef(false);
+  const cancelRequestedRef = useRef(false);
+  const clientRef = useRef<RerouteClient | null>(null);
+  const cueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCueTimer = () => {
+    if (cueTimerRef.current !== null) clearTimeout(cueTimerRef.current);
+    cueTimerRef.current = null;
+  };
+  useEffect(() => clearCueTimer, []);
 
   const reroute = useCallback(
     async (plan: Plan, fixPoint: LatLon, name: string): Promise<Plan | null> => {
@@ -242,16 +312,24 @@ export function useLiveReroute(
       // immediately rather than racing ensureClient/client.plan.
       if (busyRef.current) return null;
       busyRef.current = true;
-      setState({ rerouting: true, error: null });
+      cancelRequestedRef.current = false;
+      clearCueTimer();
+      setBase({ rerouting: true, error: null, succeeded: false });
+      setPhase('starting');
 
       try {
         const client = await ensureClient();
+        if (cancelRequestedRef.current) {
+          setBase(IDLE_STATE);
+          return null;
+        }
         if (!client) {
           // Not silent: a failed ensure (asset load or worker init) is a
           // real failure — the UI must show something.
-          setState({ rerouting: false, error: 'error.replanInit' });
+          setBase({ ...IDLE_STATE, error: 'error.replanInit' });
           return null;
         }
+        clientRef.current = client;
 
         const nowMs = (deps.now ?? Date.now)();
         // exactOptionalPropertyTypes: ReplanDeps's optional fields are
@@ -259,26 +337,54 @@ export function useLiveReroute(
         // key entirely (mirrors useViaReplan).
         const rerouted = await rerouteFromFix(plan, fixPoint, nowMs, name, {
           client,
+          onPhase: setPhase,
+          isCancelled: () => cancelRequestedRef.current,
           ...(deps.save ? { save: deps.save } : {}),
           ...(deps.pinRegions ? { pinRegions: deps.pinRegions } : {}),
         });
-        setState({ rerouting: false, error: null });
+        if (cancelRequestedRef.current) {
+          setBase(IDLE_STATE);
+          return null;
+        }
+        setBase({ rerouting: false, error: null, succeeded: true });
+        cueTimerRef.current = setTimeout(() => {
+          cueTimerRef.current = null;
+          setBase((s) => ({ ...s, succeeded: false }));
+        }, REROUTE_SUCCESS_CUE_MS);
         return rerouted;
       } catch (err) {
+        if (cancelRequestedRef.current) {
+          setBase(IDLE_STATE);
+          return null;
+        }
         const messageKey = err instanceof ReplanError ? err.messageKey : 'error.internal';
-        setState({ rerouting: false, error: messageKey });
+        setBase({ ...IDLE_STATE, error: messageKey });
         return null;
       } finally {
         busyRef.current = false;
+        clientRef.current = null;
+        setPhase(null);
       }
     },
     [ensureClient, deps.save, deps.now, deps.pinRegions],
   );
 
-  const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);
+  // A no-op while idle, so a stray tap cannot poison the next reroute.
+  const cancel = useCallback(() => {
+    if (!busyRef.current) return;
+    cancelRequestedRef.current = true;
+    clientRef.current?.cancel?.();
+  }, []);
+
+  const clearError = useCallback(() => setBase((s) => ({ ...s, error: null })), []);
+
+  const state = useMemo(() => ({ ...base, phase }), [base, phase]);
 
   // Stable object identity across renders that don't change state/reroute
   // themselves (mirrors useViaReplan's memoized return — App.tsx's
   // handleLiveReroute closes over this value in its own useCallback deps).
-  return useMemo(() => ({ state, reroute, clearError }), [state, reroute, clearError]);
+  return useMemo(
+    () => ({ state, reroute, cancel, clearError }),
+    [state, reroute, cancel, clearError],
+  );
 }

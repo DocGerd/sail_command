@@ -65,15 +65,16 @@ export function whenIdle(): Promise<void> {
   });
 }
 
+function parseManifest(data: unknown): string[] | null {
+  return Array.isArray(data) && data.every((p): p is string => typeof p === 'string') ? data : null;
+}
+
 async function fetchManifest(): Promise<string[] | null> {
   let manifest: string[] | null = null;
   try {
     const res = await fetch(import.meta.env.BASE_URL + GLYPH_MANIFEST_PATH);
     if (res.ok) {
-      const data: unknown = await res.json();
-      if (Array.isArray(data) && data.every((p): p is string => typeof p === 'string')) {
-        manifest = data;
-      }
+      manifest = parseManifest(await res.json());
     }
   } catch {
     // fall through to the shared warn below
@@ -110,6 +111,36 @@ async function warmOne(href: string): Promise<boolean> {
   }
 }
 
+async function missingGlyphUrls(paths: string[]): Promise<string[]> {
+  const cache = await caches.open(GLYPH_CACHE_NAME);
+  const cachedUrls = new Set((await cache.keys()).map((req) => req.url));
+  return paths
+    .map((path) => new URL(import.meta.env.BASE_URL + path, location.href).href)
+    .filter((href) => !cachedUrls.has(href));
+}
+
+/**
+ * #1807: whether every manifest glyph range is in the runtime cache, read
+ * from CacheStorage on each call. The manifest comes from the precache, never
+ * the network, so a pass also proves the manifest is available offline. Any
+ * "can't tell" (no Cache API, no precached manifest, a throw) is false.
+ */
+export async function glyphCacheComplete(): Promise<boolean> {
+  try {
+    if (!('caches' in window)) return false;
+    // Workbox keys an unhashed precache entry with `?__WB_REVISION__=…` (regionPinning.ts).
+    const res = await caches.match(import.meta.env.BASE_URL + GLYPH_MANIFEST_PATH, {
+      ignoreSearch: true,
+    });
+    if (!res) return false;
+    const paths = parseManifest(await res.json());
+    if (!paths || paths.length === 0) return false;
+    return (await missingGlyphUrls(paths)).length === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Core warm-up; exported for unit tests. Use scheduleGlyphWarmup() in app code. */
 export async function runGlyphWarmup(): Promise<GlyphWarmupOutcome> {
   if (!('serviceWorker' in navigator) || !('caches' in window)) return 'skipped';
@@ -120,11 +151,7 @@ export async function runGlyphWarmup(): Promise<GlyphWarmupOutcome> {
   const paths = await fetchManifest();
   if (!paths) return 'skipped';
 
-  const cache = await caches.open(GLYPH_CACHE_NAME);
-  const cachedUrls = new Set((await cache.keys()).map((req) => req.url));
-  const missing = paths
-    .map((path) => new URL(import.meta.env.BASE_URL + path, location.href).href)
-    .filter((href) => !cachedUrls.has(href));
+  const missing = await missingGlyphUrls(paths);
 
   let failed = 0;
   for (let i = 0; i < missing.length; i += BATCH_SIZE) {
@@ -158,5 +185,10 @@ export function scheduleGlyphWarmup(): Promise<GlyphWarmupOutcome> {
       window.__sailGlyphWarmup = outcome;
       return outcome;
     });
+  return scheduled;
+}
+
+/** #1807: the scheduled warm-up's promise, or null before main.tsx starts it. Never starts one. */
+export function glyphWarmupSettled(): Promise<GlyphWarmupOutcome> | null {
   return scheduled;
 }

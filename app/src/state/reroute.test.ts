@@ -1,7 +1,13 @@
 import 'fake-indexeddb/auto';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cloneWindGrid, rerouteFromFix, useLiveReroute } from './reroute';
+import {
+  cloneWindGrid,
+  REROUTE_SUCCESS_CUE_MS,
+  rerouteFromFix,
+  useLiveReroute,
+  type RerouteClient,
+} from './reroute';
 import { type ReplanClient } from './replan';
 import type { PinAfterSave } from '../services/pinAfterSave';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
@@ -441,7 +447,6 @@ describe('rerouteFromFix', () => {
 
   it.each<[NoRouteReason, string]>([
     ['unreachable', 'error.noRoute.unreachable'],
-    ['beyond-horizon', 'error.noRoute.beyondHorizon'],
     ['calm-motor-off', 'error.noRoute.calmMotorOff'],
     ['snap-failed-destination', 'error.noRoute.snapDestination'],
   ])(
@@ -604,7 +609,12 @@ describe('useLiveReroute', () => {
 
   it('starts idle', () => {
     const { result } = renderHook(() => useLiveReroute(() => Promise.resolve(null)));
-    expect(result.current.state).toEqual({ rerouting: false, error: null });
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: null,
+      succeeded: false,
+    });
   });
 
   // #1233 Minor (sail-reviewer PR #1231/#1242): the hook-level
@@ -641,7 +651,12 @@ describe('useLiveReroute', () => {
 
     expect(outcome).toBeNull();
     expect(ensureClient).toHaveBeenCalledTimes(1);
-    expect(result.current.state).toEqual({ rerouting: false, error: 'error.replanInit' });
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: 'error.replanInit',
+      succeeded: false,
+    });
   });
 
   it('uses the injected clock as the departure and returns the rerouted plan on success', async () => {
@@ -662,7 +677,12 @@ describe('useLiveReroute', () => {
     expect(outcome).not.toBeNull();
     expect(outcome!.name).toBe('Rerouted');
     expect(outcome!.request.departureMs).toBe(Date.UTC(2026, 6, 15, 10, 0, 0));
-    expect(result.current.state).toEqual({ rerouting: false, error: null });
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: null,
+      succeeded: true,
+    });
   });
 
   it('transitions rerouting true while the solve is in flight', async () => {
@@ -747,7 +767,12 @@ describe('useLiveReroute', () => {
     await act(async () => {
       await result.current.reroute(plan, FIX, 'Rerouted');
     });
-    expect(result.current.state).toEqual({ rerouting: false, error: 'error.rerouteFixOutside' });
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: 'error.rerouteFixOutside',
+      succeeded: false,
+    });
 
     act(() => result.current.clearError());
     expect(result.current.state.error).toBeNull();
@@ -772,7 +797,7 @@ describe('useLiveReroute', () => {
     expect(client.plan).toHaveBeenCalledTimes(2);
   });
 
-  it('returns a stable {state, reroute, clearError} object identity across renders that do not change state', () => {
+  it('returns a stable {state, reroute, cancel, clearError} object identity across renders that do not change state', () => {
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
     const ensureClient = () => Promise.resolve(client);
     const { result, rerender } = renderHook(() => useLiveReroute(ensureClient));
@@ -780,6 +805,230 @@ describe('useLiveReroute', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+});
+
+describe('#1806 reroute progress, cancel and success cue', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  // A client whose plan() stays pending until settled by hand, and whose
+  // cancel() rejects it the way RoutingClient's teardown does.
+  function pendingClient() {
+    let resolvePlan!: (r: PlanResultOk) => void;
+    let rejectPlan!: (e: Error) => void;
+    let onProgress: Parameters<RerouteClient['plan']>[2];
+    let onProbe: Parameters<RerouteClient['plan']>[4];
+    const client = {
+      plan: vi.fn(
+        (_req: PlanRequest, _grid: unknown, progress?: unknown, _t?: unknown, probe?: unknown) => {
+          onProgress = progress as typeof onProgress;
+          onProbe = probe as typeof onProbe;
+          return new Promise<PlanResultOk>((res, rej) => {
+            resolvePlan = res;
+            rejectPlan = rej;
+          });
+        },
+      ),
+      cancel: vi.fn(() => rejectPlan(new RoutingError('cancelled', 'plan cancelled by user'))),
+    } satisfies RerouteClient;
+    return {
+      client,
+      resolve: (r: PlanResultOk) => resolvePlan(r),
+      progress: (secondPass: boolean) => onProgress?.('genoa', 0, 0, secondPass),
+      probe: () => onProbe?.(2.5, 1, 3),
+    };
+  }
+
+  it('reports starting, routing, second pass and probing phases, then null once settled', async () => {
+    const c = pendingClient();
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(c.client), {
+        save: vi.fn().mockResolvedValue(undefined),
+        now: () => NOW_MS,
+      }),
+    );
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    expect(result.current.state.phase).toBe('starting');
+    await waitFor(() => expect(c.client.plan).toHaveBeenCalledTimes(1));
+
+    act(() => c.progress(false));
+    expect(result.current.state.phase).toBe('routing');
+    act(() => c.progress(true));
+    expect(result.current.state.phase).toBe('routing-second-pass');
+    act(() => c.probe());
+    expect(result.current.state.phase).toBe('probing');
+
+    await act(async () => {
+      c.resolve(OK_RESULT);
+      await pending;
+    });
+    expect(result.current.state.phase).toBeNull();
+  });
+
+  it('cancel() during the solve terminates it and ends idle with no error and no plan', async () => {
+    const c = pendingClient();
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(c.client), { save, now: () => NOW_MS }),
+    );
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    await waitFor(() => expect(c.client.plan).toHaveBeenCalledTimes(1));
+
+    let outcome: Plan | null | undefined;
+    await act(async () => {
+      result.current.cancel();
+      outcome = await pending;
+    });
+
+    expect(c.client.cancel).toHaveBeenCalledTimes(1);
+    expect(outcome).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: null,
+      succeeded: false,
+    });
+  });
+
+  it('cancel() while the client is still being prepared stops the reroute before it is posted', async () => {
+    const c = pendingClient();
+    let resolveEnsure!: (client: RerouteClient) => void;
+    const ensureClient = vi.fn(
+      () =>
+        new Promise<RerouteClient>((res) => {
+          resolveEnsure = res;
+        }),
+    );
+    const { result } = renderHook(() => useLiveReroute(ensureClient, { now: () => NOW_MS }));
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    act(() => result.current.cancel());
+
+    let outcome: Plan | null | undefined;
+    await act(async () => {
+      resolveEnsure(c.client);
+      outcome = await pending;
+    });
+
+    expect(outcome).toBeNull();
+    expect(c.client.plan).not.toHaveBeenCalled();
+    expect(result.current.state.rerouting).toBe(false);
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it('cancel() during save() neither returns the plan, cues success nor pins regions', async () => {
+    const client: RerouteClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), cancel: vi.fn() };
+    let resolveSave!: () => void;
+    const save = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveSave = res;
+        }),
+    );
+    const pinRegions = vi.fn<PinAfterSave>();
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(client), { save, now: () => NOW_MS, pinRegions }),
+    );
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+
+    let outcome: Plan | null | undefined;
+    await act(async () => {
+      result.current.cancel();
+      resolveSave();
+      outcome = await pending;
+    });
+
+    expect(outcome).toBeNull();
+    expect(pinRegions).not.toHaveBeenCalled();
+    expect(result.current.state).toEqual({
+      rerouting: false,
+      phase: null,
+      error: null,
+      succeeded: false,
+    });
+  });
+
+  it('a reroute after a cancelled one runs normally (the cancel does not linger)', async () => {
+    const c = pendingClient();
+    const ok: RerouteClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const clients: RerouteClient[] = [c.client, ok];
+    const { result } = renderHook(() =>
+      useLiveReroute(() => Promise.resolve(clients.shift()!), {
+        save: vi.fn().mockResolvedValue(undefined),
+        now: () => NOW_MS,
+      }),
+    );
+
+    let pending!: Promise<Plan | null>;
+    act(() => {
+      pending = result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    await waitFor(() => expect(c.client.plan).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      result.current.cancel();
+      await pending;
+    });
+
+    let outcome: Plan | null = null;
+    await act(async () => {
+      outcome = await result.current.reroute(makePlan(), FIX, 'Rerouted');
+    });
+    expect(outcome).not.toBeNull();
+    expect(result.current.state.succeeded).toBe(true);
+  });
+
+  it('the success cue clears after REROUTE_SUCCESS_CUE_MS', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const client: RerouteClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+      const { result } = renderHook(() =>
+        useLiveReroute(() => Promise.resolve(client), {
+          save: vi.fn().mockResolvedValue(undefined),
+          now: () => NOW_MS,
+        }),
+      );
+      await act(async () => {
+        await result.current.reroute(makePlan(), FIX, 'Rerouted');
+      });
+      expect(result.current.state.succeeded).toBe(true);
+
+      act(() => void vi.advanceTimersByTime(REROUTE_SUCCESS_CUE_MS - 1));
+      expect(result.current.state.succeeded).toBe(true);
+      act(() => void vi.advanceTimersByTime(1));
+      expect(result.current.state.succeeded).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('maps beyond-horizon to the reroute-specific copy, without saving', async () => {
+    const client: ReplanClient = {
+      plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'beyond-horizon' }),
+    };
+    const save = vi.fn();
+    await expect(
+      rerouteFromFix(makePlan(), FIX, NOW_MS, 'Rerouted', { client, save }),
+    ).rejects.toMatchObject({ messageKey: 'error.rerouteBeyondHorizon' });
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

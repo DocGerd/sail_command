@@ -75,6 +75,18 @@ describe('gpsState', () => {
     expect(gpsState(cached, 12_000)).toBe('stale');
   });
 
+  // #1821: providers that stamp fixes on their own (GNSS) clock.
+  it('a GNSS-stamped stream stays fresh while the system clock steps under it (pin)', () => {
+    const T0 = 1_700_000_000_000;
+    let track = emptyTrack<TimedFix>();
+    for (let i = 0; i < 60; i++) {
+      const mono = 1_000 * i;
+      const wall = T0 + mono - (i >= 5 ? 120_000 : 0) + (i >= 20 ? 300_000 : 0);
+      track = acceptFix(track, fix(T0 + mono), mono, wall);
+      expect(track.receivedMonoMs).toBe(mono);
+    }
+  });
+
   it('a fix without a device timestamp always counts as new', () => {
     const a = acceptFix(emptyTrack<TimedFix>(), { accuracyM: 5 }, 0, 0);
     const b = acceptFix(a, { accuracyM: 5 }, 20_000, 0);

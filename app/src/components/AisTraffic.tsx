@@ -239,6 +239,7 @@ export default function AisTraffic({
   route,
   activeLegIndex,
   panelSlot,
+  onStatusChange,
 }: {
   apiKey: string | undefined;
   ownMmsi: string | undefined;
@@ -252,6 +253,8 @@ export default function AisTraffic({
   /** #831: App.tsx's `.app-panel-ais` portal target — see AisVesselsInView's
    * own contract comment above. */
   panelSlot: HTMLDivElement | null;
+  /** #1807: the chip's status for Live's readiness panel; null on unmount. */
+  onStatusChange?: (status: AisStatus | null) => void;
 }) {
   const map = useMapInstance();
   const online = useOnline();
@@ -340,6 +343,11 @@ export default function AisTraffic({
     online,
     visible,
   });
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
+  useEffect(() => () => onStatusChange?.(null), [onStatusChange]);
 
   return (
     <>

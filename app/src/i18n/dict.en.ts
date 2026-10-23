@@ -475,6 +475,10 @@ export const en = {
     "This plan's stored wind forecast no longer covers the current time — a new route from now cannot be computed from it. Plan the route again to load a current forecast.",
   'error.rerouteFixOutside':
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
+  // #1806: departure (now) and destination are fixed in a reroute, so the
+  // planner's "different departure time" remedy is not offered.
+  'error.rerouteBeyondHorizon':
+    'No route from the current position fits within the stored wind forecast. Plan the route again while online to load a fresh forecast.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -1241,6 +1245,40 @@ export const en = {
   'live.wake.notHeld': 'Screen may sleep — keep-awake is not active',
   'live.wake.off': 'Screen may sleep — keep-awake is off',
   'live.wake.unsupported': 'Screen may sleep — not supported on this browser',
+  // #1807: pre-sail readiness panel.
+  'live.ready.summary': 'Pre-sail check: {ready} of {total} ready',
+  'live.ready.intro': 'Checks this device and app only.',
+  'live.ready.state.ok': 'Ready',
+  'live.ready.state.no': 'Not ready',
+  'live.ready.regions.label': 'Offline map',
+  'live.ready.regions.ok': 'Saved for this route.',
+  'live.ready.regions.pinning': 'Saving…',
+  'live.ready.regions.no': 'Not confirmed saved. Save it online from the Routes tab.',
+  'live.ready.glyphs.label': 'Map labels',
+  'live.ready.glyphs.ok': 'Available offline.',
+  'live.ready.glyphs.no': 'Not confirmed available offline. Reopen the app while online.',
+  'live.ready.gps.label': 'Location',
+  'live.ready.gps.ok': 'Location access allowed.',
+  'live.ready.gps.prompt': 'Not allowed yet. Allow it when you start Live view.',
+  'live.ready.gps.denied': "Location access denied. Allow it in the browser's site settings.",
+  'live.ready.gps.unknown': 'Location access cannot be checked.',
+  'live.ready.forecast.label': 'Wind forecast',
+  'live.ready.forecast.ok': 'The stored forecast covers the passage.',
+  'live.ready.forecast.endsEarly':
+    'The stored forecast ends before you would arrive. Plan the route again online.',
+  'live.ready.forecast.startsLate':
+    'The stored forecast starts after you would set off. Plan the route again online.',
+  'live.ready.forecast.unknown':
+    'The stored forecast cannot be checked. Plan the route again online.',
+  'live.ready.wakeLock.label': 'Screen on',
+  'live.ready.wakeLock.ok': 'This browser can keep the screen on.',
+  'live.ready.wakeLock.no': 'This browser cannot keep the screen on.',
+  'live.ready.ais.label': 'AIS',
+  'live.ready.ais.ok': 'Key working, traffic received.',
+  'live.ready.ais.off': 'No key set: no AIS traffic at sea.',
+  'live.ready.ais.keyError': 'Key rejected.',
+  'live.ready.ais.offline': 'Offline: key not checked.',
+  'live.ready.ais.unconfirmed': 'Key not confirmed yet: no traffic received.',
   // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
   // markers built with a custom `element` — BoatMarker must set its own,
   // like ViaMarkers already does, independent of library defaults.
@@ -1254,6 +1292,11 @@ export const en = {
   'live.reroute.hint':
     'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. Waypoints and segment modes are not carried over. A planning aid, not navigation guidance.',
   'live.reroute.name': '{name} (replanned from position)',
+  // #1806: reroute progress, cancel, success cue and in-card error.
+  'live.reroute.phase.starting': 'Starting the route planner…',
+  'live.reroute.cancel': 'Stop replanning',
+  'live.reroute.success': 'New route from your position is active. The original plan is kept.',
+  'live.reroute.error.dismiss': 'Hide error message',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',

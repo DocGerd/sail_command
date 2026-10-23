@@ -483,6 +483,10 @@ export const de = {
     'Die gespeicherte Windvorhersage dieses Plans deckt die aktuelle Zeit nicht mehr ab — eine neue Route ab jetzt kann daraus nicht berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.rerouteFixOutside':
     'Die aktuelle GPS-Position liegt außerhalb des abgedeckten Seegebiets oder ist nicht befahrbar — von hier kann keine Route berechnet werden.',
+  // #1806: Abfahrt (jetzt) und Ziel sind bei der Neuplanung fest, daher kein
+  // Hinweis auf eine andere Abfahrtszeit.
+  'error.rerouteBeyondHorizon':
+    'Ab der aktuellen Position passt keine Route in die gespeicherte Windvorhersage. Route online neu planen, um eine neue Vorhersage zu laden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -1236,6 +1240,41 @@ export const de = {
   'live.wake.notHeld': 'Bildschirm kann ausgehen — Dauer-An ist nicht aktiv',
   'live.wake.off': 'Bildschirm kann ausgehen — Dauer-An ist aus',
   'live.wake.unsupported': 'Bildschirm kann ausgehen — von diesem Browser nicht unterstützt',
+  // #1807: pre-sail readiness panel.
+  'live.ready.summary': 'Vor dem Ablegen: {ready} von {total} bereit',
+  'live.ready.intro': 'Prüft nur dieses Gerät und diese App.',
+  'live.ready.state.ok': 'Bereit',
+  'live.ready.state.no': 'Nicht bereit',
+  'live.ready.regions.label': 'Offline-Karte',
+  'live.ready.regions.ok': 'Für diese Route gespeichert.',
+  'live.ready.regions.pinning': 'Wird gespeichert…',
+  'live.ready.regions.no': 'Nicht als gespeichert bestätigt. Im Tab „Routen“ online speichern.',
+  'live.ready.glyphs.label': 'Kartenbeschriftung',
+  'live.ready.glyphs.ok': 'Offline verfügbar.',
+  'live.ready.glyphs.no': 'Nicht als offline verfügbar bestätigt. App online neu öffnen.',
+  'live.ready.gps.label': 'Standort',
+  'live.ready.gps.ok': 'Standortzugriff erlaubt.',
+  'live.ready.gps.prompt': 'Noch nicht erlaubt. Beim Start der Live-Ansicht erlauben.',
+  'live.ready.gps.denied':
+    'Standortzugriff verweigert. In den Website-Einstellungen des Browsers erlauben.',
+  'live.ready.gps.unknown': 'Standortzugriff lässt sich nicht prüfen.',
+  'live.ready.forecast.label': 'Windvorhersage',
+  'live.ready.forecast.ok': 'Die gespeicherte Vorhersage deckt die Passage ab.',
+  'live.ready.forecast.endsEarly':
+    'Die gespeicherte Vorhersage endet vor der voraussichtlichen Ankunft. Route online neu planen.',
+  'live.ready.forecast.startsLate':
+    'Die gespeicherte Vorhersage beginnt nach der voraussichtlichen Abfahrt. Route online neu planen.',
+  'live.ready.forecast.unknown':
+    'Die gespeicherte Vorhersage lässt sich nicht prüfen. Route online neu planen.',
+  'live.ready.wakeLock.label': 'Bildschirm an',
+  'live.ready.wakeLock.ok': 'Dieser Browser kann den Bildschirm anlassen.',
+  'live.ready.wakeLock.no': 'Dieser Browser kann den Bildschirm nicht anlassen.',
+  'live.ready.ais.label': 'AIS',
+  'live.ready.ais.ok': 'Schlüssel funktioniert, Verkehr wird empfangen.',
+  'live.ready.ais.off': 'Kein Schlüssel gesetzt: kein AIS-Verkehr auf See.',
+  'live.ready.ais.keyError': 'Schlüssel abgelehnt.',
+  'live.ready.ais.offline': 'Offline: Schlüssel nicht geprüft.',
+  'live.ready.ais.unconfirmed': 'Schlüssel noch nicht bestätigt: kein Verkehr empfangen.',
   // #361: siehe englisches Dict für den Hintergrund.
   'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
@@ -1248,6 +1287,12 @@ export const de = {
   'live.reroute.hint':
     'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Wegpunkte und Abschnittsvorgaben werden nicht übernommen. Planungshilfe, keine Navigationsführung.',
   'live.reroute.name': '{name} (ab Position neu geplant)',
+  // #1806: Fortschritt, Abbruch, Erfolgshinweis und Fehler der Neuplanung in der Karte.
+  'live.reroute.phase.starting': 'Routenplaner wird gestartet…',
+  'live.reroute.cancel': 'Neuplanung abbrechen',
+  'live.reroute.success':
+    'Neue Route ab aktueller Position ist aktiv. Der ursprüngliche Plan bleibt erhalten.',
+  'live.reroute.error.dismiss': 'Fehlermeldung ausblenden',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',
