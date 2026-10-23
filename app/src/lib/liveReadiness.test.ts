@@ -76,6 +76,7 @@ describe('#1807 forecastCovers', () => {
     expect(forecastCovers([0, Number.NaN], H, 2 * H, 0)).toBe(false);
     expect(forecastCovers(times, H, Number.NaN, 0)).toBe(false);
     expect(forecastCovers(times, 3 * H, 2 * H, 0)).toBe(false);
+    expect(forecastCovers([0, Number.POSITIVE_INFINITY], H, 2 * H, 0)).toBe(false);
   });
 
   it('reads a Float64Array grid', () => {

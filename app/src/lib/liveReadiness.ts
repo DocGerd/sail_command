@@ -51,9 +51,9 @@ export function forecastCovers(
   arrivalMs: number,
   nowMs: number,
 ): boolean {
-  if (timesMs.length === 0) return false;
   const first = timesMs[0];
   const last = timesMs[timesMs.length - 1];
+  // Also rejects an empty grid (undefined) and an unbounded last hour.
   if (![first, last, departureMs, arrivalMs, nowMs].every(Number.isFinite)) return false;
   if (arrivalMs < departureMs) return false;
   const startMs = Math.max(nowMs, departureMs);
