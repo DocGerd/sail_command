@@ -13,7 +13,7 @@ import { CLUSTER_PADDING_PX, MAP_CHROME_TOP_PX } from '../components/DataLayers'
 //   4. `DataLayers.tsx`'s `budgetPx`                  — decides `hidden` from it
 //   5. app.css .live-view (unscoped base rule; narrow card) — spends it beneath the sheet
 //
-// Drop the term from ONE and the other three are silently wrong in a way
+// Drop the term from ONE and the other four are silently wrong in a way
 // nothing else observes: the sheet is trimmed and the map chrome never gets
 // the room back, or the legend gate computes a budget the CSS does not
 // actually grant it. Same shape as this repo's `156543.03` twin failure.
