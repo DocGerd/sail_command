@@ -207,7 +207,28 @@ describe('parseAisMessage', () => {
       lon: 9.6,
       headingDeg: 87,
       name: 'OWN NAME',
+      shipType: 37,
     });
+  });
+
+  it('omits shipType for an Extended Class B Type of 0 (not available) or a missing Type', () => {
+    const mk = (extra: Record<string, unknown>) =>
+      JSON.stringify({
+        MessageType: 'ExtendedClassBPositionReport',
+        MetaData: { MMSI: 211000222 },
+        Message: { ExtendedClassBPositionReport: { Latitude: 54.9, Longitude: 9.6, ...extra } },
+      });
+    expect(parseAisMessage(mk({ Type: 0 }))).not.toHaveProperty('shipType');
+    expect(parseAisMessage(mk({}))).not.toHaveProperty('shipType');
+  });
+
+  it('ignores a Type field on non-Extended position reports', () => {
+    const raw = JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 211000444 },
+      Message: { PositionReport: { Latitude: 54.9, Longitude: 9.6, Type: 37 } },
+    });
+    expect(parseAisMessage(raw)).not.toHaveProperty('shipType');
   });
 
   it('returns null for a Class B position without coordinates or without its body', () => {
