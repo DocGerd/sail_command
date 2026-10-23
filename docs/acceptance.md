@@ -235,8 +235,8 @@ results table at the bottom, and note it in the box below the check.
       shades significant wave height in colour bands with arrows for the
       direction the waves travel, at the slider hour. On a plan saved
       before v0.59.0, or whose marine forecast did not arrive, the checkbox
-      is disabled under a note that sea-state data is not available — a
-      designed state, not a defect.
+      is disabled, with a note below it that sea-state data is not
+      available — a designed state, not a defect.
 
 - [ ] **AIS vessels in view, without a pointer.** Requires a personal
       aisstream.io key (Boat tab → "Live & AIS") and an internet connection
@@ -540,7 +540,7 @@ selected in §1.
       not a defect. Remove the point before §3.
 - [ ] **2.18 Cancel an in-flight solve (#1193).** Start a route plan and,
       while the planner shows a busy state (its status line reads a
-      fetching/routing/probing phase, not idle), press "Cancel route
+      fetching/start-up/routing/probing phase, not idle), press "Cancel route
       planning" ("Routenberechnung abbrechen") — visible only while busy,
       never while idle. Confirm the app returns to idle silently: no error
       banner appears, and any plan that was already displayed (e.g.
@@ -566,7 +566,9 @@ selected in §1.
       and read the planner's status line while it is busy. Once the routing
       phase starts it refers to all sails ("Calculating route for all sails…"
       / "Route wird für alle Segel berechnet…"), never "sail 1 of 2" / "Segel
-      1 von 2"; the fetching and depth-probing phases name no sail. Cancelling
+      1 von 2"; with only one sail aboard it reads "Calculating route…" /
+      "Route wird berechnet…". The fetching, start-up and depth-probing
+      phases name no sail. Cancelling
       still behaves as in 2.18.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________

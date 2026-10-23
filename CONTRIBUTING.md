@@ -242,9 +242,7 @@ exception, and reads the same way every time: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
 bullet above) — so throughout the docs sweep that precedes the tag it shows
 zero open issues while still reading open, which is the normal mid-cut state
-rather than an oversight. The `v0.59.0` cut broke that pattern: the on-water
-test protocol ([#1808](https://github.com/DocGerd/sail_command/issues/1808))
-stayed open in it through the sweep. `gh api
+rather than an oversight. `gh api
 repos/DocGerd/sail_command/milestones` is the fact, not this sentence.
 The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of

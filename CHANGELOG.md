@@ -24,8 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - For harbours the selected boat cannot reach, the check of other safety depths now runs first for the selected origin and destination, then for the rows of an open harbour list, instead of waiting behind earlier harbours (#1749).
 - Planning no longer hangs silently if the route planner fails to start or saving a plan hangs: both stages are now time-limited and show an error banner, and Cancel takes effect immediately while the planner is still starting (#1776).
-- The route-calculation status no longer refers to all sails when only one sail is planned, and a lost message between the routing workers now reports a retryable error instead of a fatal one (#1794).
-- On a tablet in portrait, a long AIS list no longer pushes the Live card's reroute button and its reason below the fold: the card now takes priority over the sheet and the list scrolls inside it (#1822).
+- The route-calculation status no longer refers to all sails when only one sail is planned, and a lost message between the routing workers now reports a retryable error (#1794).
+- At tablet width (820 px) and wider, a long AIS list no longer pushes the Live card's reroute button and its reason below the fold: the card now takes priority over the sheet and the list scrolls inside it (#1822).
 - The Routes tab's result card no longer shows a growing pile of offline-map chips, or a repeated shallow-water warning, when it re-renders (#1833).
 
 ### Security
