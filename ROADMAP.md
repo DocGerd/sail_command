@@ -152,7 +152,9 @@ Note the tension with "Out of scope (v1)" in [`README.md`](README.md): currents,
 tides, waves, and multi-day passages were excluded from v1 and remain excluded
 from routing in the shipped app (the map has shown sea state, display only,
 since `v0.59.0`). Their presence here marks them as open questions, not
-commitments: the v1 exclusion still holds and none of them is scheduled.
+commitments: the v1 exclusion still holds and none of them is scheduled,
+except [#1708](https://github.com/DocGerd/sail_command/issues/1708), a
+multi-day follow-up to #19 in `v0.60.0`.
 
 ### Live view and on-board use
 
