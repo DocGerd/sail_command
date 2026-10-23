@@ -387,7 +387,14 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
-  const { planning, startedAtMs: planningStartedAtMs, run, ensureClient, cancel } = usePlanFlow();
+  const {
+    planning,
+    startedAtMs: planningStartedAtMs,
+    run,
+    ensureClient,
+    ensureClientOrFailure,
+    cancel,
+  } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -2209,7 +2216,7 @@ function AppShell() {
                 {/* #356 part (a): "Compare departure times" — its own card
                     below the main planner form, gated internally on `plan`
                     (renders nothing before a first plan exists). Reuses the
-                    same shared worker singleton via `ensureClient`.
+                    same shared worker singleton via `ensureClientOrFailure`.
                     #937 (part c): a confirmed window's two-rig solve becomes
                     the active plan unconditionally on success, the same
                     precedent handleLiveReroute follows for its own
@@ -2221,7 +2228,7 @@ function AppShell() {
                     #983 announcer any other way). */}
                 <DepartureCompare
                   plan={plan}
-                  ensureClient={ensureClient}
+                  ensureClient={ensureClientOrFailure}
                   onConfirmed={handleDepartureConfirmed}
                 />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView

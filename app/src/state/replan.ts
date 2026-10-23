@@ -263,6 +263,22 @@ export function routingFailureKey(err: unknown): MsgKey {
   return err instanceof RoutingError ? ROUTING_FAILURE_MESSAGE_KEY[err.kind] : 'error.internal';
 }
 
+/** #1776: why usePlanFlow's start-up produced no client, by type rather than message. */
+export interface ClientStartFailure {
+  failure: 'worker-init' | 'startup-timeout';
+}
+
+export function isStartedClient(
+  started: ReplanClient | ClientStartFailure | null,
+): started is ReplanClient {
+  return started !== null && !('failure' in started);
+}
+
+/** A bare null (the plain ensureClient form) counts as a load/init failure. */
+export function clientStartFailureKey(failed: ClientStartFailure | null): MsgKey {
+  return ROUTING_FAILURE_MESSAGE_KEY[failed?.failure ?? 'worker-init'];
+}
+
 /**
  * #432: tear down a routing client whose `plan()` just rejected, so a retry
  * is handed a FRESH worker instead of one that may still be running the

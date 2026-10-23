@@ -2431,6 +2431,26 @@ describe('#1776 bounded start-up and cancel during it', () => {
     expect(makeClient).toHaveBeenCalledTimes(1);
   });
 
+  it('ensureClientOrFailure() names a start-up timeout, and a load/init failure, by type', async () => {
+    const hung = hungAssets();
+    const load = vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
+    const { result } = renderHook(() => usePlanFlow(), { wrapper: AppStateProvider });
+
+    let p!: Promise<unknown>;
+    await act(async () => {
+      p = result.current.ensureClientOrFailure();
+      await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
+    });
+    expect(await p).toEqual({ failure: 'startup-timeout' });
+
+    load.mockRejectedValue(new Error('asset 404'));
+    await act(async () => {
+      p = result.current.ensureClientOrFailure();
+      await tick();
+    });
+    expect(await p).toEqual({ failure: 'worker-init' });
+  });
+
   it('cancel() during start-up returns to idle at once, without disposing the start-up another consumer awaits', async () => {
     const hung = hungAssets();
     const load = vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
@@ -2622,6 +2642,39 @@ describe('#1776 bounded start-up and cancel during it', () => {
       await second;
     });
     expect(result.current.active.plan?.name).toBe('Newer');
+  });
+
+  it('a late save rejection does not touch a newer run already in flight', async () => {
+    const first = deferredSave();
+    const save = vi
+      .fn<(plan: Plan) => Promise<void>>()
+      .mockImplementationOnce(first.save)
+      .mockResolvedValue(undefined);
+    const { result, w } = renderSlowSave(save);
+    await runPastSaveTimeout(result, w, 'Late failure');
+
+    let second!: Promise<void>;
+    await act(async () => {
+      second = result.current.flow.run(REQ, 'Newer');
+      await tick();
+    });
+    const busy = result.current.flow.planning;
+    expect(busy.phase).toBe('routing');
+
+    await act(async () => {
+      first.reject(new Error('quota'));
+      await tick();
+    });
+    expect(result.current.flow.planning).toEqual(busy);
+
+    await act(async () => {
+      const last = w.posted.filter((m) => m.type === 'plan').at(-1)!;
+      w.emit({ type: 'result', id: last.id, result: OK_RESULT });
+      await tick();
+      await second;
+    });
+    expect(result.current.active.plan?.name).toBe('Newer');
+    expect(result.current.flow.planning).toEqual({ phase: 'idle' });
   });
 
   it('a late save does not settle a newer run that also timed out saving', async () => {

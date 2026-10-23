@@ -13,6 +13,7 @@ import {
   failureLeavesWorkerHealthy,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
+  type ClientStartFailure,
   type MessageVars,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
@@ -150,7 +151,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]).finally(() => clearTimeout(timer));
 }
 
-type StartupOutcome = { client: RoutingClient } | { failure: 'worker-init' | 'startup-timeout' };
+type StartupOutcome = { client: RoutingClient } | ClientStartFailure;
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
@@ -173,6 +174,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // rejection — so the next call joins a load still in flight. Callers must
   // treat a null result as a real failure, not silently do nothing.
   ensureClient: () => Promise<RoutingClient | null>;
+  // The same start-up, saying WHY it failed, so a consumer can tell a
+  // start-up timeout from a load/init failure (#1776; DepartureCompare).
+  ensureClientOrFailure: () => Promise<RoutingClient | ClientStartFailure>;
   // #1193: stop whatever run() call is currently in flight. A no-op while
   // idle/erroring — see cancelRequestedRef's own comment for how a cancel
   // before the worker even exists (still fetching wind, or still loading
@@ -323,7 +327,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     }
   }, [makeClient]);
 
-  // The public form: other consumers map null to 'worker-init'.
+  const ensureClientOrFailure = useCallback(async (): Promise<
+    RoutingClient | ClientStartFailure
+  > => {
+    const outcome = await startClient();
+    return 'client' in outcome ? outcome.client : outcome;
+  }, [startClient]);
+
+  // The null form: its consumers (replan, reroute) map null to their own
+  // start-up copy, which stays true after a timeout.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
     const outcome = await startClient();
     return 'client' in outcome ? outcome.client : null;
@@ -669,5 +681,5 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     endWaveWaitRef.current?.();
   }, []);
 
-  return { planning, startedAtMs, run, ensureClient, cancel };
+  return { planning, startedAtMs, run, ensureClient, ensureClientOrFailure, cancel };
 }

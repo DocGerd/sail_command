@@ -112,6 +112,27 @@ describe('useDepartureConfirm', () => {
     });
   });
 
+  // #1776: a start-up timeout must not advise a reload that discards the download.
+  it.each([
+    ['worker-init', 'error.workerInit'],
+    ['startup-timeout', 'error.workerStartupTimeout'],
+  ] as const)('a %s start-up failure surfaces %s', async (failure, key) => {
+    const { result } = renderHook(() => useDepartureConfirm(() => Promise.resolve({ failure })));
+    const candidateMs = DEPARTURE_MS + 3_600_000;
+
+    let outcome: Plan | null = null;
+    await act(async () => {
+      outcome = await result.current.confirm(makePlan(), candidateMs);
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.state).toEqual({
+      confirming: false,
+      departureMs: candidateMs,
+      error: key,
+    });
+  });
+
   // #937 TRANSITION test (the replacePlanId trap, CLAUDE.md's "useState(defaultOpen)
   // seeds ONCE" bullet): usePlanFlow.ts's run()-with-replacePlanId contract
   // reuses the plan id while its content changes, and any UI keyed only on
