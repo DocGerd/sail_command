@@ -74,7 +74,6 @@ interface TopClearance {
   overlaps: string[];
   // Topmost non-card elements over the card's top content band.
   occluders: string[];
-  scaleBarSuppressed: boolean | null;
 }
 
 // Re-sampled inside every poll attempt (#412/#422). The hit-test sees what the
@@ -82,7 +81,7 @@ interface TopClearance {
 async function topClearance(page: Page): Promise<TopClearance> {
   return page.evaluate((chrome) => {
     const card = document.querySelector<HTMLElement>('.live-view');
-    if (!card) return { overlaps: ['no .live-view'], occluders: [], scaleBarSuppressed: null };
+    if (!card) return { overlaps: ['no .live-view'], occluders: [] };
     const c = card.getBoundingClientRect();
     const overlaps: string[] = [];
     for (const sel of chrome) {
@@ -104,12 +103,7 @@ async function topClearance(page: Page): Promise<TopClearance> {
         }
       }
     }
-    const bar = document.querySelector('.scale-bar');
-    return {
-      overlaps,
-      occluders: [...occluders],
-      scaleBarSuppressed: bar ? bar.classList.contains('scale-bar-suppressed') : null,
-    };
+    return { overlaps, occluders: [...occluders] };
   }, TIER2_CHROME);
 }
 
@@ -118,7 +112,6 @@ async function expectTopClear(page: Page, label: string): Promise<void> {
     .poll(
       async () => {
         const t = await topClearance(page);
-        console.log(`[1822 probe] ${label} ${JSON.stringify(t)}`);
         return [...t.overlaps, ...t.occluders];
       },
       {
