@@ -242,6 +242,9 @@ const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
   'error.routingMessageError',
   'error.routingInterrupted',
   'error.planSaveFailed',
+  // #1776: a retry joins a download still in flight, or builds a fresh worker.
+  // error.planSaveSlow is deliberately absent: a re-plan could store a second copy.
+  'error.workerStartupTimeout',
 ]);
 
 // eslint-disable-next-line react-refresh/only-export-components

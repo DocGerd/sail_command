@@ -214,7 +214,12 @@ export class ReplanError extends Error {
  * exists to prevent.
  */
 export const ROUTING_FAILURE_MESSAGE_KEY: Record<
-  RoutingFailureKind | 'worker-init' | 'persist-failed' | 'wind-unclassified',
+  | RoutingFailureKind
+  | 'worker-init'
+  | 'startup-timeout'
+  | 'persist-failed'
+  | 'persist-slow'
+  | 'wind-unclassified',
   MsgKey
 > = {
   timeout: 'error.routingTimeout',
@@ -238,7 +243,11 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   // special-cases 'cancelled' straight back to idle before reaching here.
   cancelled: 'error.routingCancelled',
   'worker-init': 'error.workerInit',
+  // #1776: usePlanFlow's start-up and save timeouts. Raised there, never by
+  // workerClient.ts.
+  'startup-timeout': 'error.workerStartupTimeout',
   'persist-failed': 'error.planSaveFailed',
+  'persist-slow': 'error.planSaveSlow',
   'wind-unclassified': 'error.windUnknown',
 };
 

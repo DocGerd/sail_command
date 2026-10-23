@@ -2316,7 +2316,7 @@ describe('#1776 bounded start-up and cancel during it', () => {
     vi.restoreAllMocks();
   });
 
-  it('a hung asset load fails the run with error.workerInit, and its late resolution spawns no worker', async () => {
+  it('a hung asset load fails the run with error.workerStartupTimeout, and its late resolution spawns no worker', async () => {
     const hung = hungAssets();
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockReturnValue(hung.promise);
     const makeClient = vi.fn(() => new RoutingClient(() => fakeWorker() as unknown as Worker));
@@ -2338,7 +2338,10 @@ describe('#1776 bounded start-up and cancel during it', () => {
       await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
       await p;
     });
-    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.workerInit' });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.workerStartupTimeout',
+    });
 
     await act(async () => {
       hung.resolve(ASSETS_FIXTURE);
@@ -2376,7 +2379,10 @@ describe('#1776 bounded start-up and cancel during it', () => {
       await vi.advanceTimersByTimeAsync(STARTUP_TIMEOUT_MS);
       await p;
     });
-    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.workerInit' });
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.workerStartupTimeout',
+    });
     expect(stuck.terminate, 'the stuck worker must be torn down, not leaked').toHaveBeenCalled();
 
     await act(async () => {
@@ -2482,35 +2488,161 @@ describe('#1776 bounded start-up and cancel during it', () => {
     expect(result.current.planning).toEqual({ phase: 'idle' });
   });
 
-  it('a save that never settles fails the run with error.planSaveFailed', async () => {
-    const w = fakeWorker();
+  function deferredSave() {
+    let resolve!: () => void;
+    let reject!: (e: Error) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { save: vi.fn<(plan: Plan) => Promise<void>>(() => promise), resolve, reject };
+  }
+
+  function renderSlowSave(save: (plan: Plan) => Promise<void>, w = fakeWorker()) {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
-    const save = vi.fn(() => new Promise<void>(() => {}));
-    const { result } = renderHook(
-      () =>
-        usePlanFlow({
+    const pinRegions = vi.fn();
+    const hook = renderHook(
+      () => ({
+        flow: usePlanFlow({
           fetchWind: vi.fn().mockResolvedValue(uniformWindGrid(12, 0)),
           fetchWave: fetchWave(),
-          pinRegions: vi.fn(),
+          pinRegions,
           save,
           makeClient: () => new RoutingClient(() => w as unknown as Worker),
         }),
+        active: useActivePlan(),
+      }),
       { wrapper: AppStateProvider },
     );
+    return { ...hook, w, pinRegions };
+  }
 
+  async function runPastSaveTimeout(
+    result: { current: { flow: ReturnType<typeof usePlanFlow> } },
+    w: ReturnType<typeof fakeWorker>,
+    name: string,
+  ) {
     await act(async () => {
-      const p = result.current.run(REQ, 'Hung save');
+      const p = result.current.flow.run(REQ, name);
       await tick();
-      const planMsg = findPosted(w.posted, 'plan');
+      const planMsg = w.posted.filter((m) => m.type === 'plan').at(-1)!;
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
       await tick();
-      expect(save).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(SAVE_TIMEOUT_MS);
       await p;
     });
-    expect(result.current.planning).toEqual({
+  }
+
+  it('a save past the timeout reports error.planSaveSlow, not error.planSaveFailed', async () => {
+    const save = vi.fn(() => new Promise<void>(() => {}));
+    const { result, w } = renderSlowSave(save);
+    await runPastSaveTimeout(result, w, 'Hung save');
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.flow.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.planSaveSlow',
+    });
+  });
+
+  it('a save landing after the timeout shows that plan and returns to idle, saving once', async () => {
+    const d = deferredSave();
+    const { result, w, pinRegions } = renderSlowSave(d.save);
+    await runPastSaveTimeout(result, w, 'Late save');
+    expect(result.current.active.plan).toBeNull();
+
+    await act(async () => {
+      d.resolve();
+      await tick();
+    });
+    const saved = d.save.mock.calls[0]?.[0];
+    expect(d.save).toHaveBeenCalledTimes(1);
+    expect(result.current.active.plan?.id).toBe(saved?.id);
+    expect(pinRegions).toHaveBeenCalledTimes(1);
+    expect(result.current.flow.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('a save rejected after the timeout settles to error.planSaveFailed', async () => {
+    const d = deferredSave();
+    const { result, w } = renderSlowSave(d.save);
+    await runPastSaveTimeout(result, w, 'Late failure');
+    await act(async () => {
+      d.reject(new Error('quota'));
+      await tick();
+    });
+    expect(result.current.active.plan).toBeNull();
+    expect(result.current.flow.planning).toEqual({
       phase: 'error',
       messageKey: 'error.planSaveFailed',
+    });
+  });
+
+  it('a late save does not replace a plan the user opened after the timeout', async () => {
+    const d = deferredSave();
+    const { result, w } = renderSlowSave(d.save);
+    await runPastSaveTimeout(result, w, 'Late save');
+    const opened = { ...d.save.mock.calls[0]![0], id: 'opened-meanwhile' };
+    act(() => result.current.active.setPlan(opened));
+
+    await act(async () => {
+      d.resolve();
+      await tick();
+    });
+    expect(result.current.active.plan?.id).toBe('opened-meanwhile');
+    expect(result.current.flow.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('a late save does not touch a newer run already in flight', async () => {
+    const first = deferredSave();
+    const save = vi
+      .fn<(plan: Plan) => Promise<void>>()
+      .mockImplementationOnce(first.save)
+      .mockResolvedValue(undefined);
+    const { result, w } = renderSlowSave(save);
+    await runPastSaveTimeout(result, w, 'Late save');
+
+    let second!: Promise<void>;
+    await act(async () => {
+      second = result.current.flow.run(REQ, 'Newer');
+      await tick();
+    });
+    const busy = result.current.flow.planning;
+    expect(busy.phase).toBe('routing');
+
+    await act(async () => {
+      first.resolve();
+      await tick();
+    });
+    expect(result.current.flow.planning).toEqual(busy);
+    expect(result.current.active.plan).toBeNull();
+
+    await act(async () => {
+      const last = w.posted.filter((m) => m.type === 'plan').at(-1)!;
+      w.emit({ type: 'result', id: last.id, result: OK_RESULT });
+      await tick();
+      await second;
+    });
+    expect(result.current.active.plan?.name).toBe('Newer');
+  });
+
+  it('a late save does not settle a newer run that also timed out saving', async () => {
+    const first = deferredSave();
+    const save = vi
+      .fn<(plan: Plan) => Promise<void>>()
+      .mockImplementationOnce(first.save)
+      .mockImplementationOnce(() => new Promise<void>(() => {}));
+    const { result, w } = renderSlowSave(save);
+    await runPastSaveTimeout(result, w, 'Late save');
+    await runPastSaveTimeout(result, w, 'Newer');
+    expect(save).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      first.resolve();
+      await tick();
+    });
+    expect(result.current.active.plan).toBeNull();
+    expect(result.current.flow.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.planSaveSlow',
     });
   });
 

@@ -652,9 +652,11 @@ export const SLOW_TEST_FILES_FIRST = [
   // #1168: real-mask two-rig plans and bare solves. Appended so every earlier
   // file keeps its shard rank.
   'src/routing/realmask.repro.motorOffPrune.test.ts',
-  // #1794: real-mask sync-vs-async equivalence incl. a relaxed Flensburg ->
-  // Marstal route. Appended so every earlier file keeps its shard rank.
+  // #1794: real-mask sync-vs-async equivalence, both appended so every earlier
+  // file keeps its shard rank. This one: relaxed Flensburg -> Marstal.
   'src/routing/realmask.repro.parallelRigs.marstal.test.ts',
+  // This one: Augustenborg -> Hoeruphav through the harbour handover, with a
+  // reverse-order rig runner.
   'src/routing/realmask.repro.parallelRigs.handover.test.ts',
 ];
 

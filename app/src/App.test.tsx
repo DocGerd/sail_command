@@ -3622,6 +3622,8 @@ describe('planErrorGroup / planErrorBannerKind (§3.5 error presentation)', () =
       'error.routingInterrupted',
       'error.planSaveFailed',
       'error.windUnknown',
+      'error.workerStartupTimeout',
+      'error.planSaveSlow',
     ] as const) {
       expect(planErrorGroup(key)).toBe('unexpected');
       expect(planErrorBannerKind(key)).toBe('error');
@@ -3645,6 +3647,7 @@ describe('planErrorRetryMayHelp (#433: per-cause retry eligibility)', () => {
       'error.routingMessageError',
       'error.routingInterrupted',
       'error.planSaveFailed',
+      'error.workerStartupTimeout',
     ] as const) {
       expect(planErrorRetryMayHelp(key), `expected retry to help for ${key}`).toBe(true);
     }
@@ -3654,6 +3657,8 @@ describe('planErrorRetryMayHelp (#433: per-cause retry eligibility)', () => {
     for (const key of [
       'error.internal',
       'error.workerInit',
+      // #1776: a re-plan while the slow save may still land stores a second copy.
+      'error.planSaveSlow',
       'error.routingTimeout',
       'error.routingFailed',
       'error.noRoute.unreachable',

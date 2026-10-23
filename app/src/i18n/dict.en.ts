@@ -372,6 +372,11 @@ export const en = {
   // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
   'error.workerInit':
     'The route planner could not be started — required data failed to load. Reload the app and try again.',
+  // #1776: start-up exceeded STARTUP_TIMEOUT_MS. True whether the data is
+  // still downloading or the worker never answered; a retry joins a download
+  // still in flight (assets.ts keeps it) and builds a fresh worker.
+  'error.workerStartupTimeout':
+    'The route planner did not start within the time limit. Its data may still be downloading over a slow connection, or the planner did not respond. Try again; a download still in progress continues.',
   'error.routingTimeout':
     'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
   // #433 review Minor 1: does NOT claim retry is futile — this cause also
@@ -402,6 +407,10 @@ export const en = {
     'The wind forecast saved with this route covers a smaller area than the current chart data, so this action cannot use it. Recalculate or plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
+  // #1776: the save outlived SAVE_TIMEOUT_MS and may still land. No retry is
+  // offered: a re-plan would store a second copy.
+  'error.planSaveSlow':
+    'The route was calculated, but saving it is taking unusually long. If the save completes, the route is kept with your saved routes. Planning again now could store a second copy.',
   'error.windUnknown':
     'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
   // #265/#866: 'mask-blocked' cannot distinguish a destination that is

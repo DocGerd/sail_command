@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave';
@@ -129,23 +129,28 @@ export interface RunOptions {
 export const WAVE_GRACE_MS = 3_000;
 
 /**
- * #1776: bound on routing start-up (asset load + worker init). Generous: the
- * first, uncached load downloads the whole mask, possibly over a slow mobile link.
+ * #1776: bound on routing start-up (asset load + worker init). The first,
+ * uncached load includes the whole mask download, so a slow link can exceed it.
  */
 export const STARTUP_TIMEOUT_MS = 180_000;
 
 /** #1776: bound on persisting a solved plan; an IndexedDB open can block indefinitely. */
 export const SAVE_TIMEOUT_MS = 30_000;
 
+/** #1776: lets callers tell a timeout from a rejection by type, never by message. */
+class TimeoutError extends Error {}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     p,
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+      timer = setTimeout(() => reject(new TimeoutError(`timed out after ${ms}ms`)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
+
+type StartupOutcome = { client: RoutingClient } | { failure: 'worker-init' | 'startup-timeout' };
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
@@ -163,9 +168,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // also called, live, by state/reroute.ts's useLiveReroute (App.tsx wires
   // the same ensureClient into both).
   // Resolves null on a failed load/init, or one exceeding STARTUP_TIMEOUT_MS
-  // (#1776) (mirrors run()'s own recovery: the broken client is disposed and
-  // the singleton cleared so the next call starts fresh); callers must treat
-  // a null result as a real failure, not silently do nothing.
+  // (#1776): the broken client is disposed and the singleton cleared. The
+  // asset load is NOT restarted — assets.ts resets its cache only on
+  // rejection — so the next call joins a load still in flight. Callers must
+  // treat a null result as a real failure, not silently do nothing.
   ensureClient: () => Promise<RoutingClient | null>;
   // #1193: stop whatever run() call is currently in flight. A no-op while
   // idle/erroring — see cancelRequestedRef's own comment for how a cancel
@@ -173,7 +179,16 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // routing assets) is honoured too.
   cancel: () => void;
 } {
-  const { setPlan } = useActivePlan();
+  const { plan: activePlan, setPlan } = useActivePlan();
+  // #1776: read by a late-landing save, which must not replace a plan the
+  // user opened after the save timed out.
+  const activePlanRef = useRef(activePlan);
+  useEffect(() => {
+    activePlanRef.current = activePlan;
+  }, [activePlan]);
+  // #1776: bumped by every run(); a late-landing save acts only while its own
+  // run is still the latest.
+  const runSeqRef = useRef(0);
   const [planning, setPlanning] = useState<PlanningState>({ phase: 'idle' });
 
   // Mirrors `planning.phase` outside React state so the run() guard below
@@ -238,7 +253,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // see that file's #571 comment) — also called, live, by state/reroute.ts's
   // useLiveReroute (App.tsx wires the same ensureClient into both). See the
   // return type's own docstring for the failure-recovery contract.
-  const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
+  const startClient = useCallback(async (): Promise<StartupOutcome> => {
     // #432: the singleton may have been disposed by a caller that cannot
     // reach these refs — state/replan.ts's and state/reroute.ts's plan()
     // catches now tear the client down so a retry is not handed a worker
@@ -251,7 +266,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       clientRef.current = null;
       startupRef.current = null;
     }
-    if (clientRef.current) return clientRef.current;
+    if (clientRef.current) return { client: clientRef.current };
     startupRef.current ??= (async () => {
       // A timed-out attempt is abandoned: its late continuation must not
       // spawn a worker nobody owns, and a client it already built is
@@ -298,15 +313,21 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       const client = await startup;
       // A teardown elsewhere may have cleared the refs while this awaited.
       if (startupRef.current === startup) clientRef.current = client;
-      return client;
-    } catch {
-      // Cleared so the next call starts a fresh attempt instead of
-      // re-awaiting this failed one forever. A timeout fails every caller
-      // sharing this attempt.
+      return { client };
+    } catch (err) {
+      // Cleared so the next call builds a new client instead of re-awaiting
+      // this failed attempt forever (the asset load itself may still be
+      // shared, see the docstring). A timeout fails every caller sharing it.
       if (startupRef.current === startup) startupRef.current = null;
-      return null;
+      return { failure: err instanceof TimeoutError ? 'startup-timeout' : 'worker-init' };
     }
   }, [makeClient]);
+
+  // The public form: other consumers map null to 'worker-init'.
+  const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
+    const outcome = await startClient();
+    return 'client' in outcome ? outcome.client : null;
+  }, [startClient]);
 
   const run = useCallback(
     async (
@@ -317,6 +338,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // Belt, not the primary guard: the UI's canPlan already disables the
       // plan button while a run is in flight.
       if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') return;
+      const seq = ++runSeqRef.current;
       // #1193: clear any cancel a PRIOR run left set — this is a fresh run
       // the user just started, not the one that was cancelled.
       cancelRequestedRef.current = false;
@@ -424,8 +446,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // #1776: raced against cancel() so a cancel during start-up takes effect
       // at once. The start-up itself is shared with other consumers, so it is
       // left running, never disposed, and installs its client for later use.
-      const client = await Promise.race([
-        ensureClient(),
+      const outcome = await Promise.race([
+        startClient(),
         new Promise<null>((resolve) => {
           endStartupWaitRef.current = () => resolve(null);
         }),
@@ -438,10 +460,14 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         transition({ phase: 'idle' });
         return;
       }
-      if (!client) {
-        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
+      if (outcome === null || !('client' in outcome)) {
+        transition({
+          phase: 'error',
+          messageKey: ROUTING_FAILURE_MESSAGE_KEY[outcome?.failure ?? 'worker-init'],
+        });
         return;
       }
+      const { client } = outcome;
 
       // #1775: start-up is over, so the status must stop saying so before the
       // first solver message. The routing line names the phase only, so
@@ -591,12 +617,35 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         ...(waveGrid !== null ? { waveGrid } : {}),
         result,
       };
+      // An async wrapper, so a synchronous throw from save() is a rejection too.
+      const saving = (async () => save(plan))();
       try {
-        // #1776: a write that lands after the timeout leaves the plan saved but
-        // unshown; the banner still says it was not saved.
-        await withTimeout(save(plan), SAVE_TIMEOUT_MS);
-      } catch {
-        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
+        await withTimeout(saving, SAVE_TIMEOUT_MS);
+      } catch (err) {
+        if (!(err instanceof TimeoutError)) {
+          transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
+          return;
+        }
+        // #1776: the write may still land. Its banner offers no retry (a
+        // re-plan would store a second copy); the outcome settles it below,
+        // unless a newer run has started since.
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-slow'] });
+        const shownAtTimeout = activePlanRef.current;
+        saving.then(
+          () => {
+            pinRegions(plan);
+            if (runSeqRef.current !== seq) return;
+            if (activePlanRef.current === shownAtTimeout) setPlan(plan);
+            transition({ phase: 'idle' });
+          },
+          () => {
+            if (runSeqRef.current !== seq) return;
+            transition({
+              phase: 'error',
+              messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'],
+            });
+          },
+        );
         return;
       }
       // #1164 T6: never awaited — pinning cannot delay or fail the saved plan.
@@ -604,7 +653,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       setPlan(plan);
       transition({ phase: 'idle' });
     },
-    [ensureClient, fetchWave, fetchWind, pinRegions, save, setPlan, transition],
+    [startClient, fetchWave, fetchWind, pinRegions, save, setPlan, transition],
   );
 
   // #1193: a no-op while idle/erroring, matching run()'s own guard — set
