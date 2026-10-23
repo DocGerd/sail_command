@@ -67,15 +67,15 @@ pages (ids in `/data/havne.js`, `/data/broer.js`). Figures are pilot-book
 redistributable (read via a search snippet, medium confidence): use it as a
 validation reference only. Wind-driven flow can dominate in these straits. The
 Svendborgsund stream turns every 6 h in calm weather, with a 0.3-0.5 m high/low
-water difference. Inference, not stated by the pilot: an astronomical atlas
-covers only the settled-weather part. A routing input would have to be a
-forecast.
+water difference. Inference from the above, not stated by the pilot: an
+astronomical atlas omits the wind-driven part of the flow (§3.5). A routing
+input would have to be a forecast.
 
 ## 3. Candidates scored against the gate
 
 | Source | G1 skill | G2 horizon | G3 licence | G4 access | G5 offline | G6 coverage |
 |---|---|---|---|---|---|---|
-| DMI DKSS (HBM), EDR API | fail: none published for the straits | fail: 120 h (tail disclosure would be needed) | pass: CC BY 4.0 | partial: CORS `*`, 429s, `/grib` deprecated | pass for data, terms limit refresh | partial |
+| DMI DKSS (HBM), EDR API | fail: none found in Als Sund, Lillebælt or Storebælt; Flensburg Fjord not researched | fail: 120 h (tail disclosure would be needed) | pass: CC BY 4.0 | partial: CORS `*`, 429s, `/grib` deprecated | pass for data, terms limit refresh | partial |
 | BSH GRIB "Oberfläche für Segler" | fail: none found | fail: 3 d | pass: CC BY 4.0 | fail in browser; CI repack only | partial: CI JPEG2000 decode | partial |
 | CMEMS BAL PHY 003_006 | fail: r = 0.03-0.08 | pass: 6 d / 10 d | partial: Copernicus licence | partial: CORS `*` Zarr, whole-Baltic chunks | fail in browser; CI repack only | fail |
 | Open-Meteo marine (SMOC) | fail: none published | UNVERIFIED for currents | partial: free API non-commercial | pass: CORS `*` (measured) | UNVERIFIED | fail |
@@ -178,9 +178,9 @@ https://open-meteo.com/en/docs/marine-weather-api.
   navigation".
 - Re-probed with `cell_selection=sea`: Middelfart narrows (55.506 N, 9.735 E)
   returns the cell at 55.375 N, 9.708 E, about 14.6 km south; Als Sund at
-  Sønderborg returns Sønderborg Bugt. Maxima over 2026-10-15 (window
-  within the day not recorded): Als Sund cell 0.4 km/h (0.2 kn), Lillebælt cell
-  0.9 km/h (0.5 kn), against the pilot's 0-3 kn routine and up to 5-6 kn.
+  Sønderborg returns Sønderborg Bugt. Maxima for 2026-10-15's forecast,
+  re-read in the verification pass: Als Sund cell 0.4 km/h (0.2 kn), Lillebælt
+  cell 0.9 km/h (0.5 kn), against the pilot's 0-3 kn routine and up to 5-6 kn.
 - CORS `access-control-allow-origin: *` (measured). The research documents no
   current-forecast length for this API; the waves spec states a 16-day marine
   horizon for wave fields.
@@ -226,7 +226,8 @@ sources.
     endpoint (whole-domain files) on 2026-11-01 (read 2026-10-15).
   - **Als Sund.** One cell wide in the sea mask; only Lillebælt has a
     sub-0.2 nm nest.
-  - **Skill.** No published validation in the straits. DMI HBM ADCP validation
+  - **Skill.** No published validation found in Als Sund, Lillebælt or
+    Storebælt; skill in Flensburg Fjord was not researched. DMI HBM ADCP validation
     found only for the Limfjord (secondary, search result only).
 - **Use CMEMS skill as a proxy for DKSS/BSH (rejected as evidence).**
   r = 0.03-0.08 is for a different model at two moorings. It shows the problem is hard, not that DKSS is poor, and it is no
@@ -248,10 +249,10 @@ sources.
 
 **Do not build a current term.** The gate fails at G1 for every forecast
 candidate (DKSS, BSH GRIB, CMEMS, Open-Meteo): no published validation was found
-in Als Sund, Lillebælt or Storebælt for BSH, DMI or CMEMS (Flensburg Fjord was
-not researched for DKSS or CMEMS), and the only published numbers (CMEMS
-r = 0.03-0.08 at two moorings) are poor. Honest omission beats
-pseudo-precision, as the issue's own constraints allow.
+in Als Sund, Lillebælt or Storebælt for BSH, DMI or CMEMS (skill in Flensburg
+Fjord was not researched for DKSS or CMEMS), and the only published numbers
+found for the region (CMEMS r = 0.03-0.08 at two moorings) are poor. Honest
+omission beats pseudo-precision, as the issue's own constraints allow.
 
 A possible future **display-only overlay** (arrows from DKSS, labelled as a
 model forecast, never entering the cost) is an option and not a decision. It
