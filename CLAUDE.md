@@ -2031,6 +2031,15 @@ making design-level decisions; do not silently deviate.
   skills rather than duplicating them and delegates the cut to `/release`, so
   it inherits the constraint above. Two human gates: milestone approval before
   any `gh` mutation, and §2's local-run approval before the release PR.
+- **The v0.59.0 cut ran in a cloud session and pushed no tag**: #1848 records
+  its signing key as empty, and an unsigned tag would break the Verified
+  record every tag from `v0.8.1` carries. Whether such a session can sign a
+  tag is unmeasured: a commit it pushed was GitHub-Verified despite the same
+  empty file, so §5a's `git tag -v` before the push is the test. That cut
+  skipped §5a–5d, tracked the tag in the shipped milestone (#1848) and left
+  that milestone open until the maintainer tags; its back-merge and learnings
+  PR still ran. Production serves the release meanwhile; #1848 lists what
+  waits on the tag.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
@@ -5179,6 +5188,12 @@ making design-level decisions; do not silently deviate.
   `gh api -X POST repos/O/R/actions/runs/<id>/approve` after a static safety
   review; `pulls/N/update-branch` works when `maintainer_can_modify`, and the
   branch tip lives in `head.repo.full_name`, not this repo (#1348).
+- **The v0.59.0 cut's cloud session could not push a change under
+  `.github/workflows/`**: the git push was rejected for lacking `workflow`
+  scope, and the session proxy refused the contents-API write to that path (a
+  read of it succeeds). A session in that state puts the change in an issue
+  as a diff for the maintainer (#1852). Separately, it could not delete a
+  remote branch (API 403, push refused).
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
