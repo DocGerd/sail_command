@@ -116,6 +116,11 @@
 // check for the OLD constant, where it fell mostly behind the on-map "Route
 // layer controls" panel; that specific pixel check was not repeated here).
 //
+// #1846: the same generator also writes wave-docs-plan-route.json, loaded via
+// `?waveFixture=` so the "Show sea state" overlay (on by default) renders in
+// the hero instead of "not available for this plan". The overlay is left on:
+// its pale WMO band shades sit under the route without hiding it.
+//
 // Reproduction: `node app/scripts/gen-docs-wind-fixture.mjs` (this is the
 // ONLY source of the fixture now that it's gitignored — regenerates it with
 // a fresh forecast-horizon start time; like gen-wind-fixture.mjs's e2e
@@ -160,6 +165,10 @@ const DEST_HARBOR = 'Sønderborg';
 // to APP by the browser, same convention app/e2e/*.spec.ts uses for
 // `?windFixture=test-fixtures/wind-sw12.json`.
 const WIND_FIXTURE_PATH = 'test-fixtures/wind-docs-plan-route.json';
+// #1846: a wind fixture without a wave fixture stays offline for waves
+// (usePlanFlow.ts), so the sea-state toggle would read "not available". Written
+// next to the wind fixture by the same generator.
+const WAVE_FIXTURE_PATH = 'test-fixtures/wave-docs-plan-route.json';
 // #459 requirement 4: widen the left panel so the legs table's Time/
 // Duration/Type/COG columns are all visible without horizontal scroll.
 // Written directly to localStorage (usePersistedNumber's storage key,
@@ -332,6 +341,7 @@ await page.addInitScript(() => {
 // APP, which would silently break if APP ever carried its own query string.
 const startUrl = new URL(APP);
 startUrl.searchParams.set('windFixture', WIND_FIXTURE_PATH);
+startUrl.searchParams.set('waveFixture', WAVE_FIXTURE_PATH);
 await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 // Switch UI to English for the README's international audience. The button's
 // VISIBLE text is "EN", but its accessible name comes from its aria-label
