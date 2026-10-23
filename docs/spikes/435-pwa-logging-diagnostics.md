@@ -403,6 +403,8 @@ correct about ordering and already tied to the pending-promise map via
 **What the worker must NOT gain:** any `console.*` call. `routing/` has
 zero today (§0) and should keep zero. See Q8 and Q10.
 
+> Superseded in part (2026-10-23, #1777): the worker now logs plan-level lines through `lib/planLog.ts`; the solver files (`planRoute.ts`, `isochrone.ts`) still carry none.
+
 ## Q4. Does the service worker get a channel back to the page?
 
 **No. `sw.ts` is unchanged by this recommendation. The page records

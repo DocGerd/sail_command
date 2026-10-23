@@ -435,10 +435,9 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
           deadline,
           state.knownDisconnectedIds,
         );
-        // #1777: asymmetry with the pool path. Here planRoute.ts runs every
-        // solve internally and exposes no per-solve outcome or timing (and is
-        // not to be edited for logging), so one line per sail is derived from
-        // the final result instead: no cause, no elapsed.
+        // #1777: asymmetry with the pool path. planWithHarborHandover returns
+        // only the final PlanResult, so one line per sail is derived from it,
+        // for an ok result only: no cause, no elapsed.
         if (result.status === 'ok') {
           for (const s of result.sails) {
             planLog.info('solve finished', {

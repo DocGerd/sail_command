@@ -169,7 +169,34 @@ describe('usePlanFlow console logging (#1777)', () => {
 
     const call = error.mock.calls.find((c) => c[0] === '[SailCommand] wind fetch failed');
     expect(call?.[1]).toEqual({ kind: 'rate-limited' });
-    expect(stageLines().at(-1)).toEqual({ stage: 'error', messageKey: 'error.rateLimited' });
+    expect(stageLines().at(-1)).toEqual({
+      stage: 'error:error.rateLimited',
+      messageKey: 'error.rateLimited',
+    });
+  });
+
+  it('logs a second error with a different key that skips every other stage', async () => {
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind: vi.fn().mockRejectedValue(new OpenMeteoError('rate-limited', 'slow down')),
+          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+    await act(async () => {
+      await result.current.run(REQ, 'plan');
+    });
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    await act(async () => {
+      await result.current.run(REQ, 'plan');
+    });
+
+    expect(stageLines().map((l) => l.stage)).toEqual([
+      'fetching-wind',
+      'error:error.rateLimited',
+      'error:error.offline',
+    ]);
   });
 
   it('logs a routing start-up failure', async () => {

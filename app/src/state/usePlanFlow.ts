@@ -215,7 +215,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     const isBusy = next.phase !== 'idle' && next.phase !== 'error';
     phaseRef.current = next.phase;
     const stage =
-      next.phase === 'routing' && next.secondPass ? 'routing-pass-2' : next.phase;
+      next.phase === 'routing' && next.secondPass
+        ? 'routing-pass-2'
+        : next.phase === 'error'
+          ? `error:${next.messageKey}`
+          : next.phase;
     if (stage !== lastLoggedStageRef.current) {
       lastLoggedStageRef.current = stage;
       planLog.info('plan stage', {

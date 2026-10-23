@@ -541,9 +541,10 @@ export class RoutingClient {
       planId: id,
       boat: request.boat.id,
       sails: request.sailIds,
-      // Harbour ids only: a tapped point may be GPS-derived, so no coordinates.
-      origin: request.originHarborId ?? 'tap',
-      destination: request.destinationHarborId ?? 'tap',
+      // Harbour ids only: a non-harbour end (map tap, GPX import, or a
+      // reroute's GPS fix) may be the user's position, so no coordinates.
+      origin: request.originHarborId ?? 'point',
+      destination: request.destinationHarborId ?? 'point',
       vias: request.viaPoints.length,
       departure: Number.isFinite(request.departureMs)
         ? new Date(request.departureMs).toISOString()
@@ -563,7 +564,7 @@ export class RoutingClient {
           elapsedMs,
         });
       } else {
-        planLog.error('plan failed: no route', {
+        planLog.warn('plan finished: no route', {
           planId: id,
           reason: result.reason,
           elapsedMs,
@@ -700,11 +701,12 @@ export class RoutingClient {
       if (budgetMs > 0) {
         const planStartedAtMs = Date.now();
         entry.halfBudgetTimer = setTimeout(() => {
+          const solving = [...new Set([...entry.active.values()].map((r) => r.sailId))];
           planLog.warn('plan past half its budget', {
             planId: id,
             elapsedMs: Date.now() - planStartedAtMs,
             budgetMs,
-            solving: [...new Set([...entry.active.values()].map((r) => r.sailId))],
+            ...(solving.length > 0 ? { solving } : {}),
           });
         }, budgetMs / 2);
       }

@@ -1,9 +1,9 @@
 /**
  * #1777: the one console logger for planning. Callers log per plan, per stage
  * change and per finished solve — never per ring, node, GPS fix or frame.
- * `detail` must carry no coordinates and no keys; ids and typed causes only.
+ * `detail` must carry no coordinates and no keys.
  *
- * Takes plain strings and records so `lib/` stays free of `routing/` imports.
+ * Takes plain strings and records so it imports nothing from `routing/`.
  */
 export const LOG_PREFIX = '[SailCommand]';
 

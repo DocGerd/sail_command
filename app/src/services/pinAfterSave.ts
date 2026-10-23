@@ -1,6 +1,5 @@
 // #1164 T6: fire-and-forget region pinning after a successful plan save.
-// Pinning must never block, delay or fail the save. It lives here, not in
-// usePlanFlow.ts, so that file keeps its zero-console.* property (CLAUDE.md).
+// Pinning must never block, delay or fail the save.
 //
 // SW gate (orchestrator decision on PR #1231 r4009825924, consistent with the
 // maintainer ruling that an uncontrolled page downloads no full archive): pin

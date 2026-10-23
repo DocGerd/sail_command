@@ -75,10 +75,10 @@ const messages = (spy: MockInstance): string[] =>
 
 describe('RoutingClient console logging (#1777)', () => {
   it.each([
-    ['a harbour origin and a tapped destination', { originHarborId: 'flensburg' }, 'flensburg', 'tap'],
-    ['a tapped origin and a harbour destination', { destinationHarborId: 'marstal' }, 'tap', 'marstal'],
+    ['a harbour origin and a tapped destination', { originHarborId: 'flensburg' }, 'flensburg', 'point'],
+    ['a tapped origin and a harbour destination', { destinationHarborId: 'marstal' }, 'point', 'marstal'],
   ] as const)(
-    'logs the plan start with ids only, never coordinates (%s)',
+    'logs the plan start without coordinates (%s)',
     async (_name, harbours, origin, destination) => {
       const { w, id, outcome } = await started({ ...REQUEST, ...harbours });
       const call = info.mock.calls.find((c) => c[0] === '[SailCommand] plan start');
@@ -103,7 +103,7 @@ describe('RoutingClient console logging (#1777)', () => {
     },
   );
 
-  it('logs a finished plan at info, and a no-route result at error with its reason', async () => {
+  it('logs a finished plan at info, and a no-route result at warn with its reason', async () => {
     const ok = await started();
     const okResult: PlanResult = {
       status: 'ok',
@@ -123,6 +123,7 @@ describe('RoutingClient console logging (#1777)', () => {
       comparisonComplete: false,
     });
     expect(error).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
 
     const bad = await started();
     bad.w.emit({
@@ -131,11 +132,12 @@ describe('RoutingClient console logging (#1777)', () => {
       result: { status: 'error', reason: 'search-budget-exceeded' },
     });
     await bad.outcome;
-    expect(error.mock.calls[0]?.[0]).toBe('[SailCommand] plan failed: no route');
-    expect(error.mock.calls[0]?.[1]).toMatchObject({
+    expect(warn.mock.calls[0]?.[0]).toBe('[SailCommand] plan finished: no route');
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({
       planId: bad.id,
       reason: 'search-budget-exceeded',
     });
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('logs the typed failure kind, never one inferred from the message text', async () => {
@@ -194,6 +196,15 @@ describe('RoutingClient console logging (#1777)', () => {
     await outcome;
   });
 
+  it('omits the solving list from the half-budget warn when no rig is in flight', async () => {
+    const { w, id, outcome } = await started();
+    await vi.advanceTimersByTimeAsync(BUDGET_MS / 2 + 1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('solving');
+    w.emit({ type: 'result', id, result: NO_ROUTE });
+    await outcome;
+  });
+
   it('does not warn for a plan that settles before half its budget, or after a dispose', async () => {
     const fast = await started();
     await vi.advanceTimersByTimeAsync(1_000);
@@ -206,7 +217,7 @@ describe('RoutingClient console logging (#1777)', () => {
     await disposed.outcome;
     await vi.advanceTimersByTimeAsync(BUDGET_MS * 2);
 
-    expect(warn).not.toHaveBeenCalled();
+    expect(messages(warn)).not.toContain('[SailCommand] plan past half its budget');
   });
 
   it('never warns for an unbudgeted plan', async () => {
