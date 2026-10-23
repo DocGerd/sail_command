@@ -133,7 +133,7 @@ installs as a standalone icon and works fully offline after the first visit
   names, tap for details — including any within a ±5 nm corridor along the
   active route. The Live tab's panel also carries a keyboard-reachable "AIS
   vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
-  is filtered out by MMSI. The key stays on the device; plans saved from v0.58.0 on and backup exports do not contain it.
+  is filtered out by MMSI. The key stays on the device; saved plans and backup exports do not contain it, and plans stored before v0.58.0 lose it at the next app start.
 
 Planning a new route requires an internet connection (wind forecast fetch),
 except the **next passage** from a planned route, which reuses that route's
@@ -213,7 +213,7 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
-- As of v0.58.0, Live mode has not been tested on the water; the on-water test protocol
+- As of v0.59.0, Live mode has not been tested on the water; the on-water test protocol
   for the first trip is tracked in
   [#1808](https://github.com/DocGerd/sail_command/issues/1808).
 - Only a curated set of harbors is included; a handful of shallow/narrow
