@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ROUTING_RELEVANT_SETTINGS_KEYS,
   activeNextPassageSeed,
+  departureAfterSyncMs,
   departureSeedMs,
   nextPassageDepartureMs,
   nextPassageOffline,
@@ -190,6 +191,26 @@ describe('departureSeedMs (#301, extracted from PlansList.tsx:152)', () => {
     const nowMs = Date.UTC(2026, 6, 15, 14, 0, 0);
     const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs: nowMs });
     expect(departureSeedMs(plan, nowMs)).toBe(nextFullHourMs(nowMs));
+  });
+});
+
+describe('departureAfterSyncMs (#1761)', () => {
+  const nowMs = Date.UTC(2026, 6, 15, 14, 23, 10);
+
+  it('keeps the departure of a freshly computed plan even when it is past', () => {
+    const departureMs = nowMs - 20 * 60_000;
+    const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs });
+    expect(departureAfterSyncMs(plan, true, nowMs)).toBe(departureMs);
+  });
+
+  it('re-seeds the next full hour for a loaded plan whose departure is past', () => {
+    const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs: nowMs - 3_600_000 });
+    expect(departureAfterSyncMs(plan, false, nowMs)).toBe(nextFullHourMs(nowMs));
+  });
+
+  it('keeps the departure of a loaded plan that is still in the future', () => {
+    const plan = makePlan({ ...ORIGINAL_REQUEST, departureMs: nowMs + 3_600_000 });
+    expect(departureAfterSyncMs(plan, false, nowMs)).toBe(nowMs + 3_600_000);
   });
 });
 
