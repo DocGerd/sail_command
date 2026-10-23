@@ -53,6 +53,9 @@ function setupLayers(map: MaplibreMap): void {
   if (!map.hasImage(WAVE_ARROW_IMAGE)) {
     map.addImage(WAVE_ARROW_IMAGE, waveArrowImage(), { pixelRatio: WAVE_ARROW_PIXEL_RATIO });
   }
+  // addImage fires 'styledata' synchronously, so a setup armed on that event
+  // may already have re-entered and added everything below.
+  if (map.getSource(WAVE_CELL_SOURCE)) return;
   const beforeId = waveBeforeId(map);
   map.addSource(WAVE_CELL_SOURCE, { type: 'geojson', data: EMPTY_WAVE_CELLS });
   map.addSource(WAVE_ARROW_SOURCE, { type: 'geojson', data: EMPTY_WAVE_ARROWS });
