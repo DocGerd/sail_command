@@ -525,8 +525,8 @@ export class RoutingClient {
   // don't need to wait out (or fake-timer-advance) four real minutes.
   //
   // #1777: the console log lives HERE, around the solve, so every caller
-  // (planner, replan, reroute, departure compare) is covered once. Per-solve
-  // outcomes are logged worker-side (protocol.ts).
+  // (planner, replan, reroute, departure compare) is covered once. Solve-level
+  // lines come from protocol.ts.
   async plan(
     request: PlanRequest,
     windGrid: WindGrid,

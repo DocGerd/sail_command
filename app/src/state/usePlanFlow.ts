@@ -206,8 +206,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // object with equal content still re-renders the un-memoised shell, and
   // progress repeats the same state many times per solve.
   const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
-  // #1777: the stage last logged. Keyed on phase (plus pass 2), NOT on the
-  // state: with parallel rigs `sailId` flips on every progress message.
+  // #1777: the stage last logged. Keyed on phase (plus pass 2 and an error's
+  // message key), NOT on the state: with parallel rigs `sailId` flips on every
+  // progress message.
   const lastLoggedStageRef = useRef('idle');
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const transition = useCallback((next: PlanningState) => {

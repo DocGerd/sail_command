@@ -205,7 +205,7 @@ describe('RoutingClient console logging (#1777)', () => {
     await outcome;
   });
 
-  it('does not warn for a plan that settles before half its budget, or after a dispose', async () => {
+  it('does not log the half-budget warn for a plan that settles before half its budget, or after a dispose', async () => {
     const fast = await started();
     await vi.advanceTimersByTimeAsync(1_000);
     fast.w.emit({ type: 'result', id: fast.id, result: NO_ROUTE });
@@ -220,7 +220,7 @@ describe('RoutingClient console logging (#1777)', () => {
     expect(messages(warn)).not.toContain('[SailCommand] plan past half its budget');
   });
 
-  it('never warns for an unbudgeted plan', async () => {
+  it('never logs the half-budget warn for an unbudgeted plan', async () => {
     const { w, id, outcome } = await started(REQUEST, 5_000);
     expect(info.mock.calls.find((c) => c[0] === '[SailCommand] plan start')?.[1]).toMatchObject({
       budgetMs: null,

@@ -436,8 +436,9 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
           state.knownDisconnectedIds,
         );
         // #1777: asymmetry with the pool path. planWithHarborHandover returns
-        // only the final PlanResult, so one line per sail is derived from it,
-        // for an ok result only: no cause, no elapsed.
+        // only the final PlanResult, so one line per sail is derived from it
+        // (an error result has no sails): its reason, without cause, gate or
+        // elapsed.
         if (result.status === 'ok') {
           for (const s of result.sails) {
             planLog.info('solve finished', {
