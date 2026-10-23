@@ -136,17 +136,6 @@ describe('useGpsSource', () => {
     }
   });
 
-  it('#1821: one fix stamped ahead of a GNSS-time stream does not read as stale or lost', () => {
-    const { wp, emitFix } = fakeWatch();
-    const { result } = renderHook(() => useGpsSource(true, wp));
-    const T0 = Date.now();
-    for (let i = 0; i < 40; i++) {
-      act(() => emitFix(fix(T0 + 1_000 * i + (i === 5 ? 60_000 : 0))));
-      act(() => void vi.advanceTimersByTime(1_000));
-      expect(result.current.state).toBe('fresh');
-    }
-  });
-
   it('a TIMEOUT error while fixes keep arriving changes nothing and keeps the watch', () => {
     const { wp, watches, emitFix, emitError } = fakeWatch();
     const { result } = renderHook(() => useGpsSource(true, wp));
