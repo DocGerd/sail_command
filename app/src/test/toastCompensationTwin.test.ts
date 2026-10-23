@@ -104,8 +104,8 @@ describe('#909: the compensated sheet cap is one value in five places', () => {
     const occurrences = FLAT_CSS.split(COMPENSATED_CAP).length - 1;
     expect(
       occurrences,
-      `expected exactly 3 declaration sites for \`${COMPENSATED_CAP}\` (the sheet, the map-chrome ` +
-        'clusters, the depth-legend body). The short-landscape overrides deliberately carry ' +
+      `expected exactly 4 declaration sites for \`${COMPENSATED_CAP}\` (the sheet, the map-chrome ` +
+        'clusters, the depth-legend body, the Live card). The short-landscape overrides deliberately carry ' +
         '`--sc-banner-height` INSTEAD — that property already includes the toast since #909, so ' +
         'subtracting both would count it twice',
     ).toBe(4);

@@ -5361,7 +5361,7 @@ select {
      rendered height, published by a `ResizeObserver` in `ReloadPrompt.tsx`
      and REMOVED on cleanup, so with no toast this is a plain `55vh`.
      NAMED COUPLING: one of FIVE sites encoding this compensated cap — see
-     `app/src/test/toastCompensationTwin.test.ts`, which pins all four
+     `app/src/test/toastCompensationTwin.test.ts`, which pins all five
      against each other because no compiler spans CSS and TypeScript. */
   .app-bottom-sheet {
     max-height: calc(55vh - var(--sc-toast-height, 0px));
