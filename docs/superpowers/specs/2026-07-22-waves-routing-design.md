@@ -1,11 +1,60 @@
 # SailCommand Sea-State (Waves) in Routing — Design Addendum (#18)
 
-**Status:** DRAFT for review (2026-07-22); design-only, implementation deferred to a
-future session. **Relationship:** addendum to `2026-07-14-sail-command-design.md`, whose
+**Status:** DRAFT for review (2026-07-22). §0 (2026-10-22) scopes a first slice, tracked on #1699. **Relationship:** addendum to `2026-07-14-sail-command-design.md`, whose
 §6 lists *"Currents/tides, wave data"* as out of scope (v1). This addendum brings **wave
 (sea-state) effects** into scope and specifies them; **currents/tides remain out of scope**
 (see §2). Where this document and the source spec conflict on wave/sea-state behavior, this
 addendum wins; on all other domain behavior the source spec wins.
+
+## 0. First slice — overlay only (2026-10-22)
+
+Maintainer rulings on #1699
+(https://github.com/DocGerd/sail_command/issues/1699#issuecomment-6339846546) scope a
+first slice: a plan-bound map overlay, **display only, no routing change**. §5 and §6 stay
+open on #1699.
+
+- **Content.** Hs as WMO sea-state colour bands (calm < 0.1, smooth 0.1–0.5, slight
+  0.5–1.25, moderate 1.25–2.5, rough ≥ 2.5 m) plus one direction arrow per grid point.
+  Period appears only in the legend and tap popup. No derived wavelength, no
+  wind-sea/swell split.
+- **Arrows point the direction of TRAVEL**; the legend says so. Wind barbs keep their
+  FROM convention.
+- **Plan-bound.** Fetched alongside the wind at plan time, stored on the plan, sampled at
+  the slider hour. Toggle persisted via `usePersistedToggle`, default ON. No browsing
+  before a plan exists.
+- **Map only.** A per-leg/route max-Hs readout is follow-up #1830.
+
+Derived for this slice, not ruled:
+
+- **Sections in scope:** §3 (`WaveGrid`), §4 (marine fetch) and the overlay half of §7.
+- **Arrow bearing** `waveDirFromDeg + 180`. This narrows §7's "height shading + direction arrows".
+- **No data is not calm.** A null Hs renders no symbol, never the calm band.
+- **Never reaches the worker.** `waveGrid` is not posted to the routing worker
+  (superseding §3's cloned-to-worker sentence), so `PlanResult` stays byte-identical.
+- **Land points render nothing.** A lattice point whose cell centre is land in the nav
+  mask gets no fill and no arrow, as wind barbs already do. Points outside the mask are
+  dropped too, and nothing draws until the mask loads. This narrows ruling 1's one arrow
+  per grid point.
+- **No layer registry.** §7's shared overlay-layer registry is deferred; layers keep the
+  existing explicit `beforeId` anchoring.
+- **Lattice.** The marine fetch requests the wind fetch's fixed 14 × 23 lattice and `FORECAST_DAYS` window, not §4's "plan's bbox/time window".
+- **Persistence.** `migratePlan` rebuilds every read or imported plan's top level from named fields and drops any other top-level field, so it must carry `waveGrid` (as §S.4 requires for `sailPlan`), and `lib/planExport.ts` must encode and decode `waveGrid`'s `Float32Array`s, including the dimension check, as it does `windGrid`'s.
+- **Model.** Provisional: `ewam` (DWD, regional). Unverified: its horizon against
+  `FORECAST_DAYS`, fitting the wind lattice in one URL, coastal nulls, and what
+  the API returns for land points (the request sets no `cell_selection`). Record the
+  requested model in `WaveGrid.model`.
+
+Corrections to stale facts below:
+
+- The bbox is 54.3–55.6°N, 9.4–11.6°E since #295 (`app/public/data/mask.meta.json`); §2's
+  wave probe covered only the older, smaller box.
+- The wind fetch requests `FORECAST_DAYS = 6` (`services/openMeteo.ts`), not ~7 days.
+- §2's 16-day marine horizon was not measured for `ewam`. Until it is, §2's "a wave grid always covers the whole routed passage" and "No horizon-degradation contract needed" are unestablished.
+- §7's "first of three" overlay features and §11's shared infrastructure with #7/#25 are stale: seamarks (#7) and AIS (#25) shipped, and #54 shipped without the DB bump §7 says it needs.
+- `db.ts` is at version 3. §7's "bump the DB version" and §9's "v1→v2 migration framework"
+  are **wrong** for an optional `Plan` field: the `plans` store is schemaless to IndexedDB
+  (multi-boat spec §I.3), and a bump would break production for anyone who opens `/uat/`,
+  which shares production's IndexedDB origin (§I.2, OQ-5).
 
 ## 1. Goal
 

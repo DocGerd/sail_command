@@ -17,7 +17,8 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { dedupeRequestVias, dedupeViaPoints } from './state/replan';
-import { cloneWindGrid, useLiveReroute } from './state/reroute';
+import { useLiveReroute } from './state/reroute';
+import { storedForecastRunOptions } from './state/storedForecast';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
@@ -53,6 +54,7 @@ import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
 import SeamarksInView from './components/SeamarksInView';
 import AisTraffic from './components/AisTraffic';
+import type { AisStatus } from './state/useAisTraffic';
 import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
@@ -162,7 +164,7 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
 // how long the passage takes): a realistic passage completed at a few
 // percent by construction, and it reset to 0 at every genoa->fock switch and
 // #53 depth-relaxation retry. `rig` alone is now the phase signal, honest
-// and bounded ("sail N of 2" — PlannerPanel.tsx renders it).
+// and bounded (a phase line — PlannerPanel.tsx renders it).
 // Exported for a focused unit test of the phase mapping (App.test.tsx) — the
 // full render can't easily hold the transient 'probing-depth' phase, and the
 // adapter is the single point where a phase-mapping typo would slip through.
@@ -176,6 +178,8 @@ export function toPlannerStatus(
       return { phase: 'idle' };
     case 'fetching-wind':
       return { phase: 'fetching' };
+    case 'starting':
+      return { phase: 'starting' };
     case 'routing':
       return {
         phase: 'routing',
@@ -239,6 +243,9 @@ const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
   'error.routingMessageError',
   'error.routingInterrupted',
   'error.planSaveFailed',
+  // #1776: a retry joins a download still in flight, or builds a fresh worker.
+  // error.planSaveSlow is deliberately absent: a re-plan could store a second copy.
+  'error.workerStartupTimeout',
 ]);
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -381,7 +388,14 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
-  const { planning, run, ensureClient, cancel } = usePlanFlow();
+  const {
+    planning,
+    startedAtMs: planningStartedAtMs,
+    run,
+    ensureClient,
+    ensureClientOrFailure,
+    cancel,
+  } = usePlanFlow();
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -391,6 +405,8 @@ function AppShell() {
   // LiveView; false whenever the Live tab is not mounted). The setting itself
   // is never written. See useOwnshipGps.ts and OwnshipMarker.tsx.
   const [liveTracking, setLiveTracking] = useState(false);
+  // #1807: AIS status for Live's readiness panel; null while AisTraffic is unmounted.
+  const [aisStatus, setAisStatus] = useState<AisStatus | null>(null);
   const gps = useOwnshipGps(settings.showOwnship, liveTracking);
   const { fix: ownshipFix, hintVisible: ownshipHintVisible, dismissHint: dismissOwnshipHint } = gps;
 
@@ -1385,7 +1401,7 @@ function AppShell() {
     void run(
       request,
       `${origin.label} → ${destination.label}`,
-      activeSeed && plan ? { storedWindGrid: cloneWindGrid(plan.windGrid) } : {},
+      activeSeed && plan ? storedForecastRunOptions(plan) : {},
     );
   }, [
     activeSeed,
@@ -1730,6 +1746,7 @@ function AppShell() {
             onRouteLineInsert={handleRouteLineInsert}
             viaArmed={tapTarget === 'via'}
             onArmedRouteTapInsert={handleRouteLineArmedTap}
+            mapPickArmed={tapTarget !== null}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),
@@ -1759,15 +1776,22 @@ function AppShell() {
                 route={aisRoute}
                 activeLegIndex={activeLegIndex}
                 panelSlot={aisInViewSlot}
+                onStatusChange={setAisStatus}
               />
               <LiveView
                 gps={gps}
                 onTrackingChange={setLiveTracking}
+                aisStatus={aisStatus}
                 panelSlot={isWide ? liveSlot : null}
                 reroute={{
                   busy: runBusy,
                   rerouting: liveReroute.state.rerouting,
+                  phase: liveReroute.state.phase,
+                  error: liveReroute.state.error,
+                  succeeded: liveReroute.state.succeeded,
                   onReroute: handleLiveReroute,
+                  onCancel: liveReroute.cancel,
+                  onDismissError: liveReroute.clearError,
                 }}
               />
             </>
@@ -1996,23 +2020,6 @@ function AppShell() {
             {tapTarget === 'via' && aisRoute && ` ${t('banner.tapPick.viaRouteLine')}`}
           </Banner>
         )}
-        {/* #115: live-reroute failures (stale stored forecast, fix outside
-            the region, no route) — honest error, never a truncated route.
-            #571 redesign: this used to sit alongside a via-replan error
-            banner (viaReplan.state.error) — REMOVED, since a via edit no
-            longer replans at all, so `useViaReplan` (state/replan.ts) has no
-            remaining UI caller and can never produce one. Live reroute is a
-            deliberately separate, manual feature (state/reroute.ts) and is
-            unaffected by that removal. */}
-        {liveReroute.state.error && (
-          <Banner
-            kind="error"
-            onDismiss={liveReroute.clearError}
-            dismissLabel={t('banner.dismiss')}
-          >
-            {t(liveReroute.state.error)}
-          </Banner>
-        )}
         {/* MAJOR 4 (review, #571 redesign): the last Plan-route press silently
             dropped a too-close via — see droppedVia's own comment above
             handlePlan. Reuses the SAME banner.viaTooClose/.plural copy the
@@ -2184,6 +2191,7 @@ function AppShell() {
                   onPlan={handlePlan}
                   onCancelPlan={cancel}
                   planning={plannerStatus}
+                  planningStartedAtMs={planningStartedAtMs}
                   plan={plan}
                   rig={rig}
                   formDirty={formDirty}
@@ -2201,7 +2209,7 @@ function AppShell() {
                 {/* #356 part (a): "Compare departure times" — its own card
                     below the main planner form, gated internally on `plan`
                     (renders nothing before a first plan exists). Reuses the
-                    same shared worker singleton via `ensureClient`.
+                    same shared worker singleton via `ensureClientOrFailure`.
                     #937 (part c): a confirmed window's two-rig solve becomes
                     the active plan unconditionally on success, the same
                     precedent handleLiveReroute follows for its own
@@ -2213,7 +2221,7 @@ function AppShell() {
                     #983 announcer any other way). */}
                 <DepartureCompare
                   plan={plan}
-                  ensureClient={ensureClient}
+                  ensureClient={ensureClientOrFailure}
                   onConfirmed={handleDepartureConfirmed}
                 />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView

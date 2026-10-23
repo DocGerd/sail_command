@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { startPreview, STANDARD_VIEWPORTS, EDGE_VIEWPORTS } from './helpers';
+import {
+  startPreview,
+  STANDARD_VIEWPORTS,
+  EDGE_VIEWPORTS,
+  localDatetimeValue,
+  nextFullHourPlus,
+} from './helpers';
 
 // Run the full planning flow at a phone viewport so it exercises the
 // bottom-sheet layout — the primary on-boat mode (CLAUDE.md). Before the #24
@@ -91,6 +97,9 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
+    // Explicit departure (#1731): the form default is the next full hour,
+    // which a slow plan can leave in the past.
+    await page.getByLabel('Abfahrt').fill(localDatetimeValue(nextFullHourPlus(2)));
     // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
     // load-state class assertion is the primary regression guard (part 2
     // re-collapses the attribution above, so by this point the control is
@@ -240,17 +249,6 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     server.kill();
   }
 });
-
-function nextFullHourPlus(hours: number): Date {
-  const d = new Date();
-  d.setHours(d.getHours() + 1 + hours, 0, 0, 0);
-  return d;
-}
-
-function localDatetimeValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // #301: re-plan from the Plan view. Loading/planning prefills the form from
 // the active plan; editing an input afterward (here: departure) marks the
@@ -568,7 +566,7 @@ const WIDE_CTA_VIEWPORTS = Object.entries(ATTRIBUTION_VIEWPORTS).filter(
 const CTA_CORNER_INSET_PX = 10;
 
 // The map's attribution carries exactly four credit links: OpenStreetMap,
-// Protomaps, EMODnet Bathymetry, and "Weather data by Open-Meteo.com".
+// Protomaps, EMODnet Bathymetry, and "Weather and marine data by Open-Meteo.com".
 // MEASURED 2026-09-01: four at every narrow row, in both planner states.
 // Pinned as an exact count, not a non-vacuity floor: attribution reachability
 // is an ODbL/CC-BY obligation, so a credit silently disappearing from the
@@ -671,8 +669,9 @@ async function ctaCornerTopmost(page: Page, insetPx: number): Promise<string> {
  * rect per line box while its bounding box spans both lines PLUS the gap
  * between them — and that gap belongs to the parent. MEASURED 2026-09-01 with
  * this control expanded: every anchor with two client rects
- * ("Weather data by Open-Meteo.com" at six of the nine narrow rows and
- * "EMODnet Bathymetry" additionally at deepPortrait320 and wrapForcing280 —
+ * (the Open-Meteo credit, worded "Weather data by Open-Meteo.com" at the time, at six of
+ * the nine narrow rows and "EMODnet Bathymetry" additionally at
+ * deepPortrait320 and wrapForcing280 —
  * the set is deterministic but NOT monotonic in viewport width) hit-tested its
  * bounding-box centre to `div.maplibregl-ctrl-attrib-inner`, its own parent,
  * while BOTH of its line-box centres hit-tested to the anchor. That is a

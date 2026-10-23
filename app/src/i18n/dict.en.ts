@@ -336,11 +336,19 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Preparing route calculation — loading routing data…',
+  'planner.status.elapsed': 'Elapsed: {time}',
+  'planner.status.longRunning':
+    'This route is taking a while. Routes with several waypoints can take a few minutes; you can cancel at any time.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Calculating route for all sails…',
   // #1136: the motor-off salvage re-run after a failed first search
   'planner.status.routingSailSecondPass': 'No route found — second search pass for all sails…',
+  // #1794: the same phases for a request with a single sail
+  'planner.status.routingSingle': 'Calculating route…',
+  'planner.status.routingSingleSecondPass': 'No route found — second search pass…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
@@ -364,6 +372,11 @@ export const en = {
   // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
   'error.workerInit':
     'The route planner could not be started — required data failed to load. Reload the app and try again.',
+  // #1776: start-up exceeded STARTUP_TIMEOUT_MS. True whether the data is
+  // still downloading or the worker never answered; a retry joins a download
+  // still in flight (assets.ts keeps it) and builds a fresh worker.
+  'error.workerStartupTimeout':
+    'The route planner did not start within the time limit. Its data may still be downloading over a slow connection, or the planner did not respond. Try again; a download still in progress continues.',
   'error.routingTimeout':
     'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
   // #433 review Minor 1: does NOT claim retry is futile — this cause also
@@ -394,6 +407,10 @@ export const en = {
     'The wind forecast saved with this route covers a smaller area than the current chart data, so this action cannot use it. Recalculate or plan the route again to fetch a new forecast. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
+  // #1776: the save outlived SAVE_TIMEOUT_MS and may still land. No retry is
+  // offered: a re-plan would store a second copy.
+  'error.planSaveSlow':
+    'The route was calculated, but saving it is taking unusually long. If the save completes, the route is kept with your saved routes. Planning again now could store a second copy.',
   'error.windUnknown':
     'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
   // #265/#866: 'mask-blocked' cannot distinguish a destination that is
@@ -458,6 +475,10 @@ export const en = {
     "This plan's stored wind forecast no longer covers the current time — a new route from now cannot be computed from it. Plan the route again to load a current forecast.",
   'error.rerouteFixOutside':
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
+  // #1806: departure (now) and destination are fixed in a reroute, so the
+  // planner's "different departure time" remedy is not offered.
+  'error.rerouteBeyondHorizon':
+    'No route from the current position fits within the stored wind forecast. Plan the route again while online to load a fresh forecast.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -919,6 +940,31 @@ export const en = {
   'route.altRig.toggle': 'Show other rig',
   'route.altRig.unavailable': 'Only one rig found a route',
   'route.altRig.singleSail': 'Only one headsail planned',
+  // #1699: sea-state overlay (display only, no effect on the route).
+  'route.waves.toggle': 'Show sea state',
+  'route.waves.unavailable': 'Sea-state data not available for this plan.',
+  'route.waves.outOfRange': 'No sea-state data for the selected hour.',
+  'route.legend.seaStateHeading': 'Sea state (significant wave height)',
+  'route.legend.seaStateBelow': 'below {max} m',
+  'route.legend.seaStateRange': '{min} to {max} m',
+  'route.legend.seaStateAbove': '{min} m and above',
+  'route.legend.seaStateNoData': 'No shading means no data or land, not calm water.',
+  'route.legend.seaStateArrow':
+    'Arrows show the direction the waves travel — not where they come from, unlike wind barbs.',
+  'route.legend.seaStateCaveat':
+    'Model estimate (Open-Meteo), not chart authority; coarse near coasts.',
+  'seaState.band.calm': 'calm',
+  'seaState.band.smooth': 'smooth',
+  'seaState.band.slight': 'slight',
+  'seaState.band.moderate': 'moderate',
+  'seaState.band.rough': 'rough',
+  'map.waves.popup.title': 'Sea state',
+  'map.waves.popup.height': 'Significant wave height',
+  'map.waves.popup.band': 'Sea-state category',
+  'map.waves.popup.period': 'Wave period',
+  'map.waves.popup.direction': 'Travel direction',
+  'map.waves.popup.noData': 'no data',
+  'map.waves.popup.disclaimer': 'Model estimate, not chart authority.',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
@@ -1199,6 +1245,40 @@ export const en = {
   'live.wake.notHeld': 'Screen may sleep — keep-awake is not active',
   'live.wake.off': 'Screen may sleep — keep-awake is off',
   'live.wake.unsupported': 'Screen may sleep — not supported on this browser',
+  // #1807: pre-sail readiness panel.
+  'live.ready.summary': 'Pre-sail check: {ready} of {total} ready',
+  'live.ready.intro': 'Checks this device and app only.',
+  'live.ready.state.ok': 'Ready',
+  'live.ready.state.no': 'Not ready',
+  'live.ready.regions.label': 'Offline map',
+  'live.ready.regions.ok': 'Saved for this route.',
+  'live.ready.regions.pinning': 'Saving…',
+  'live.ready.regions.no': 'Not confirmed saved. Save it online from the Routes tab.',
+  'live.ready.glyphs.label': 'Map labels',
+  'live.ready.glyphs.ok': 'Available offline.',
+  'live.ready.glyphs.no': 'Not confirmed available offline. Reopen the app while online.',
+  'live.ready.gps.label': 'Location',
+  'live.ready.gps.ok': 'Location access allowed.',
+  'live.ready.gps.prompt': 'Not allowed yet. Allow it when you start Live view.',
+  'live.ready.gps.denied': "Location access denied. Allow it in the browser's site settings.",
+  'live.ready.gps.unknown': 'Location access cannot be checked.',
+  'live.ready.forecast.label': 'Wind forecast',
+  'live.ready.forecast.ok': 'The stored forecast covers the passage.',
+  'live.ready.forecast.endsEarly':
+    'The stored forecast ends before you would arrive. Plan the route again online.',
+  'live.ready.forecast.startsLate':
+    'The stored forecast starts after you would set off. Plan the route again online.',
+  'live.ready.forecast.unknown':
+    'The stored forecast cannot be checked. Plan the route again online.',
+  'live.ready.wakeLock.label': 'Screen on',
+  'live.ready.wakeLock.ok': 'This browser can keep the screen on.',
+  'live.ready.wakeLock.no': 'This browser cannot keep the screen on.',
+  'live.ready.ais.label': 'AIS',
+  'live.ready.ais.ok': 'Key working, traffic received.',
+  'live.ready.ais.off': 'No key set: no AIS traffic at sea.',
+  'live.ready.ais.keyError': 'Key rejected.',
+  'live.ready.ais.offline': 'Offline: key not checked.',
+  'live.ready.ais.unconfirmed': 'Key not confirmed yet: no traffic received.',
   // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
   // markers built with a custom `element` — BoatMarker must set its own,
   // like ViaMarkers already does, independent of library defaults.
@@ -1212,6 +1292,11 @@ export const en = {
   'live.reroute.hint':
     'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. Waypoints and segment modes are not carried over. A planning aid, not navigation guidance.',
   'live.reroute.name': '{name} (replanned from position)',
+  // #1806: reroute progress, cancel, success cue and in-card error.
+  'live.reroute.phase.starting': 'Starting the route planner…',
+  'live.reroute.cancel': 'Stop replanning',
+  'live.reroute.success': 'New route from your position is active. The original plan is kept.',
+  'live.reroute.error.dismiss': 'Hide error message',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',
@@ -1257,7 +1342,8 @@ export const en = {
   'about.sources.heading': 'Data sources',
   'about.sources.protomaps': 'Map rendering: Protomaps',
   'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
-  'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
+  'about.sources.openMeteo':
+    'Wind and sea-state forecast: Weather and marine data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
   'about.sources.seamarks':

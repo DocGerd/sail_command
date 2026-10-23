@@ -160,7 +160,7 @@ function cspMeta(): Plugin {
     // worker-src: 'self' only — see the comment below for why `blob:` was
     // investigated and rejected (PR #316 review B1/M3), not merely unused.
     "worker-src 'self'",
-    "connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io",
+    "connect-src 'self' https://api.open-meteo.com https://marine-api.open-meteo.com wss://stream.aisstream.io",
     // img-src keeps blob: — unlike the worker case this path is genuinely
     // reachable (browser-dependent createImageBitmap fallback in maplibre's
     // util/util.ts arrayBufferToImage, and the PMTiles raster path).
@@ -199,8 +199,9 @@ function cspMeta(): Plugin {
            path IS reachable (browser-dependent \`createImageBitmap\`
            fallback), so \`blob:\` stays here.
          - connect-src 'self' https://api.open-meteo.com
-           wss://stream.aisstream.io — the two outbound third-party feeds
-           (Open-Meteo forecasts over HTTPS, optional BYOK AIS over WSS) plus
+           https://marine-api.open-meteo.com wss://stream.aisstream.io — the
+           outbound third-party feeds (Open-Meteo wind and marine sea-state
+           forecasts over HTTPS, #1699; optional BYOK AIS over WSS) plus
            same-origin XHR/fetch (PMTiles range reads, SW, IndexedDB-adjacent
            fetches, AND the basemap's glyph .pbf ranges — MapLibre loads glyph
            ranges via \`getArrayBuffer\`/\`fetch\`,
@@ -274,7 +275,8 @@ function cspMeta(): Plugin {
 // Build-only (apply: 'build'): fine for `vite dev`, where the warm-up never
 // runs at all — no SW ever registers, so it parks waiting for a controller
 // and never reaches the manifest fetch; the 404→warn+skip path only occurs
-// under a stale controlling SW from an older deploy.
+// under a stale controlling SW from an older deploy. The #1807 readiness
+// probe reads only the precached copy, so in dev it misses quietly.
 function glyphManifest(): Plugin {
   return {
     name: 'sailcommand:glyph-manifest',
@@ -651,6 +653,12 @@ export const SLOW_TEST_FILES_FIRST = [
   // #1168: real-mask two-rig plans and bare solves. Appended so every earlier
   // file keeps its shard rank.
   'src/routing/realmask.repro.motorOffPrune.test.ts',
+  // #1794: real-mask sync-vs-async equivalence, both appended so every earlier
+  // file keeps its shard rank. This one: relaxed Flensburg -> Marstal.
+  'src/routing/realmask.repro.parallelRigs.marstal.test.ts',
+  // This one: Augustenborg -> Hoeruphav through the harbour handover, with a
+  // reverse-order rig runner.
+  'src/routing/realmask.repro.parallelRigs.handover.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: `sort` moves the files

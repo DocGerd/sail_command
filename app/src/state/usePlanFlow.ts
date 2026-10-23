@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave';
 import { loadRoutingAssets } from '../services/assets';
@@ -13,6 +13,7 @@ import {
   failureLeavesWorkerHealthy,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
+  type ClientStartFailure,
   type MessageVars,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
@@ -23,12 +24,16 @@ import {
   type PlanResult,
   type SailId,
   type Settings,
+  type WaveGrid,
   type WindGrid,
 } from '../types';
 
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
+  // #1775: routing assets load and the worker boots, before the first solver
+  // progress message. Distinct from 'fetching-wind' and from 'routing'.
+  | { phase: 'starting' }
   // #340/#54: `sailId` is the only progress signal. With a pool size of 1 the
   // router solves req.sailIds SEQUENTIALLY (planRoute.ts's sync driver runs
   // one `solveRig()` per element in order), so `sailId` names the solving
@@ -52,6 +57,7 @@ function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
   switch (a.phase) {
     case 'idle':
     case 'fetching-wind':
+    case 'starting':
     case 'probing-depth':
       return b.phase === a.phase;
     case 'routing':
@@ -79,6 +85,7 @@ function planningStatesEqual(a: PlanningState, b: PlanningState): boolean {
 
 export interface PlanFlowDeps {
   fetchWind?: typeof fetchWindGrid;
+  fetchWave?: typeof fetchWaveGrid;
   makeClient?: () => RoutingClient;
   save?: typeof savePlan;
   /** #1164 T6: fire-and-forget region pinning after a successful save. */
@@ -115,10 +122,41 @@ export interface RunOptions {
   replacePlanId?: string;
   /** #1707: a fallback, never an override. Used offline, or when the forecast service is unreachable (network failure or persistent server error). */
   storedWindGrid?: WindGrid;
+  /** #1699: used exactly when `storedWindGrid` is, so stored wind never pairs with fresh waves. */
+  storedWaveGrid?: WaveGrid;
 }
+
+/** #1699: how long a solved plan waits for the marine fetch, which started before the solve. */
+export const WAVE_GRACE_MS = 3_000;
+
+/**
+ * #1776: bound on routing start-up (asset load + worker init). The first,
+ * uncached load includes the whole mask download, so a slow link can exceed it.
+ */
+export const STARTUP_TIMEOUT_MS = 180_000;
+
+/** #1776: bound on persisting a solved plan; an IndexedDB open can block indefinitely. */
+export const SAVE_TIMEOUT_MS = 30_000;
+
+/** #1776: lets callers tell a timeout from a rejection by type, never by message. */
+class TimeoutError extends Error {}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new TimeoutError(`timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+type StartupOutcome = { client: RoutingClient } | ClientStartFailure;
 
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
+  // #1775: wall-clock start of the in-flight run; null while idle or erroring.
+  startedAtMs: number | null;
   run: (
     req: Omit<PlanRequest, 'settings'> & { settings: Settings },
     name: string,
@@ -130,18 +168,31 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // with no production caller since #571 (see replan.ts's own comment) —
   // also called, live, by state/reroute.ts's useLiveReroute (App.tsx wires
   // the same ensureClient into both).
-  // Resolves null on a failed load/init (mirrors run()'s own recovery: the
-  // broken client is disposed and the singleton cleared so the next call
-  // starts fresh); callers must treat a null result as a real failure, not
-  // silently do nothing.
+  // Resolves null on a failed load/init, or one exceeding STARTUP_TIMEOUT_MS
+  // (#1776): the broken client is disposed and the singleton cleared. The
+  // asset load is NOT restarted — assets.ts resets its cache only on
+  // rejection — so the next call joins a load still in flight. Callers must
+  // treat a null result as a real failure, not silently do nothing.
   ensureClient: () => Promise<RoutingClient | null>;
+  // The same start-up, saying WHY it failed, so a consumer can tell a
+  // start-up timeout from a load/init failure (#1776; DepartureCompare).
+  ensureClientOrFailure: () => Promise<RoutingClient | ClientStartFailure>;
   // #1193: stop whatever run() call is currently in flight. A no-op while
   // idle/erroring — see cancelRequestedRef's own comment for how a cancel
   // before the worker even exists (still fetching wind, or still loading
   // routing assets) is honoured too.
   cancel: () => void;
 } {
-  const { setPlan } = useActivePlan();
+  const { plan: activePlan, setPlan } = useActivePlan();
+  // #1776: read by a late-landing save, which must not replace a plan the
+  // user opened after the save timed out.
+  const activePlanRef = useRef(activePlan);
+  useEffect(() => {
+    activePlanRef.current = activePlan;
+  }, [activePlan]);
+  // #1776: bumped by every run(); a late-landing save acts only while its own
+  // run is still the latest.
+  const runSeqRef = useRef(0);
   const [planning, setPlanning] = useState<PlanningState>({ phase: 'idle' });
 
   // Mirrors `planning.phase` outside React state so the run() guard below
@@ -154,8 +205,14 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // object with equal content still re-renders the un-memoised shell, and
   // progress repeats the same state many times per solve.
   const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const transition = useCallback((next: PlanningState) => {
+    const wasBusy = phaseRef.current !== 'idle' && phaseRef.current !== 'error';
+    const isBusy = next.phase !== 'idle' && next.phase !== 'error';
     phaseRef.current = next.phase;
+    if (isBusy && !wasBusy) setStartedAtMs(Date.now());
+    else if (!isBusy && wasBusy) setStartedAtMs(null);
+
     if (planningStatesEqual(lastPlanningRef.current, next)) return;
     lastPlanningRef.current = next;
     setPlanning(next);
@@ -170,14 +227,21 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // Reset at the top of every run() so a cancel from a PRIOR, already-
   // finished run can never affect a fresh one.
   const cancelRequestedRef = useRef(false);
+  // #1699: ends the post-solve wave wait at once, so a cancel never waits out the grace.
+  const endWaveWaitRef = useRef<(() => void) | null>(null);
 
-  // Singleton client + its init() promise, created lazily on the first
-  // run() and reused for the hook's lifetime — init() transfers maskBuffer
-  // to the worker, so it must only ever be called once per client.
+  // Singleton client, created lazily on the first run() and reused for the
+  // hook's lifetime — init() transfers maskBuffer to the worker, so it must
+  // only ever be called once per client. #1776: `startupRef` is the one
+  // in-flight start-up every concurrent ensureClient() caller shares, so two
+  // callers can never build two clients; `clientRef` is set only once it succeeds.
   const clientRef = useRef<RoutingClient | null>(null);
-  const readyRef = useRef<Promise<void> | null>(null);
+  const startupRef = useRef<Promise<RoutingClient> | null>(null);
+  // #1776: resolved by cancel() to end run()'s wait on a start-up it does not own.
+  const endStartupWaitRef = useRef<(() => void) | null>(null);
 
   const fetchWind = deps.fetchWind ?? fetchWindGrid;
+  const fetchWave = deps.fetchWave ?? fetchWaveGrid;
   // Wrapped in useMemo: the `?? (() => ...)` fallback would otherwise
   // allocate a new closure identity every render, which would in turn
   // invalidate run's useCallback below on every render.
@@ -193,25 +257,33 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // see that file's #571 comment) — also called, live, by state/reroute.ts's
   // useLiveReroute (App.tsx wires the same ensureClient into both). See the
   // return type's own docstring for the failure-recovery contract.
-  const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
-    try {
-      // #432: the singleton may have been disposed by a caller that cannot
-      // reach these refs — state/replan.ts's and state/reroute.ts's plan()
-      // catches now tear the client down so a retry is not handed a worker
-      // still grinding on an abandoned solve. Without this check that
-      // teardown would be strictly HARMFUL: `clientRef.current` stays
-      // truthy and `readyRef.current` stays resolved, so the next call would
-      // return the dead client and every subsequent replan would fail with
-      // 'disposed' -> error.routingInterrupted. The dispose and this check
-      // are one fix in two halves, not two independent improvements.
-      if (clientRef.current?.isDisposed) {
-        clientRef.current = null;
-        readyRef.current = null;
-      }
-      if (!clientRef.current) {
+  const startClient = useCallback(async (): Promise<StartupOutcome> => {
+    // #432: the singleton may have been disposed by a caller that cannot
+    // reach these refs — state/replan.ts's and state/reroute.ts's plan()
+    // catches now tear the client down so a retry is not handed a worker
+    // still grinding on an abandoned solve. Without this check that
+    // teardown would be strictly HARMFUL: the refs would still hand back the
+    // dead client and every subsequent replan would fail with
+    // 'disposed' -> error.routingInterrupted. The dispose and this check
+    // are one fix in two halves, not two independent improvements.
+    if (clientRef.current?.isDisposed) {
+      clientRef.current = null;
+      startupRef.current = null;
+    }
+    if (clientRef.current) return { client: clientRef.current };
+    startupRef.current ??= (async () => {
+      // A timed-out attempt is abandoned: its late continuation must not
+      // spawn a worker nobody owns, and a client it already built is
+      // disposed (which also rejects that client's pending init()).
+      const attempt: { client: RoutingClient | null; abandoned: boolean } = {
+        client: null,
+        abandoned: false,
+      };
+      const startup = (async () => {
         const assets = await loadRoutingAssets();
-        clientRef.current = makeClient();
-        readyRef.current = clientRef.current.init({
+        if (attempt.abandoned) throw new Error('start-up abandoned');
+        attempt.client = makeClient();
+        await attempt.client.init({
           maskMeta: assets.maskMeta,
           // Transferred to the worker on postMessage — always pass a
           // copy and keep assets.ts's module-cached original intact.
@@ -223,27 +295,51 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             .filter((h) => h.knownDisconnected === true)
             .map((h) => h.id),
         });
-      }
-      await readyRef.current;
-      return clientRef.current;
-    } catch {
-      // A failed load/init leaves a permanently-rejected readyRef promise,
-      // and (if init() was reached) the broken client is still holding its
-      // Worker thread — dispose it (wrapped: dispose() on an already-dead
-      // or never-inited client must not throw and derail recovery) before
-      // clearing the singleton, so the next call builds a fresh client
-      // instead of re-awaiting the same broken one, or leaking the old
-      // Worker, forever.
+        return attempt.client;
+      })();
       try {
-        clientRef.current?.dispose();
-      } catch {
-        // Best-effort teardown of an already-broken client.
+        return await withTimeout(startup, STARTUP_TIMEOUT_MS);
+      } catch (err) {
+        attempt.abandoned = true;
+        // A failed init leaves the client holding its Worker thread —
+        // dispose it (wrapped: dispose() on an already-dead client must not
+        // throw and derail recovery) so it is not leaked.
+        try {
+          attempt.client?.dispose();
+        } catch {
+          // Best-effort teardown of an already-broken client.
+        }
+        throw err;
       }
-      clientRef.current = null;
-      readyRef.current = null;
-      return null;
+    })();
+    const startup = startupRef.current;
+    try {
+      const client = await startup;
+      // A teardown elsewhere may have cleared the refs while this awaited.
+      if (startupRef.current === startup) clientRef.current = client;
+      return { client };
+    } catch (err) {
+      // Cleared so the next call builds a new client instead of re-awaiting
+      // this failed attempt forever (the asset load itself may still be
+      // shared, see the docstring). A timeout fails every caller sharing it.
+      if (startupRef.current === startup) startupRef.current = null;
+      return { failure: err instanceof TimeoutError ? 'startup-timeout' : 'worker-init' };
     }
   }, [makeClient]);
+
+  const ensureClientOrFailure = useCallback(async (): Promise<
+    RoutingClient | ClientStartFailure
+  > => {
+    const outcome = await startClient();
+    return 'client' in outcome ? outcome.client : outcome;
+  }, [startClient]);
+
+  // The null form: its consumers (replan, reroute) map null to their own
+  // start-up copy, which stays true after a timeout.
+  const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
+    const outcome = await startClient();
+    return 'client' in outcome ? outcome.client : null;
+  }, [startClient]);
 
   const run = useCallback(
     async (
@@ -254,6 +350,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // Belt, not the primary guard: the UI's canPlan already disables the
       // plan button while a run is in flight.
       if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') return;
+      const seq = ++runSeqRef.current;
       // #1193: clear any cancel a PRIOR run left set — this is a fresh run
       // the user just started, not the one that was cancelled.
       cancelRequestedRef.current = false;
@@ -312,10 +409,15 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // exactOptionalPropertyTypes: fetchWindGrid's `fixtureUrl?: string`
       // rejects an explicit `undefined`, so an absent query param must omit
       // the key entirely rather than pass `{ fixtureUrl: undefined }`.
-      const fixtureUrl = new URLSearchParams(location.search).get('windFixture') ?? undefined;
+      // One truthiness test for both params: an empty value means "no fixture".
+      const query = new URLSearchParams(location.search);
+      const fixtureUrl = query.get('windFixture') || undefined;
+      const waveFixtureUrl = query.get('waveFixture') || undefined;
       let windGrid: WindGrid;
+      let windFromStore = false;
       if (!navigator.onLine && stored !== null) {
         windGrid = stored;
+        windFromStore = true;
       } else {
         try {
           windGrid = await fetchWind(fixtureUrl ? { fixtureUrl } : {});
@@ -323,6 +425,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // Only an unreachable forecast service (network failure or persistent server error) may fall back; a rate limit or bad payload must not plan on an old forecast.
           if (stored !== null && err instanceof OpenMeteoError && err.kind === 'offline') {
             windGrid = stored;
+            windFromStore = true;
           } else {
             transition({ phase: 'error', messageKey: mapWindError(err) });
             return;
@@ -337,16 +440,53 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
-      const client = await ensureClient();
+      // #1699: display only, so it never fails a plan and delays one by at
+      // most WAVE_GRACE_MS. Started after wind so it cannot add to a wind 429,
+      // still overlapping the solve. Any rejection, sync or async, becomes
+      // null. Stored wind takes the stored waves; a wind fixture without a
+      // wave fixture stays offline.
+      const wavePromise: Promise<WaveGrid | null> = windFromStore
+        ? Promise.resolve(opts.storedWaveGrid ?? null)
+        : fixtureUrl !== undefined && waveFixtureUrl === undefined
+          ? Promise.resolve(null)
+          : (async () => fetchWave(waveFixtureUrl ? { fixtureUrl: waveFixtureUrl } : {}))().catch(
+              () => null,
+            );
+
+      transition({ phase: 'starting' });
+
+      // #1776: raced against cancel() so a cancel during start-up takes effect
+      // at once. The start-up itself is shared with other consumers, so it is
+      // left running, never disposed, and installs its client for later use.
+      const outcome = await Promise.race([
+        startClient(),
+        new Promise<null>((resolve) => {
+          endStartupWaitRef.current = () => resolve(null);
+        }),
+      ]).finally(() => {
+        endStartupWaitRef.current = null;
+      });
       // #1193: same reasoning as above — a cancel during a slow first-run
       // asset load (loadRoutingAssets + worker init) reaches nothing yet.
       if (cancelRequestedRef.current) {
         transition({ phase: 'idle' });
         return;
       }
-      if (!client) {
-        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
+      if (outcome === null || !('client' in outcome)) {
+        transition({
+          phase: 'error',
+          messageKey: ROUTING_FAILURE_MESSAGE_KEY[outcome?.failure ?? 'worker-init'],
+        });
         return;
+      }
+      const { client } = outcome;
+
+      // #1775: start-up is over, so the status must stop saying so before the
+      // first solver message. The routing line names the phase only, so
+      // seeding the first rig is honest.
+      const firstSail = req.sailIds[0];
+      if (firstSail !== undefined) {
+        transition({ phase: 'routing', sailId: firstSail, index: 1, total: req.sailIds.length });
       }
 
       let result: PlanResult;
@@ -354,14 +494,12 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         result = await client.plan(
           req,
           windGrid,
-          // #340/#54: only `sailId` drives the UI now (phase indication, not
-          // a percentage) — the worker's tMs/frontierSize are still
-          // throttled upstream (workerClient.ts) but no longer consumed
-          // here. `index`/`total` are derived from req.sailIds (the solve
-          // order itself), not a module constant.
+          // #340/#54: the UI shows a phase, not a percentage — the worker's
+          // tMs/frontierSize are throttled upstream (workerClient.ts) but not
+          // consumed here. `index`/`total` are derived from req.sailIds.
           //
           // #54 fix round 1: an unguarded `indexOf(sailId) + 1` degrades to
-          // a fabricated "sail 0 of 2" if the worker ever reports progress
+          // a fabricated index 0 if the worker ever reports progress
           // for a sailId not in req.sailIds — unreachable today (the worker
           // only ever solves the sails req.sailIds itself lists), but
           // silently WRONG, inconsistent with recommendedResult()'s
@@ -429,7 +567,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             // Best-effort teardown of an already-broken client.
           }
           clientRef.current = null;
-          readyRef.current = null;
+          startupRef.current = null;
         }
         // #433: client.plan() always rejects with a RoutingError (see
         // workerClient.ts) — classify by its typed `kind`, NEVER by matching
@@ -461,6 +599,24 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
+      // A timeout abandons the fetch; it may still fill the wave cache.
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      const waveGrid = await Promise.race([
+        wavePromise,
+        new Promise<null>((resolve) => {
+          endWaveWaitRef.current = () => resolve(null);
+          graceTimer = setTimeout(() => resolve(null), WAVE_GRACE_MS);
+        }),
+      ]).finally(() => {
+        clearTimeout(graceTimer);
+        endWaveWaitRef.current = null;
+      });
+      // #1193: the wave wait is a new window a cancel can land in.
+      if (cancelRequestedRef.current) {
+        transition({ phase: 'idle' });
+        return;
+      }
+
       const plan: Plan = {
         // #114: a replace-recalculation persists under the original plan's id
         // (see RunOptions) — everything else mints a fresh one.
@@ -470,12 +626,38 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         schemaVersion: PLAN_SCHEMA_VERSION,
         request: req,
         windGrid,
+        ...(waveGrid !== null ? { waveGrid } : {}),
         result,
       };
+      // An async wrapper, so a synchronous throw from save() is a rejection too.
+      const saving = (async () => save(plan))();
       try {
-        await save(plan);
-      } catch {
-        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
+        await withTimeout(saving, SAVE_TIMEOUT_MS);
+      } catch (err) {
+        if (!(err instanceof TimeoutError)) {
+          transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
+          return;
+        }
+        // #1776: the write may still land. Its banner offers no retry (a
+        // re-plan would store a second copy); the outcome settles it below,
+        // unless a newer run has started since.
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-slow'] });
+        const shownAtTimeout = activePlanRef.current;
+        saving.then(
+          () => {
+            pinRegions(plan);
+            if (runSeqRef.current !== seq) return;
+            if (activePlanRef.current === shownAtTimeout) setPlan(plan);
+            transition({ phase: 'idle' });
+          },
+          () => {
+            if (runSeqRef.current !== seq) return;
+            transition({
+              phase: 'error',
+              messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'],
+            });
+          },
+        );
         return;
       }
       // #1164 T6: never awaited — pinning cannot delay or fail the saved plan.
@@ -483,7 +665,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       setPlan(plan);
       transition({ phase: 'idle' });
     },
-    [ensureClient, fetchWind, pinRegions, save, setPlan, transition],
+    [startClient, fetchWave, fetchWind, pinRegions, save, setPlan, transition],
   );
 
   // #1193: a no-op while idle/erroring, matching run()'s own guard — set
@@ -495,7 +677,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     if (phaseRef.current === 'idle' || phaseRef.current === 'error') return;
     cancelRequestedRef.current = true;
     clientRef.current?.cancel();
+    endStartupWaitRef.current?.();
+    endWaveWaitRef.current?.();
   }, []);
 
-  return { planning, run, ensureClient, cancel };
+  return { planning, startedAtMs, run, ensureClient, ensureClientOrFailure, cancel };
 }

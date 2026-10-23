@@ -83,7 +83,8 @@ async function settledCanvas(page: Page, canvas: Locator, consecutive = 1): Prom
 // `fetch(\`data:...\`)`, reasoning "img-src already allows data:, so the
 // in-page decode is not blocked" — MEASURED WRONG against this app's real
 // CSP (vite.config.ts): a data: fetch is gated by `connect-src` (`'self'
-// https://api.open-meteo.com wss://stream.aisstream.io`, no `data:`), not
+// https://api.open-meteo.com https://marine-api.open-meteo.com
+// wss://stream.aisstream.io`, no `data:`), not
 // `img-src`, and reds with `TypeError: Failed to fetch` under the real
 // policy. `img-src` DOES allow `data:` (CLAUDE.md's own CSP bullet), but
 // only for an actual IMAGE load — an `<img>` element's `src`, not `fetch`.

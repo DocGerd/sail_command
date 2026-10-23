@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runGlyphWarmup } from './glyphWarmup';
+import { glyphCacheComplete, runGlyphWarmup } from './glyphWarmup';
 import { GLYPH_CACHE_NAME } from '../lib/glyphs';
 
 // jsdom provides neither navigator.serviceWorker nor the Cache API — both
@@ -14,6 +14,7 @@ interface Env {
   fetchMock: ReturnType<typeof vi.fn>;
   cacheKeys: { url: string }[];
   cachesOpen: ReturnType<typeof vi.fn>;
+  cachesMatch: ReturnType<typeof vi.fn>;
   setOnline: (v: boolean) => void;
 }
 
@@ -22,11 +23,13 @@ function stubEnv({
   online = true,
   manifest = [] as string[] | null,
   cachedUrls = [] as string[],
+  precachedManifest = null as string[] | null,
 }: {
   controlled?: boolean;
   online?: boolean;
   manifest?: string[] | Record<string, unknown> | null;
   cachedUrls?: string[];
+  precachedManifest?: string[] | null;
 } = {}): Env {
   const sw = new FakeSwContainer();
   if (controlled) sw.controller = {};
@@ -41,7 +44,14 @@ function stubEnv({
 
   const cacheKeys = cachedUrls.map((url) => ({ url }));
   const cachesOpen = vi.fn(async () => ({ keys: async () => cacheKeys }));
-  vi.stubGlobal('caches', { open: cachesOpen });
+  // The precache stores the manifest under a revisioned key, as workbox does.
+  const precachedKey = `/glyph-manifest.json?__WB_REVISION__=abc`;
+  const cachesMatch = vi.fn(async (url: string, opts?: { ignoreSearch?: boolean }) => {
+    if (precachedManifest === null) return undefined;
+    const key = opts?.ignoreSearch ? precachedKey.split('?')[0] : precachedKey;
+    return url === key ? new Response(JSON.stringify(precachedManifest)) : undefined;
+  });
+  vi.stubGlobal('caches', { open: cachesOpen, match: cachesMatch });
 
   // Immediate idle: keeps the tests synchronous-ish without fake timers.
   vi.stubGlobal('requestIdleCallback', (cb: () => void) => {
@@ -58,7 +68,7 @@ function stubEnv({
   });
   vi.stubGlobal('fetch', fetchMock);
 
-  return { sw, fetchMock, cacheKeys, cachesOpen, setOnline: (v) => (onLine = v) };
+  return { sw, fetchMock, cacheKeys, cachesOpen, cachesMatch, setOnline: (v) => (onLine = v) };
 }
 
 afterEach(() => {
@@ -211,5 +221,55 @@ describe('scheduleGlyphWarmup', () => {
       .map((c) => c[0] as string)
       .filter((u) => u.includes('glyph-manifest.json'));
     expect(manifestFetches).toHaveLength(1);
+  });
+});
+
+describe('glyphCacheComplete (#1807)', () => {
+  const base = 'http://localhost:3000/basemap-assets/fonts/Noto%20Sans%20Regular';
+  const manifest = [
+    'basemap-assets/fonts/Noto Sans Regular/0-255.pbf',
+    'basemap-assets/fonts/Noto Sans Regular/256-511.pbf',
+  ];
+  const allCached = [`${base}/0-255.pbf`, `${base}/256-511.pbf`];
+
+  it('is true only when every manifest range is cached', async () => {
+    stubEnv({ precachedManifest: manifest, cachedUrls: allCached });
+    await expect(glyphCacheComplete()).resolves.toBe(true);
+  });
+
+  it('is false with one range missing', async () => {
+    stubEnv({ precachedManifest: manifest, cachedUrls: [`${base}/0-255.pbf`] });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+  });
+
+  it('fails closed without a precached manifest, with an empty one, or when the cache throws', async () => {
+    stubEnv({ precachedManifest: null, cachedUrls: allCached });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+
+    stubEnv({ precachedManifest: [], cachedUrls: allCached });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+
+    const { cachesOpen } = stubEnv({ precachedManifest: manifest });
+    cachesOpen.mockRejectedValue(new Error('cache gone'));
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+  });
+
+  it('reads the manifest from the precache only: no fetch and no warning, even when the network has it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fetchMock } = stubEnv({ manifest, precachedManifest: null, cachedUrls: allCached });
+    await expect(glyphCacheComplete()).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('answers without a controlling service worker and while offline', async () => {
+    const { fetchMock } = stubEnv({
+      controlled: false,
+      online: false,
+      precachedManifest: manifest,
+      cachedUrls: allCached,
+    });
+    await expect(glyphCacheComplete()).resolves.toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

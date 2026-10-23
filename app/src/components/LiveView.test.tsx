@@ -12,7 +12,7 @@ import { formatTrueHeading } from '../lib/liveMetrics';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
 import { withHarborHandover } from '../lib/harborHandover';
-import LiveView, { XTE_SIDE_DEADBAND_NM } from './LiveView';
+import LiveView, { XTE_SIDE_DEADBAND_NM, type LiveRerouteControls } from './LiveView';
 import { useOwnshipGps } from '../state/useOwnshipGps';
 import type { watchPosition as realWatchPosition } from '../services/geolocation';
 // #25 addendum: LiveView no longer renders BoatMarker at all (that moved to
@@ -181,6 +181,20 @@ function ActiveLegProbe() {
   return <span data-testid="shared-active-leg">{activeLegIndex ?? 'none'}</span>;
 }
 
+function rerouteControls(over: Partial<LiveRerouteControls> = {}): LiveRerouteControls {
+  return {
+    busy: false,
+    rerouting: false,
+    phase: null,
+    error: null,
+    succeeded: false,
+    onReroute: vi.fn(),
+    onCancel: vi.fn(),
+    onDismissError: vi.fn(),
+    ...over,
+  };
+}
+
 // Mirrors App.tsx's wiring: one shared GPS source, tracking reported up.
 function LiveViewHost({
   watchPosition,
@@ -222,13 +236,14 @@ function renderLive(
   watchPosition: ReturnType<typeof fakeWatchPosition>['wp'],
   plan?: Plan,
   extra?: ReactNode,
+  liveProps: Pick<ComponentProps<typeof LiveView>, 'aisStatus'> = {},
 ) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
       <AppStateProvider>
         {plan && <TestSetPlan plan={plan} />}
-        <LiveViewHost watchPosition={watchPosition} />
+        <LiveViewHost watchPosition={watchPosition} {...liveProps} />
         {extra}
       </AppStateProvider>
     </I18nProvider>,
@@ -598,6 +613,50 @@ describe('LiveView', () => {
     });
   });
 
+  describe('pre-sail readiness (#1807)', () => {
+    const summary = () => document.querySelector('.live-readiness summary');
+    const row = (id: string) => document.querySelector(`.live-readiness [data-check="${id}"]`);
+
+    it('shows the checklist before tracking, hides it while tracking, and brings it back on stop', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
+      // jsdom has no caches, permissions or wake lock, and the fixture grid
+      // ends before the passage: every check fails closed.
+      expect(summary()).toHaveTextContent('Pre-sail check: 0 of 6 ready');
+      expect(row('forecast')).toHaveTextContent('Not ready');
+
+      fireEvent.click(toggle);
+      expect(document.querySelector('.live-readiness')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop live view' }));
+      expect(summary()).toHaveTextContent('Pre-sail check: 0 of 6 ready');
+    });
+
+    it('reads the AIS status App.tsx passes down', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN, undefined, { aisStatus: 'live' });
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(summary()).toHaveTextContent('Pre-sail check: 1 of 6 ready');
+      expect(row('ais')).toHaveTextContent('AISReadyKey working, traffic received.');
+    });
+
+    it("reads the wake lock support LiveView's own useWakeLock reports", async () => {
+      Object.defineProperty(navigator, 'wakeLock', {
+        configurable: true,
+        value: { request: vi.fn(() => new Promise(() => {})) },
+      });
+      try {
+        const { wp } = fakeWatchPosition();
+        renderLive(wp, TEST_PLAN);
+        await screen.findByRole('button', { name: 'Start live view' });
+        expect(row('wakeLock')).toHaveTextContent('Screen onReady');
+      } finally {
+        Reflect.deleteProperty(navigator, 'wakeLock');
+      }
+    });
+  });
+
   describe('docking above the bottom sheet (narrow layout)', () => {
     let sheet: HTMLElement;
     let sheetHeight = 123;
@@ -693,7 +752,7 @@ describe('LiveView', () => {
             <TestSetPlan plan={TEST_PLAN} />
             <LiveViewHost
               watchPosition={w.wp}
-              reroute={{ busy: false, rerouting: false, onReroute: vi.fn() }}
+              reroute={rerouteControls()}
             />
           </AppStateProvider>
         </I18nProvider>,
@@ -1350,7 +1409,7 @@ describe('LiveView', () => {
 
     function renderWithReroute(
       wp: ReturnType<typeof fakeWatchPosition>['wp'],
-      controls: { busy: boolean; rerouting: boolean; onReroute: (p: unknown) => void },
+      controls: LiveRerouteControls,
     ) {
       localStorage.setItem('sc-lang', 'en');
       return render(
@@ -1373,7 +1432,7 @@ describe('LiveView', () => {
     it('is disabled with a needs-a-fix hint while there is no GPS fix (tracking off), and never auto-starts GPS', async () => {
       const { wp } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+      renderWithReroute(wp, rerouteControls({ onReroute }));
 
       const button = await screen.findByRole('button', { name: REROUTE_NAME });
       expect(button).toBeDisabled();
@@ -1388,7 +1447,7 @@ describe('LiveView', () => {
     it('enables once a fix arrives, switches the hint to planning-aid copy, and passes the exact fix point on click', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+      renderWithReroute(wp, rerouteControls({ onReroute }));
 
       fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
@@ -1406,7 +1465,7 @@ describe('LiveView', () => {
     it('a stale fix cannot fire a reroute: toggling tracking off clears the fix and disables the action again', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+      renderWithReroute(wp, rerouteControls({ onReroute }));
 
       const toggle = await screen.findByRole('button', { name: 'Start live view' });
       fireEvent.click(toggle); // on
@@ -1422,7 +1481,7 @@ describe('LiveView', () => {
     it('is disabled when the fix accuracy is worse than the threshold, enabled at the threshold', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+      renderWithReroute(wp, rerouteControls({ onReroute }));
 
       fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 100.5 }));
@@ -1435,7 +1494,7 @@ describe('LiveView', () => {
     it('a lost fix (30 s without a new one) hides the readout and disables reroute; a new fix restores both', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+      renderWithReroute(wp, rerouteControls({ onReroute }));
 
       const toggle = await screen.findByRole('button', { name: 'Start live view' });
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance', 'Date'] });
@@ -1483,7 +1542,7 @@ describe('LiveView', () => {
     it('is disabled while ANY solver run is busy, and shows the in-flight label for its own solve', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();
-      renderWithReroute(wp, { busy: true, rerouting: true, onReroute });
+      renderWithReroute(wp, rerouteControls({ busy: true, rerouting: true, onReroute }));
 
       fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
@@ -1494,6 +1553,62 @@ describe('LiveView', () => {
       expect(button).toBeDisabled();
       fireEvent.click(button);
       expect(onReroute).not.toHaveBeenCalled();
+    });
+
+    // #1806: progress, cancel, success cue and the in-card error.
+    const rerouteStatus = () =>
+      document.querySelector('.live-view-reroute [role="status"]') as HTMLElement | null;
+
+    it('#1806: while rerouting, the status region names the phase and Stop replanning calls onCancel', async () => {
+      const { wp } = fakeWatchPosition();
+      const onCancel = vi.fn();
+      renderWithReroute(
+        wp,
+        rerouteControls({ busy: true, rerouting: true, phase: 'probing', onCancel }),
+      );
+
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(rerouteStatus()?.textContent).toBe(
+        'No route at the set safety depth — probing reduced depth gates…',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Stop replanning' }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('#1806: no Stop replanning button and an empty status region while idle', async () => {
+      const { wp } = fakeWatchPosition();
+      renderWithReroute(wp, rerouteControls());
+
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(screen.queryByRole('button', { name: 'Stop replanning' })).not.toBeInTheDocument();
+      expect(rerouteStatus()).not.toBeNull();
+      expect(rerouteStatus()?.textContent).toBe('');
+    });
+
+    it('#1806: the success cue shows in the status region once a reroute became active', async () => {
+      const { wp } = fakeWatchPosition();
+      renderWithReroute(wp, rerouteControls({ succeeded: true }));
+
+      await screen.findByRole('button', { name: 'Start live view' });
+      expect(rerouteStatus()?.textContent).toBe(
+        'New route from your position is active. The original plan is kept.',
+      );
+    });
+
+    it('#1806: a reroute error renders in the card, and its dismiss button calls onDismissError', async () => {
+      const { wp } = fakeWatchPosition();
+      const onDismissError = vi.fn();
+      renderWithReroute(
+        wp,
+        rerouteControls({ error: 'error.rerouteBeyondHorizon', onDismissError }),
+      );
+
+      await screen.findByRole('button', { name: 'Start live view' });
+      const card = document.querySelector('.live-view') as HTMLElement;
+      const alert = within(card).getByRole('alert');
+      expect(alert).toHaveTextContent(/fits within the stored wind forecast/);
+      fireEvent.click(within(alert).getByRole('button', { name: 'Hide error message' }));
+      expect(onDismissError).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1513,7 +1628,7 @@ describe('LiveView', () => {
             <TestSetPlan plan={TEST_PLAN} />
             <LiveViewHost
               watchPosition={wp}
-              reroute={{ busy: false, rerouting: false, onReroute }}
+              reroute={rerouteControls({ onReroute })}
             />
           </AppStateProvider>
         </I18nProvider>,
@@ -1537,7 +1652,7 @@ describe('LiveView', () => {
             <TestSetPlan plan={TEST_PLAN} />
             <LiveViewHost
               watchPosition={wp}
-              reroute={{ busy: false, rerouting: false, onReroute }}
+              reroute={rerouteControls({ onReroute })}
             />
           </AppStateProvider>
         </I18nProvider>,

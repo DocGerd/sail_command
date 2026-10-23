@@ -55,6 +55,7 @@ import {
 
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
+import { WAVE_STACK_BOTTOM_LAYER } from '../lib/waveMap';
 import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
 
 /**
@@ -381,6 +382,10 @@ function setupLayers(
     : map.getLayer(ROUTE_STACK_BOTTOM_LAYER)
       ? ROUTE_STACK_BOTTOM_LAYER
       : undefined;
+  // #1699: the depth ramp, hatch and contour lines sit below the sea-state
+  // overlay when it set up first; harbours and seamarks keep `beforeId`, so
+  // they stay above it in every order.
+  const depthBeforeId = map.getLayer(WAVE_STACK_BOTTOM_LAYER) ? WAVE_STACK_BOTTOM_LAYER : beforeId;
   if (!map.getSource(DEPTH_SOURCE)) {
     const canvas = buildDepthCanvas(meta, maskBuffer);
     if (canvas) {
@@ -407,7 +412,7 @@ function setupLayers(
           // flips instantly.
           paint: { 'raster-fade-duration': 0 },
         },
-        beforeId,
+        depthBeforeId,
       );
     }
   }
@@ -479,7 +484,7 @@ function setupLayers(
             'raster-resampling': 'nearest',
           },
         },
-        beforeId,
+        depthBeforeId,
       );
     }
   }
@@ -509,7 +514,7 @@ function setupLayers(
           'line-opacity': 0.6,
         },
       },
-      beforeId,
+      depthBeforeId,
     );
     map.addLayer(
       {
@@ -531,7 +536,7 @@ function setupLayers(
           'line-width': ['case', ['<=', ['get', 'levelM'], 3], 1.4, 0.8],
         },
       },
-      beforeId,
+      depthBeforeId,
     );
     // #629 maintainer ruling: anchored below the first basemap symbol
     // layer, found HERE at setup time — not hardcoded, and not reusing

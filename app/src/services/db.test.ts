@@ -13,6 +13,7 @@ import {
   deleteWaypoint,
   saveRegionPin,
   getRegionPin,
+  scrubStoredAisApiKeys,
   __resetDbForTests,
   type SavedWaypoint,
   type RegionPinRecord,
@@ -1773,48 +1774,49 @@ describe('#1164 T4: region pin intent persistence (services/db.ts)', () => {
 });
 // SECURITY.md: the AIS key never leaves the device except to aisstream.io, so
 // no stored plan may carry it in its request.settings snapshot.
+const AIS_KEY = 'ais-secret-0123456789';
+
+function aisPlanWith(settings: unknown, id = 'ais-plan'): Plan {
+  return {
+    id,
+    name: 'key test',
+    createdAtMs: 1000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: { settings, boat: defaultBoatSnapshot() },
+  } as unknown as Plan;
+}
+async function aisStoredRecord(id: string): Promise<unknown> {
+  const conn = await openDB('sailcommand');
+  try {
+    return await conn.get('plans', id);
+  } finally {
+    conn.close();
+  }
+}
+const aisSettingsOf = (rec: unknown) =>
+  (rec as { request: { settings: Record<string, unknown> } }).request.settings;
+
 describe('savePlan strips the AIS API key from the stored request settings', () => {
-  const KEY = 'ais-secret-0123456789';
   beforeEach(async () => {
     await __resetDbForTests();
   });
 
-  function planWith(settings: unknown, id = 'ais-plan'): Plan {
-    return {
-      id,
-      name: 'key test',
-      createdAtMs: 1000,
-      schemaVersion: PLAN_SCHEMA_VERSION,
-      request: { settings, boat: defaultBoatSnapshot() },
-    } as unknown as Plan;
-  }
-  async function storedRecord(id: string): Promise<unknown> {
-    const conn = await openDB('sailcommand');
-    try {
-      return await conn.get('plans', id);
-    } finally {
-      conn.close();
-    }
-  }
-  const settingsOf = (rec: unknown) =>
-    (rec as { request: { settings: Record<string, unknown> } }).request.settings;
-
   it('stores a plan built like rerouteFromFix (DEFAULT_SETTINGS spread over a key-bearing snapshot) without the key', async () => {
-    const original = planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY });
-    const rerouted = planWith(
+    const original = aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY });
+    const rerouted = aisPlanWith(
       { ...DEFAULT_SETTINGS, ...original.request.settings },
       'ais-rerouted',
     );
-    expect(rerouted.request.settings.aisApiKey).toBe(KEY);
+    expect(rerouted.request.settings.aisApiKey).toBe(AIS_KEY);
 
     await savePlan(rerouted);
 
-    const stored = await storedRecord('ais-rerouted');
-    expect(Object.hasOwn(settingsOf(stored), 'aisApiKey')).toBe(false);
-    expect(JSON.stringify(stored)).not.toContain(KEY);
-    expect(settingsOf(stored).safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
+    const stored = await aisStoredRecord('ais-rerouted');
+    expect(Object.hasOwn(aisSettingsOf(stored), 'aisApiKey')).toBe(false);
+    expect(JSON.stringify(stored)).not.toContain(AIS_KEY);
+    expect(aisSettingsOf(stored).safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
     // The caller's in-memory plan keeps its settings untouched.
-    expect(rerouted.request.settings.aisApiKey).toBe(KEY);
+    expect(rerouted.request.settings.aisApiKey).toBe(AIS_KEY);
   });
 
   it('keeps the stored wind grid as intact Float32Arrays', async () => {
@@ -1828,12 +1830,15 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
       fetchedAtMs: 1626340800000,
       model: 'open-meteo',
     };
-    const plan = { ...planWith({ ...DEFAULT_SETTINGS, aisApiKey: KEY }, 'ais-grid'), windGrid };
+    const plan = {
+      ...aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'ais-grid'),
+      windGrid,
+    };
 
     await savePlan(plan);
 
-    const stored = (await storedRecord('ais-grid')) as Plan;
-    expect(Object.hasOwn(settingsOf(stored), 'aisApiKey')).toBe(false);
+    const stored = (await aisStoredRecord('ais-grid')) as Plan;
+    expect(Object.hasOwn(aisSettingsOf(stored), 'aisApiKey')).toBe(false);
     for (const field of ['speedKn', 'dirFromDeg', 'gustKn'] as const) {
       expect(Object.prototype.toString.call(stored.windGrid[field])).toBe('[object Float32Array]');
       expect(Array.from(stored.windGrid[field])).toEqual(Array.from(windGrid[field]));
@@ -1841,15 +1846,157 @@ describe('savePlan strips the AIS API key from the stored request settings', () 
   });
 
   it('leaves a plan without a key untouched', async () => {
-    await savePlan(planWith({ ...DEFAULT_SETTINGS }));
-    expect(settingsOf(await storedRecord('ais-plan'))).toEqual(DEFAULT_SETTINGS);
+    await savePlan(aisPlanWith({ ...DEFAULT_SETTINGS }));
+    expect(aisSettingsOf(await aisStoredRecord('ais-plan'))).toEqual(DEFAULT_SETTINGS);
   });
 
   it.each([
     ['absent settings', undefined],
     ['null settings', null],
   ])('still saves a record with %s', async (_label, settings) => {
-    await savePlan(planWith(settings));
-    expect(await storedRecord('ais-plan')).toBeDefined();
+    await savePlan(aisPlanWith(settings));
+    expect(await aisStoredRecord('ais-plan')).toBeDefined();
+  });
+});
+
+describe('#1813: scrubStoredAisApiKeys', () => {
+  const DONE_KEY = 'sc-ais-key-scrub-done';
+  beforeEach(async () => {
+    await __resetDbForTests();
+    localStorage.removeItem(DONE_KEY);
+  });
+  // Seeds raw records, bypassing savePlan's own stripping (legacy rows).
+  async function seedRaw(...records: unknown[]): Promise<void> {
+    await listPlans(); // creates the database through the app's own upgrade path
+    const conn = await openDB('sailcommand');
+    try {
+      for (const r of records) await conn.put('plans', r);
+    } finally {
+      conn.close();
+    }
+  }
+  const windGrid = {
+    lats: [54],
+    lons: [9],
+    timesMs: [1000],
+    speedKn: new Float32Array([5.5]),
+    dirFromDeg: new Float32Array([90]),
+    gustKn: new Float32Array([7.5]),
+    fetchedAtMs: 1,
+    model: 'open-meteo',
+  };
+
+  it('removes the key from key-bearing records and changes nothing else', async () => {
+    const legacy = {
+      ...aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'legacy'),
+      windGrid,
+      extraLegacyField: { kept: true },
+    };
+    await seedRaw(legacy);
+
+    expect(await scrubStoredAisApiKeys()).toBe(1);
+
+    const stored = (await aisStoredRecord('legacy')) as Record<string, unknown>;
+    expect(JSON.stringify(stored)).not.toContain(AIS_KEY);
+    expect(Object.hasOwn(aisSettingsOf(stored), 'aisApiKey')).toBe(false);
+    const expectedSettings: Record<string, unknown> = { ...legacy.request.settings };
+    delete expectedSettings.aisApiKey;
+    // windGrid is compared separately: typed arrays cloned by fake-indexeddb
+    // are not toEqual-comparable to the jsdom-realm originals.
+    const { windGrid: storedGrid, ...storedRest } = stored;
+    const legacyRest: Record<string, unknown> = { ...legacy };
+    delete legacyRest.windGrid;
+    expect(storedRest).toEqual({
+      ...legacyRest,
+      request: { ...legacy.request, settings: expectedSettings },
+    });
+    expect(Array.from((storedGrid as WindGrid).speedKn)).toEqual(Array.from(windGrid.speedKn));
+    expect(Object.prototype.toString.call((storedGrid as WindGrid).speedKn)).toBe(
+      '[object Float32Array]',
+    );
+  });
+
+  it('rewrites only key-bearing records and is idempotent', async () => {
+    await seedRaw(
+      aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty'),
+      aisPlanWith({ ...DEFAULT_SETTINGS }, 'clean'),
+      aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty-2'),
+    );
+
+    expect(await scrubStoredAisApiKeys()).toBe(2);
+    expect(await scrubStoredAisApiKeys()).toBe(0);
+    expect(await listPlans()).toHaveLength(3);
+    expect(aisSettingsOf(await aisStoredRecord('clean'))).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('survives and keeps every record when the store holds odd shapes', async () => {
+    await seedRaw(
+      aisPlanWith(undefined, 'no-settings'),
+      aisPlanWith(null, 'null-settings'),
+      { id: 'no-request', name: 'x' },
+      aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty'),
+    );
+    const before = await aisStoredRecord('no-request');
+
+    expect(await scrubStoredAisApiKeys()).toBe(1);
+
+    expect(await aisStoredRecord('no-request')).toEqual(before);
+    expect(await listPlans()).toHaveLength(4);
+    expect(JSON.stringify(await aisStoredRecord('dirty'))).not.toContain(AIS_KEY);
+  });
+
+  it('never loses a plan when a write fails: resolves, logs, records unchanged', async () => {
+    await seedRaw(aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty'));
+    const update = vi.spyOn(IDBCursor.prototype, 'update').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await scrubStoredAisApiKeys()).toBe(0);
+      expect(update).toHaveBeenCalled();
+      expect(err).toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+      err.mockRestore();
+    }
+    expect(aisSettingsOf(await aisStoredRecord('dirty')).aisApiKey).toBe(AIS_KEY);
+    expect(await listPlans()).toHaveLength(1);
+    // A failed pass is not marked done, so the next boot retries it.
+    expect(localStorage.getItem(DONE_KEY)).toBeNull();
+    expect(await scrubStoredAisApiKeys()).toBe(1);
+    expect(JSON.stringify(await aisStoredRecord('dirty'))).not.toContain(AIS_KEY);
+  });
+
+  it('marks a completed pass done and skips the scan on later boots', async () => {
+    await seedRaw(aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty'));
+    expect(await scrubStoredAisApiKeys()).toBe(1);
+    expect(localStorage.getItem(DONE_KEY)).toBe(__SC_APP_VERSION__);
+
+    // Residual: a record re-dirtied by an older build is left alone once flagged.
+    await seedRaw(aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 're-dirtied'));
+    const open = vi.spyOn(IDBDatabase.prototype, 'transaction');
+    try {
+      expect(await scrubStoredAisApiKeys()).toBe(0);
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+    }
+    expect(aisSettingsOf(await aisStoredRecord('re-dirtied')).aisApiKey).toBe(AIS_KEY);
+  });
+
+  it('re-runs once when the flag was set by a different build', async () => {
+    await seedRaw(aisPlanWith({ ...DEFAULT_SETTINGS, aisApiKey: AIS_KEY }, 'dirty'));
+    localStorage.setItem(DONE_KEY, `${__SC_APP_VERSION__}-other-build`);
+
+    expect(await scrubStoredAisApiKeys()).toBe(1);
+
+    expect(JSON.stringify(await aisStoredRecord('dirty'))).not.toContain(AIS_KEY);
+    expect(localStorage.getItem(DONE_KEY)).toBe(__SC_APP_VERSION__);
+  });
+
+  it('marks an empty store done too', async () => {
+    await listPlans();
+    expect(await scrubStoredAisApiKeys()).toBe(0);
+    expect(localStorage.getItem(DONE_KEY)).toBe(__SC_APP_VERSION__);
   });
 });

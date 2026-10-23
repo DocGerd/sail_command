@@ -7,6 +7,7 @@ import {
   type Settings,
 } from '../types';
 import { rigEstimateBased } from '../lib/plan';
+import { safeGetItem, safeSetItem } from '../lib/storage';
 import { migratePlan } from './migratePlan';
 
 // #848: a user-authored, named, reusable place (spec §2.3 —
@@ -244,15 +245,68 @@ export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
 
 // SECURITY.md: the AIS key never leaves the device except to aisstream.io, so
 // the settings snapshot a plan carries must not hold it.
-function withoutAisApiKey(plan: Plan): Plan {
+// Returns a copy without the key, or null when the record carries none (or is
+// not shaped like a plan): callers write only on non-null. Every other field is
+// kept as stored, so this is additive and safe on legacy or foreign records.
+function withoutAisApiKeyRecord(raw: unknown): object | null {
   // savePlan also writes records migratePlan would refuse, so no field is trusted.
-  const settings: unknown = (plan.request as Partial<Plan['request']> | undefined)?.settings;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const request: unknown = (raw as { request?: unknown }).request;
+  if (typeof request !== 'object' || request === null) return null;
+  const settings: unknown = (request as { settings?: unknown }).settings;
   if (typeof settings !== 'object' || settings === null || !Object.hasOwn(settings, 'aisApiKey')) {
-    return plan;
+    return null;
   }
-  const rest: Settings = { ...(settings as Settings) };
+  const rest: Record<string, unknown> = { ...(settings as Record<string, unknown>) };
   delete rest.aisApiKey;
-  return { ...plan, request: { ...plan.request, settings: rest } };
+  return { ...raw, request: { ...request, settings: rest } };
+}
+
+function withoutAisApiKey(plan: Plan): Plan {
+  return (withoutAisApiKeyRecord(plan) as Plan | null) ?? plan;
+}
+
+const AIS_SCRUB_DONE_KEY = 'sc-ais-key-scrub-done';
+
+/**
+ * #1813: startup pass scrubbing `aisApiKey` from plans stored before
+ * savePlan began stripping it. Rewrites only records still carrying the key,
+ * in ONE readwrite transaction, so it serialises against savePlan/deletePlan.
+ * Each record is rewritten as itself minus the key, never rebuilt through
+ * migratePlan. No DB_VERSION bump (per #1813). Never throws and never
+ * deletes a record. A request-level IndexedDB error aborts the transaction;
+ * a synchronous throw from `cursor.update` does not, so a failed pass may
+ * leave some records scrubbed and the rest still keyed. Either way the flag
+ * stays unset and the next boot retries.
+ *
+ * A completed pass stores the app version in a localStorage flag, and later
+ * boots of the SAME build skip the scan, as it deserialises every plan
+ * including wind grids. A different build re-runs it once, which covers an
+ * older build sharing this origin (prod vs /uat/) re-dirtying plans. The
+ * residual: a key-bearing plan written by an older build after the flag was
+ * set stays until a build with another version boots.
+ */
+export async function scrubStoredAisApiKeys(): Promise<number> {
+  if (safeGetItem(AIS_SCRUB_DONE_KEY) === __SC_APP_VERSION__) return 0;
+  try {
+    const tx = (await db()).transaction('plans', 'readwrite');
+    let scrubbed = 0;
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const clean = withoutAisApiKeyRecord(cursor.value);
+      if (clean !== null) {
+        await cursor.update(clean as Plan);
+        scrubbed += 1;
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+    safeSetItem(AIS_SCRUB_DONE_KEY, __SC_APP_VERSION__);
+    return scrubbed;
+  } catch (err) {
+    console.error('scrubStoredAisApiKeys: pass failed, will retry next boot', err);
+    return 0;
+  }
 }
 
 export async function savePlan(plan: Plan): Promise<void> {

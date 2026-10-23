@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-23
+
+### Added
+
+- The map can show a plan's forecast sea state: significant wave height in colour bands and arrows for the direction the waves travel, at the time-slider hour. It does not affect the route. Plans saved earlier, or whose marine forecast was unavailable or did not arrive in time, show none (#1699).
+- The planner now shows elapsed time while a route is calculated, a separate status while the routing engine starts up, and a notice when a route takes unusually long (#1775).
+- Before you start tracking, the Live tab shows a pre-sail check of whether the offline map, map labels, location permission, stored wind forecast, screen keep-awake and AIS key are ready on this device (#1807).
+
+### Changed
+
+- The Live card is easier to read at a glance: larger, full-contrast readouts and labels, and a 44 px keep-screen-on toggle. Replanning from your position now shows its progress, can be stopped, confirms when the new route is active, and reports failures inside the card, with Live-specific advice when the stored forecast is too short (#1806).
+- AIS targets now show their ship type when it arrives in a Class B extended position report, not only in static data (#1823).
+
+### Fixed
+
+- For harbours the selected boat cannot reach, the check of other safety depths now runs first for the selected origin and destination, then for the rows of an open harbour list, instead of waiting behind earlier harbours (#1749).
+- Planning no longer hangs silently if the route planner fails to start or saving a plan hangs: both stages are now time-limited and show an error banner, and Cancel takes effect immediately while the planner is still starting (#1776).
+- The route-calculation status no longer refers to all sails when only one sail is planned, and a lost message between the routing workers now reports a retryable error (#1794).
+- On a tablet in portrait (820 px wide), a long AIS list no longer pushes the Live card's reroute button and its reason below the fold: the card now takes priority over the sheet and the list scrolls inside it (#1822).
+- The Routes tab's result card no longer shows a growing pile of offline-map chips, or a repeated shallow-water warning, when it re-renders (#1833).
+
+### Security
+
+- Plans saved before v0.58.0 no longer keep your AIS API key: it is removed from them when the app next starts (#1813).
+
 ## [0.58.0] - 2026-10-21
 
 ### Added
@@ -1346,7 +1371,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.58.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.59.0...HEAD
+[0.59.0]: https://github.com/DocGerd/sail_command/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/DocGerd/sail_command/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/DocGerd/sail_command/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/DocGerd/sail_command/compare/v0.55.2...v0.56.0

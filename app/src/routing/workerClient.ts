@@ -131,12 +131,12 @@ export class RoutingError extends Error {
 // this as a bare multiplier without naming a machine and whether the wind was
 // live or synthetic.
 //
-// 360 s: maintainer ruling 2026-09-21 on #1331 (option B). Both rigs solve
-// sequentially under this one deadline. Flensburg -> Burgstaaken, two bare
+// 360 s: maintainer ruling 2026-09-21 on #1331 (option B), sized when the
+// rigs solved one after the other. Flensburg -> Burgstaaken, two bare
 // solve() calls summed (tier 1, SYNTHETIC uniform 12 kn / 225 deg, idle box,
 // machine not recorded), took 271.9 s at the #1257 frontier cap: 113% of the
-// old 240 s, 76% of 360 s (#1331 comment, 2026-09-18). Per-rig budgets are
-// #1350.
+// old 240 s, 76% of 360 s (#1331 comment, 2026-09-18). Since #1793 the rigs
+// may solve in parallel, but the budget stays one deadline per plan.
 export const PLAN_BUDGET_MS = 360_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
@@ -368,8 +368,12 @@ export class RoutingClient {
   // happened inside planRoute(). Without this, a forwarded worker throw
   // (cause: a real exception inside planRoute()) arrives stripped of the
   // one detail that identifies it.
-  private makeWorkerFatalError(message: string, stack: string | undefined): RoutingError {
-    const err = new RoutingError('worker-fatal', message);
+  private makeWorkerFatalError(
+    message: string,
+    stack: string | undefined,
+    kind: 'messageerror' | undefined,
+  ): RoutingError {
+    const err = new RoutingError(kind ?? 'worker-fatal', message);
     if (stack !== undefined) err.stack = stack;
     return err;
   }
@@ -417,10 +421,10 @@ export class RoutingClient {
       this.settle(msg.id, (entry) => entry.resolve(msg.result));
     } else if (msg.id) {
       this.settle(msg.id, (entry) =>
-        entry.reject(this.makeWorkerFatalError(msg.message, msg.stack)),
+        entry.reject(this.makeWorkerFatalError(msg.message, msg.stack, msg.kind)),
       );
     } else {
-      this.failAll(this.makeWorkerFatalError(msg.message, msg.stack));
+      this.failAll(this.makeWorkerFatalError(msg.message, msg.stack, msg.kind));
     }
   }
 

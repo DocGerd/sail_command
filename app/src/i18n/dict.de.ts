@@ -348,11 +348,19 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
+  // #1775: start-up phase and a non-live elapsed readout
+  'planner.status.starting': 'Routenberechnung wird vorbereitet — Routingdaten werden geladen…',
+  'planner.status.elapsed': 'Verstrichene Zeit: {time}',
+  'planner.status.longRunning':
+    'Diese Route braucht länger. Routen mit mehreren Wegpunkten können einige Minuten dauern; Sie können jederzeit abbrechen.',
   // #340/#54: phase readout, not a percentage. The rigs may solve
   // concurrently, so it names the phase rather than a rig or an index.
   'planner.status.routingSail': 'Route wird für alle Segel berechnet…',
   // #1136: der Rettungslauf ohne Motor nach einer gescheiterten ersten Suche
   'planner.status.routingSailSecondPass': 'Keine Route gefunden — zweiter Suchlauf für alle Segel…',
+  // #1794: dieselben Phasen für eine Anfrage mit nur einem Segel
+  'planner.status.routingSingle': 'Route wird berechnet…',
+  'planner.status.routingSingleSecondPass': 'Keine Route gefunden — zweiter Suchlauf…',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
@@ -381,6 +389,9 @@ export const de = {
   // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
   'error.workerInit':
     'Der Routenplaner konnte nicht gestartet werden — erforderliche Daten konnten nicht geladen werden. App neu laden und erneut versuchen.',
+  // #1776: siehe die englische Fassung.
+  'error.workerStartupTimeout':
+    'Der Routenplaner ist nicht innerhalb des Zeitlimits gestartet. Seine Daten werden bei langsamer Verbindung womöglich noch geladen, oder der Planer hat nicht geantwortet. Erneut versuchen; ein laufender Download wird fortgesetzt.',
   'error.routingTimeout':
     'Die Routenberechnung hat das Zeitlimit überschritten. Ein erneuter Versuch dürfte genauso am Zeitlimit scheitern — eine einfachere Route oder ein schnelleres Gerät könnten helfen.',
   // #433 review Minor 1: behauptet NICHT, dass ein erneuter Versuch
@@ -410,6 +421,9 @@ export const de = {
     'Die gespeicherte Windvorhersage dieser Route deckt ein kleineres Gebiet ab als die aktuellen Kartendaten und reicht für diese Aktion nicht aus. Route neu berechnen oder neu planen, um eine aktuelle Vorhersage zu laden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
+  // #1776: siehe die englische Fassung.
+  'error.planSaveSlow':
+    'Die Route wurde berechnet, das Speichern dauert aber ungewöhnlich lange. Wird das Speichern abgeschlossen, bleibt die Route bei den gespeicherten Routen. Eine erneute Planung jetzt könnte eine zweite Kopie speichern.',
   'error.windUnknown':
     'Windvorhersage konnte aufgrund eines unerwarteten Fehlers nicht geladen werden. Bitte in Kürze erneut versuchen.',
   // #265/#866: siehe die englische Fassung — 'mask-blocked' kann ein
@@ -469,6 +483,10 @@ export const de = {
     'Die gespeicherte Windvorhersage dieses Plans deckt die aktuelle Zeit nicht mehr ab — eine neue Route ab jetzt kann daraus nicht berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.rerouteFixOutside':
     'Die aktuelle GPS-Position liegt außerhalb des abgedeckten Seegebiets oder ist nicht befahrbar — von hier kann keine Route berechnet werden.',
+  // #1806: Abfahrt (jetzt) und Ziel sind bei der Neuplanung fest, daher kein
+  // Hinweis auf eine andere Abfahrtszeit.
+  'error.rerouteBeyondHorizon':
+    'Ab der aktuellen Position passt keine Route in die gespeicherte Windvorhersage. Route online neu planen, um eine neue Vorhersage zu laden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   // Fallback label for a stored sail id the current catalogue no longer
@@ -837,6 +855,34 @@ export const de = {
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
   'route.altRig.singleSail': 'Nur ein Vorsegel geplant',
+  // #1699: Seegang-Overlay (nur Anzeige, ohne Einfluss auf die Route).
+  'route.waves.toggle': 'Seegang anzeigen',
+  'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
+  'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
+  'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
+  'route.legend.seaStateBelow': 'unter {max} m',
+  'route.legend.seaStateRange': '{min} bis {max} m',
+  'route.legend.seaStateAbove': 'ab {min} m',
+  'route.legend.seaStateNoData': 'Keine Färbung bedeutet keine Daten oder Land, nicht ruhige See.',
+  'route.legend.seaStateArrow':
+    'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
+  'route.legend.seaStateCaveat':
+    'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe ungenau.',
+  // Douglas-scale wording per NLWKN, Anlage 7.1 Wellenauflaufberechnung
+  // (https://nlwkn.niedersachsen.de/download/213307/Anlage_7.1_Wellenauflaufberechnung.pdf.pdf).
+  // Rejected for 'smooth': 'glatt', which reads calmer than 'ruhig'.
+  'seaState.band.calm': 'ruhig',
+  'seaState.band.smooth': 'schwach bewegt',
+  'seaState.band.slight': 'leicht bewegt',
+  'seaState.band.moderate': 'mäßig bewegt',
+  'seaState.band.rough': 'grob',
+  'map.waves.popup.title': 'Seegang',
+  'map.waves.popup.height': 'Signifikante Wellenhöhe',
+  'map.waves.popup.band': 'Seegangsstufe',
+  'map.waves.popup.period': 'Wellenperiode',
+  'map.waves.popup.direction': 'Laufrichtung',
+  'map.waves.popup.noData': 'keine Daten',
+  'map.waves.popup.disclaimer': 'Modellschätzung, keine amtliche Angabe.',
   // #628: summary label for the Disclosure wrapping the whole map-overlay
   // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
   // legend) — collapsible so it stops obstructing the chart on mobile.
@@ -1194,6 +1240,41 @@ export const de = {
   'live.wake.notHeld': 'Bildschirm kann ausgehen — Dauer-An ist nicht aktiv',
   'live.wake.off': 'Bildschirm kann ausgehen — Dauer-An ist aus',
   'live.wake.unsupported': 'Bildschirm kann ausgehen — von diesem Browser nicht unterstützt',
+  // #1807: pre-sail readiness panel.
+  'live.ready.summary': 'Vor dem Ablegen: {ready} von {total} bereit',
+  'live.ready.intro': 'Prüft nur dieses Gerät und diese App.',
+  'live.ready.state.ok': 'Bereit',
+  'live.ready.state.no': 'Nicht bereit',
+  'live.ready.regions.label': 'Offline-Karte',
+  'live.ready.regions.ok': 'Für diese Route gespeichert.',
+  'live.ready.regions.pinning': 'Wird gespeichert…',
+  'live.ready.regions.no': 'Nicht als gespeichert bestätigt. Im Tab „Routen“ online speichern.',
+  'live.ready.glyphs.label': 'Kartenbeschriftung',
+  'live.ready.glyphs.ok': 'Offline verfügbar.',
+  'live.ready.glyphs.no': 'Nicht als offline verfügbar bestätigt. App online neu öffnen.',
+  'live.ready.gps.label': 'Standort',
+  'live.ready.gps.ok': 'Standortzugriff erlaubt.',
+  'live.ready.gps.prompt': 'Noch nicht erlaubt. Beim Start der Live-Ansicht erlauben.',
+  'live.ready.gps.denied':
+    'Standortzugriff verweigert. In den Website-Einstellungen des Browsers erlauben.',
+  'live.ready.gps.unknown': 'Standortzugriff lässt sich nicht prüfen.',
+  'live.ready.forecast.label': 'Windvorhersage',
+  'live.ready.forecast.ok': 'Die gespeicherte Vorhersage deckt die Passage ab.',
+  'live.ready.forecast.endsEarly':
+    'Die gespeicherte Vorhersage endet vor der voraussichtlichen Ankunft. Route online neu planen.',
+  'live.ready.forecast.startsLate':
+    'Die gespeicherte Vorhersage beginnt nach der voraussichtlichen Abfahrt. Route online neu planen.',
+  'live.ready.forecast.unknown':
+    'Die gespeicherte Vorhersage lässt sich nicht prüfen. Route online neu planen.',
+  'live.ready.wakeLock.label': 'Bildschirm an',
+  'live.ready.wakeLock.ok': 'Dieser Browser kann den Bildschirm anlassen.',
+  'live.ready.wakeLock.no': 'Dieser Browser kann den Bildschirm nicht anlassen.',
+  'live.ready.ais.label': 'AIS',
+  'live.ready.ais.ok': 'Schlüssel funktioniert, Verkehr wird empfangen.',
+  'live.ready.ais.off': 'Kein Schlüssel gesetzt: kein AIS-Verkehr auf See.',
+  'live.ready.ais.keyError': 'Schlüssel abgelehnt.',
+  'live.ready.ais.offline': 'Offline: Schlüssel nicht geprüft.',
+  'live.ready.ais.unconfirmed': 'Schlüssel noch nicht bestätigt: kein Verkehr empfangen.',
   // #361: siehe englisches Dict für den Hintergrund.
   'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
@@ -1206,6 +1287,12 @@ export const de = {
   'live.reroute.hint':
     'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Wegpunkte und Abschnittsvorgaben werden nicht übernommen. Planungshilfe, keine Navigationsführung.',
   'live.reroute.name': '{name} (ab Position neu geplant)',
+  // #1806: Fortschritt, Abbruch, Erfolgshinweis und Fehler der Neuplanung in der Karte.
+  'live.reroute.phase.starting': 'Routenplaner wird gestartet…',
+  'live.reroute.cancel': 'Neuplanung abbrechen',
+  'live.reroute.success':
+    'Neue Route ab aktueller Position ist aktiv. Der ursprüngliche Plan bleibt erhalten.',
+  'live.reroute.error.dismiss': 'Fehlermeldung ausblenden',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',
@@ -1242,7 +1329,8 @@ export const de = {
   'about.sources.heading': 'Datenquellen',
   'about.sources.protomaps': 'Kartendarstellung: Protomaps',
   'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
-  'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
+  'about.sources.openMeteo':
+    'Wind- und Seegangsvorhersage: Wetter- und Meeresdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
   'about.sources.seamarks':

@@ -153,6 +153,7 @@
   // contoursAsset.test.ts (#629) is the same shape once more — reads the
   // real shipped mask.bin/mask.meta.json/contours.json via `node:fs`/
   // `node:crypto`.
+  // waveFixtureMask.test.ts (#1699) reads the real shipped mask via `node:fs`.
   "exclude": [
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -174,6 +175,7 @@
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
     "src/**/toastCompensationTwin.test.ts",
+    "src/**/liveCardPriority.test.ts",
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
     "src/**/chipPolarTierFill.test.ts",
@@ -201,6 +203,7 @@
     "src/**/harborReachability*.test.ts",
     "src/**/BoatPicker.harborAccess.test.tsx",
     "src/**/boatSwitchHarborAccess.test.ts",
-    "src/**/contoursAsset.test.ts"
+    "src/**/contoursAsset.test.ts",
+    "src/**/waveFixtureMask.test.ts"
   ]
 }

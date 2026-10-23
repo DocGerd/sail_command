@@ -22,26 +22,34 @@ arguments — is the
   project operates no server, no API, and no database; there is no central
   store of user data anywhere.
 - **Your data stays on your device.** Saved plans (including the wind grid each
-  was computed from), settings, and GPS positions live in your browser's
-  IndexedDB / localStorage and are never uploaded.
+  was computed from, and its sea-state grid when one arrived in time), settings,
+  and GPS positions live in your browser's IndexedDB / localStorage and are
+  never uploaded.
 - **No analytics, telemetry, or tracking.** None is present and none is
   planned.
-- **Exactly two outbound destinations besides the site's own assets, both
+- **Exactly three outbound destinations besides the site's own assets, all
   opt-in by action:**
   - **Wind forecasts** from [Open-Meteo](https://open-meteo.com/), fetched by
     the browser only when you plan a route. The request is a *fixed* grid
     covering the whole supported area — identical for every user — so it does
     not disclose where you are or where you intend to sail. No API key, no
     cookies.
+  - **Sea-state forecasts** from Open-Meteo's marine API
+    (`marine-api.open-meteo.com`), fetched with the same fixed grid after the
+    wind forecast, for display only. A failure leaves the plan without a sea
+    state; it never fails the plan.
   - **AIS traffic** from [aisstream.io](https://aisstream.io/), only if you
     paste your own API key. The feature is entirely inert without one: no key
     means no client and no socket at all. When enabled, your key and bounding
     boxes covering your area of interest are sent to that third party.
 - **All transport is encrypted** (HTTPS / WSS) with the browser's default
   certificate verification; the app contains no verification bypass.
-- **The app keeps working offline.** Only planning a *new* route needs the
-  network; a failure there is reported as a failure, never worked around with
-  substituted data.
+- **The app keeps working offline.** Planning needs the network, except
+  where a plan's stored forecast is reused: re-routing from a GPS fix,
+  "Compare departure times", and a next passage planned offline, which says
+  so. A wind-forecast failure is reported as a failure unless a next passage
+  can fall back to its source plan's forecast; a sea-state failure only
+  leaves the plan without a sea state.
 - **Reproducible, reviewed releases.** Production is built only from `main`
   through protected-branch CI, with a determinism proof that fails the build on
   any byte difference.

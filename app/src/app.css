@@ -41,6 +41,15 @@
   --sc-motor: #5b5b5b;
   --sc-ink: #1a1a1a;
   --sc-halo: #ffffff;
+  /* #1699: WMO sea-state band fills and the wave-arrow ink (lib/waveMap.ts's
+     SEA_STATE_COLORS and WAVE_ARROW_COLOR, twinned by mapColors.test.ts).
+     Map semantics, theme-invariant. */
+  --sc-sea-calm: #edf8fb;
+  --sc-sea-smooth: #b3cde3;
+  --sc-sea-slight: #8c96c6;
+  --sc-sea-moderate: #8856a7;
+  --sc-sea-rough: #810f7c;
+  --sc-wave-arrow: #1e3a8a;
   /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
@@ -76,6 +85,12 @@
     --sc-motor: #5b5b5b;
     --sc-ink: #1a1a1a;
     --sc-halo: #ffffff;
+    --sc-sea-calm: #edf8fb;
+    --sc-sea-smooth: #b3cde3;
+    --sc-sea-slight: #8c96c6;
+    --sc-sea-moderate: #8856a7;
+    --sc-sea-rough: #810f7c;
+    --sc-wave-arrow: #1e3a8a;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
@@ -599,19 +614,33 @@ select {
    MapView's subtree (for BoatMarker's map context), docked above .app-bottom-sheet.
    `--live-sheet-h` is the sheet's measured height (set by LiveView); the fallback
    clears the tab strip plus a typical collapsed AIS row if it never runs. On wide the readout portals into .app-panel-live
-   and these absolute rules are neutralized (see the #31 block in the wide media query). */
+   and these absolute rules are neutralized (see the #31 block in the wide media query).
+   #1822: the card outranks the sheet's panel. Its budget is 70vh minus the sheet (not the
+   sheet's own 55vh cap), and the panel is capped below, so a long AIS list scrolls inside
+   the sheet instead of pushing the reroute control out of the card's scrollport. The
+   `12rem` floor is the least the card keeps whatever the sheet measures; pinned by
+   `src/test/liveCardPriority.test.ts`. 70vh and 10rem are judgement calls, not measured
+   layout constants. Below 820px, and at 820px while a toast is up, the card's top can
+   reach the Tier 2 map chrome (#1843). */
 .live-view {
   position: absolute;
   left: 0;
   right: 0;
   bottom: var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem));
-  max-height: max(12rem, calc(55vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))));
+  max-height: max(12rem, calc(70vh - var(--live-sheet-h, calc(var(--sc-tabbar-h) + 6rem))));
   overflow-y: auto;
   background: var(--sc-bg);
   border-top: 1px solid var(--sc-border);
   border-radius: 12px 12px 0 0;
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
   padding: 0.75rem;
+}
+
+/* #1822: only while the card is docked (a plan exists) and the sheet's panel hosts the AIS list. */
+@media (max-width: 1023.98px) {
+  .app-shell:has(.map-area .live-view) .app-panel:has(.app-panel-ais) {
+    max-height: 10rem;
+  }
 }
 
 .live-view-no-plan {
@@ -670,25 +699,83 @@ select {
   margin: 0;
 }
 
+/* #1806: Live is read at a glance in daylight, so its secondary copy stays at
+   full --sc-fg (no opacity dimming) and at least 0.95rem. */
 .live-view-handover {
   margin: 0.5rem 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
 .live-view-wake {
   margin: 0.5rem 0;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
+/* #1806: the label is the touch target, so it carries the 44px floor. */
 .live-view-wake label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 44px;
+}
+
+.live-view-wake input[type='checkbox'] {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
 }
 
 .live-view-wake-status {
   margin: 0.15rem 0 0;
-  opacity: 0.75;
+}
+
+/* #1807: pre-sail readiness checklist. State is carried by the word and the
+   icon shape; colour only reinforces it. */
+.sc-disclosure.live-readiness {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+.live-readiness-intro {
+  margin: 0 0 0.5rem;
+}
+
+.live-readiness-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.live-readiness-item {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr auto;
+  column-gap: 0.5rem;
+  align-items: center;
+  color: var(--sc-banner-warning-fg);
+}
+
+.live-readiness-item--ok {
+  color: var(--sc-fg);
+}
+
+.live-readiness-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.live-readiness-label {
+  font-weight: 700;
+}
+
+.live-readiness-state {
+  font-weight: 700;
+}
+
+.live-readiness-detail {
+  grid-column: 2 / -1;
+  color: var(--sc-fg);
 }
 
 /* Stale: values stay readable but visibly not current. */
@@ -722,13 +809,14 @@ select {
 }
 
 .live-view-hts-value {
-  font-size: 1.8rem;
+  font-size: 2.5rem;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .live-view-label {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 /* #713: `display: grid` on the <dl> resets neither its own UA block margin
@@ -743,10 +831,16 @@ select {
   justify-content: start;
   gap: 0.25rem 0.75rem;
   margin: 0;
+  font-size: 1.2rem;
+}
+
+.live-view-cogsog dt {
+  font-weight: 600;
 }
 
 .live-view-cogsog dd {
   margin-inline-start: 0;
+  font-weight: 700;
 }
 
 /* Leg position, distance to go and cross-track error: label above value,
@@ -759,12 +853,20 @@ select {
 }
 
 .live-view-progress dt {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .live-view-progress dd {
   margin-inline-start: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.live-view-next-event,
+.live-view-eta {
+  margin: 0;
+  font-size: 1.1rem;
   font-weight: 600;
 }
 
@@ -780,9 +882,39 @@ select {
 }
 
 .live-view-reroute-hint {
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.95rem;
   margin: 0;
+}
+
+/* #1806: one live region for reroute progress, then the success cue. The
+   wash is on the success modifier only, so the empty region takes no room. */
+.live-view-reroute-status {
+  margin: 0;
+  font-weight: 600;
+}
+
+.live-view-reroute-status--success {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--sc-banner-info-bg);
+  color: var(--sc-banner-info-fg);
+}
+
+/* #1806: reroute failures render here, beside the action, not as an app banner. */
+.live-view-reroute-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+}
+
+.live-view-reroute-error p {
+  margin: 0;
+  font-weight: 600;
 }
 
 /* #251: heading-to-steer depth check. Colour is never the only signal — the
@@ -832,10 +964,9 @@ select {
   background: var(--sc-depth-warning-bg);
 }
 
-/* No --sc-muted token exists in app.css (checked the :root token block) — the
-   nearest existing muted-text convention is local to this very component
-   (.live-view-label, .live-view-reroute-hint above): opacity 0.75 over the
-   default foreground. */
+/* No --sc-muted token exists in app.css (checked the :root token block), so
+   muting is opacity 0.75 over the default foreground. #1806 kept it here
+   only; the other Live labels are at full contrast. */
 .live-view-hts-note--muted {
   color: var(--sc-fg);
   opacity: 0.75;
@@ -2060,13 +2191,13 @@ select {
      same way `sheetLift` reads the sheet's `offsetHeight` — so it LOOKS
      like a third member of the coupling above and a first draft of this
      comment treated it as one, narrowing its cap the same dynamic way.
-     MEASURED, and the narrowing was WRONG: a `.live-view` at its 55vh-based
-     cap (146px at 740x360) suppresses ScaleBar with ZERO banners present —
-     `liveLift` is already past the ceiling before any banner term enters
-     the computation at all, because the card is BOTTOM-anchored
-     (`bottom: var(--sc-tabbar-h)` when measured; since #1802 `var(--live-sheet-h, ...)`), so a taller capped box pushes its OWN
-     top edge further up the screen regardless of what pushed
-     `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
+     MEASURED, and the narrowing was WRONG: a `.live-view` at its then
+     55vh-based cap (146px at 740x360) suppresses ScaleBar with ZERO banners
+     present — `liveLift` is already past the ceiling before any banner term
+     enters the computation at all, because the card is BOTTOM-anchored (at
+     the tab strip then, at the sheet's measured top since #1802 via
+     `--live-sheet-h`), so a taller capped box pushes its OWN top edge
+     further up the screen regardless of what pushed `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
      block uses for the sheet does NOT clear it either (still suppressed at
      the 114px the banner-scaled formula would give) — the deficit here is
      structural, not proportional to the banner. This is a PRE-EXISTING,
@@ -2338,6 +2469,30 @@ select {
 }
 
 .ais-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
+/* #1699: sea-state tap popup, themed like .seamark-popup/.ais-popup. */
+.wave-popover {
+  font-size: 0.85rem;
+  color: var(--sc-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.wave-popover-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.wave-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.wave-popup .maplibregl-popup-tip {
   border-top-color: var(--sc-bg);
   border-bottom-color: var(--sc-bg);
 }
@@ -2693,6 +2848,46 @@ select {
   height: 5px;
   background: repeating-linear-gradient(to right, var(--sc-ink) 0 4px, var(--sc-halo) 4px 8px);
   border: 1px solid var(--sc-ink);
+}
+
+/* #1699: sea-state band swatches, at the map fill's opacity (WAVE_FILL_OPACITY,
+   pinned by mapColors.test.ts) over white: the basemap stays light in both
+   themes (maintainer ruling), so mixing with the dark panel would misstate it.
+   The border shows the near-white calm band. */
+.route-legend-sea {
+  width: 1.25rem;
+  height: 0.85rem;
+  border: 1px solid var(--sc-border);
+}
+
+.route-legend-sea-calm {
+  background: color-mix(in srgb, var(--sc-sea-calm) 45%, var(--sc-halo));
+}
+
+.route-legend-sea-smooth {
+  background: color-mix(in srgb, var(--sc-sea-smooth) 45%, var(--sc-halo));
+}
+
+.route-legend-sea-slight {
+  background: color-mix(in srgb, var(--sc-sea-slight) 45%, var(--sc-halo));
+}
+
+.route-legend-sea-moderate {
+  background: color-mix(in srgb, var(--sc-sea-moderate) 45%, var(--sc-halo));
+}
+
+.route-legend-sea-rough {
+  background: color-mix(in srgb, var(--sc-sea-rough) 45%, var(--sc-halo));
+}
+
+/* The map arrow's navy on its white halo, so it reads on the dark panel too. */
+.route-legend-sea-arrow {
+  width: 1rem;
+  height: 1rem;
+  fill: var(--sc-wave-arrow);
+  stroke: var(--sc-halo);
+  stroke-width: 1.5px;
+  paint-order: stroke;
 }
 
 .sc-boat-marker {
@@ -4279,10 +4474,19 @@ select {
    route). Same muted-note treatment as .route-legs-note/.options-help
    above, wired via aria-describedby rather than a hover-only `title` —
    reachable on touch, this app's primary context, not just desktop hover. */
-.route-alt-rig-note {
+.route-alt-rig-note,
+.route-waves-note {
   margin: 0;
   font-size: 0.8rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #1699: the cluster is shrink-to-fit, so a sentence here would set its width
+   (layout.spec.ts's #628 width pin). Contribute no intrinsic width; wrap to
+   the width the toggle rows set. */
+.route-waves-note {
+  width: 0;
+  min-width: 100%;
 }
 
 .plans-list {
@@ -5242,4 +5446,17 @@ select {
     .compass-control {
     align-self: flex-start;
   }
+}
+
+/* #1775: elapsed readout under the planner status; not a live region. */
+.planner-elapsed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.planner-elapsed p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
 }

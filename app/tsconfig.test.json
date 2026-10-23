@@ -223,7 +223,11 @@
   // mask.bin/mask.meta.json/contours.json via `node:fs`/`node:crypto` to
   // tie the generated contours asset to the mask it was built from — same
   // reason and pattern as maskTolerance.test.ts above.
+  // waveFixtureMask.test.ts (#1699): reads the real shipped mask via `node:fs`.
+  // vite-env.d.ts: db.ts (reached via regionPinning.test.ts) reads the
+  // `__SC_APP_VERSION__` define (#1813).
   "include": [
+    "src/vite-env.d.ts",
     "src/**/startPreviewSwAssertCallSites.test.ts",
     "src/**/isochrone.frontierCap.test.ts",
     "src/**/basemapArchiveRoute.test.ts",
@@ -244,6 +248,7 @@
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
     "src/**/toastCompensationTwin.test.ts",
+    "src/**/liveCardPriority.test.ts",
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
     "src/**/chipPolarTierFill.test.ts",
@@ -272,6 +277,7 @@
     "src/**/BoatPicker.harborAccess.test.tsx",
     "src/**/boatSwitchHarborAccess.test.ts",
     "src/**/contoursAsset.test.ts",
+    "src/**/waveFixtureMask.test.ts",
     "sweep/**/*.ts"
   ]
 }

@@ -3,6 +3,10 @@ import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AisLayer from './AisLayer';
 import DataLayers from './DataLayers';
+import SavedWaypointsLayer from './SavedWaypointsLayer';
+import WaveLayer from './WaveLayer';
+import { I18nProvider } from '../i18n';
+import { makeWaveGrid } from '../test/waveFixtures';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
@@ -326,5 +330,123 @@ describe('fakeMaplibre layer-order model agrees with getStyle (#1537)', () => {
     map.addLayer({ id: 'A', type: 'line' }, 'missing');
     expect(map.getLayer('A')).toBeUndefined();
     expect(map.layerOrder).toEqual([]);
+  });
+});
+
+// #1699: the sea-state overlay slots between the depth/contour lines and the
+// tappable point layers, for every setup order. Hand-derived (bottom → top):
+// DataLayers anchors its depth ramp, hatch and contour lines below the wave
+// fill when it exists and its harbours/seamarks on the AIS/route chain;
+// WaveLayer anchors below saved waypoints, else harbour circles, else AIS,
+// else the route stack. Saved waypoints sit directly below harbour circles.
+const WAVES = ['sc-waves-fill', 'sc-waves-edge', 'sc-waves-arrows'];
+const DEPTH_BELOW_WAVES = [
+  'sc-contour-labels',
+  'sc-depth',
+  'sc-depth-hatch',
+  'sc-contour-nodata',
+  'sc-contour-lines',
+];
+const POINTS_ABOVE_WAVES = [
+  'sc-harbor-points',
+  'sc-harbor-labels-below-12',
+  'sc-seamarks',
+  'sc-harbor-labels',
+  'sc-seamarks-hazard',
+];
+const AIS = ['sc-ais-vectors', 'sc-ais-vessels', 'sc-ais-labels'];
+const WITH_WAVES = [...DEPTH_BELOW_WAVES, ...WAVES, ...POINTS_ABOVE_WAVES, ...AIS];
+
+function renderWaves() {
+  return render(
+    <I18nProvider>
+      <WaveLayer
+        grid={makeWaveGrid(() => ({ heightM: 0.5, periodS: 4, dirFromDeg: 90 }))}
+        tMs={Date.UTC(2026, 6, 15, 6, 0, 0)}
+        visible
+        mapPickArmed={false}
+        mask={null}
+      />
+    </I18nProvider>,
+  );
+}
+
+describe('sea-state overlay layer order across setup timings (#1699 x #160)', () => {
+  type Step = 'data' | 'ais' | 'waves';
+  const ORDERS: Step[][] = [
+    ['data', 'ais', 'waves'],
+    ['data', 'waves', 'ais'],
+    ['ais', 'data', 'waves'],
+    ['ais', 'waves', 'data'],
+    ['waves', 'data', 'ais'],
+    ['waves', 'ais', 'data'],
+  ];
+  async function mountInOrder(map: ReturnType<typeof makeFakeMap>, order: Step[]) {
+    for (const step of order) {
+      if (step === 'data') {
+        renderDataLayers();
+        await settleDataLayers(map);
+      } else if (step === 'ais') render(<AisLayer targets={[]} />);
+      else renderWaves();
+    }
+  }
+
+  it.each(ORDERS.map((o) => [o.join(' > '), o] as const))(
+    '%s: depth < waves < points < AIS',
+    async (_label, order) => {
+      const map = makeFakeMap();
+      map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
+      hoisted.map = map;
+      await mountInOrder(map, order);
+      expect(map.layerOrder).toEqual(WITH_WAVES);
+    },
+  );
+
+  it.each(ORDERS.map((o) => [o.join(' > '), o] as const))(
+    '%s with the route stack present: everything stays below it',
+    async (_label, order) => {
+      const map = makeFakeMap();
+      map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
+      map.addLayer({ id: ROUTE_BOTTOM, type: 'line' });
+      hoisted.map = map;
+      await mountInOrder(map, order);
+      expect(map.layerOrder).toEqual([...WITH_WAVES, ROUTE_BOTTOM]);
+    },
+  );
+
+  it.each(ORDERS.map((o) => [o.join(' > '), o] as const))(
+    '%s, then a style reload restores the order',
+    async (_label, order) => {
+      const map = makeFakeMap();
+      map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
+      hoisted.map = map;
+      await mountInOrder(map, order);
+      act(() => {
+        simulateStyleReload(map);
+      });
+      expect(map.layerOrder).toEqual(WITH_WAVES);
+    },
+  );
+
+  it.each([
+    ['saved waypoints first', true],
+    ['waves first', false],
+  ] as const)('keeps saved waypoints above the waves (%s)', async (_label, savedFirst) => {
+    const map = makeFakeMap();
+    map.styleLayers.push({ id: 'basemap-first-symbol', type: 'symbol' });
+    hoisted.map = map;
+    renderDataLayers();
+    await settleDataLayers(map);
+    const saved = () => render(<SavedWaypointsLayer armed={false} onPick={() => {}} />);
+    if (savedFirst) saved();
+    renderWaves();
+    if (!savedFirst) saved();
+    expect(map.layerOrder).toEqual([
+      ...DEPTH_BELOW_WAVES,
+      ...WAVES,
+      'sc-saved-waypoints',
+      'sc-saved-waypoint-labels',
+      ...POINTS_ABOVE_WAVES,
+    ]);
   });
 });

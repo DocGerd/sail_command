@@ -472,6 +472,35 @@ describe('AisTraffic null-to-null rig switch (#1009)', () => {
   });
 });
 
+describe('AisTraffic onStatusChange (#1807)', () => {
+  beforeEach(() => {
+    mapHoist.map = makeAisFakeMap();
+    ais.sockets.length = 0;
+  });
+
+  it('reports the chip status up, and null on unmount', () => {
+    const onStatusChange = vi.fn();
+    const el = (apiKey: string | undefined) => (
+      <I18nProvider>
+        <AisTraffic
+          apiKey={apiKey}
+          ownMmsi={undefined}
+          route={null}
+          activeLegIndex={null}
+          panelSlot={null}
+          onStatusChange={onStatusChange}
+        />
+      </I18nProvider>
+    );
+    const view = render(el(undefined));
+    expect(onStatusChange).toHaveBeenLastCalledWith('off');
+    view.rerender(el('KEY'));
+    expect(onStatusChange).toHaveBeenLastCalledWith('connecting');
+    view.unmount();
+    expect(onStatusChange).toHaveBeenLastCalledWith(null);
+  });
+});
+
 // #554: AisTraffic used to take `plan: Plan | null` + `rig: SailId | null`
 // and re-derive the corridor route itself via `activeRigResult(plan, rig)` —
 // reaching into PlanResult's shape purely to recover something the caller

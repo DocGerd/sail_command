@@ -44,9 +44,10 @@ registerRoute(
 // fetches plus the app-side warm-up (src/services/glyphWarmup.ts).
 // Scoping (fails review if loosened): `sameOrigin` plus isGlyphPath's
 // path-prefix + .pbf check means this route can never match the Open-Meteo
-// origin (which the SW must NEVER cache — wind lives per plan in IndexedDB)
-// nor basemap-archive requests (`.pmtiles.png`/legacy `.pmtiles`, owned by
-// the Range→206 route above, which must stay the FIRST registration).
+// origins, api. and marine-api. (which the SW must NEVER cache — wind and sea
+// state live per plan in IndexedDB), nor basemap-archive requests
+// (`.pmtiles.png`/legacy `.pmtiles`, owned by the Range→206 route above,
+// which must stay the FIRST registration).
 registerRoute(
   ({ url, sameOrigin }) => sameOrigin && isGlyphPath(url.pathname),
   new CacheFirst({ cacheName: GLYPH_CACHE_NAME }),
