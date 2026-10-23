@@ -8,12 +8,12 @@ import {
 } from './helpers';
 
 // #1822: with a long, expanded AIS list the Live card keeps priority over the
-// bottom sheet. From the 820px design floor up its reroute control and reason
-// stay on screen without the card scrolling, with a fresh GPS fix; at narrow
-// widths the list scrolls inside the sheet. With the toast dismissed the card's
-// top stays clear of the Tier 2 map chrome from 820px up with the AIS list empty,
-// and from 1024px up with it capped (#1843). Fake aisstream via routeWebSocket;
-// no socket leaves the box.
+// bottom sheet: the list scrolls inside the sheet at narrow widths. #1843: the
+// reroute control precedes the readouts and the card is capped like the sheet, so with a
+// fresh GPS fix the control and its reason stay on screen from the 820px design
+// floor up, and the card's top stays clear of the Tier 2 map chrome (route cluster expanded, its
+// worst case). Fake aisstream via routeWebSocket; no socket
+// leaves the box.
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
 const VESSELS = 40;
 const FIX = { latitude: 54.8237, longitude: 9.6524, accuracy: 5 };
@@ -48,6 +48,8 @@ test.beforeEach(async ({ page }) => {
 // Offenders, re-sampled inside every poll attempt (#412/#422): a box read once
 // before the layout settles proves nothing. The GPS check shares the sample, so
 // the geometry is always the readouts-shown card a skipper sees while tracking.
+// The card may scroll (its readouts do); the reroute control must sit inside its
+// visible band, unscrolled.
 async function controlsOffenders(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const out: string[] = [];
@@ -61,13 +63,19 @@ async function controlsOffenders(page: Page): Promise<string[]> {
     const reason = document.querySelector('#live-reroute-reason');
     if (!card || !button || !reason) return [...out, 'card, reroute button or reason missing'];
     const c = card.getBoundingClientRect();
-    const b = button.getBoundingClientRect();
-    const r = reason.getBoundingClientRect();
+    const visibleTop = Math.max(0, c.top);
     const visibleBottom = Math.min(window.innerHeight, c.bottom);
-    const below = Math.round(Math.max(b.bottom, r.bottom) - visibleBottom);
-    if (below > 0) out.push(`controlsBelowFold:${below}`);
-    const overflow = card.scrollHeight - card.clientHeight;
-    if (overflow > 1) out.push(`cardScrollOverflow:${overflow}`);
+    for (const [name, el] of [
+      ['button', button],
+      ['reason', reason],
+    ] as const) {
+      const r = el.getBoundingClientRect();
+      const below = Math.round(r.bottom - visibleBottom);
+      const above = Math.round(visibleTop - r.top);
+      if (below > 0) out.push(`${name}BelowFold:${below}`);
+      if (above > 0) out.push(`${name}AboveCard:${above}`);
+    }
+    if (card.scrollTop !== 0) out.push(`cardScrolled:${card.scrollTop}`);
     return out;
   });
 }
@@ -89,7 +97,7 @@ async function topClearance(page: Page): Promise<TopClearance> {
     if (!card) return { overlaps: ['no .live-view'], occluders: [] };
     const c = card.getBoundingClientRect();
     const overlaps: string[] = [];
-    // The probe below assumes the toast is gone; a late one is #1843's case, not this one.
+    // The probe below assumes the toast is gone.
     if (document.querySelector('.reload-prompt')) overlaps.push('toast up');
     // elementFromPoint is null off-viewport, which would report a hidden band as clear.
     if (c.top < 0 || c.top + 20 > window.innerHeight) overlaps.push(`card top off-screen:${c.top}`);
@@ -141,7 +149,19 @@ async function openAisList(page: Page): Promise<void> {
   await expect(disclosure.locator('.ais-in-view-row').first()).toBeVisible();
 }
 
-test('#1822: the Live card keeps its reroute control on screen under a long AIS list', async ({
+// The route cluster is collapsed by default at narrow widths; expanded is its
+// worst case for the card's top. Read the IDL property, never getAttribute('open').
+async function expandRouteChrome(page: Page): Promise<void> {
+  for (const sel of ['details.route-layer-controls-disclosure', 'details.route-legend']) {
+    const details = page.locator(sel);
+    if ((await details.count()) === 0) continue;
+    if (!(await details.first().evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await details.first().locator('> summary').click();
+    }
+  }
+}
+
+test('#1822/#1843: the Live card keeps its reroute control on screen and its top clear under a long AIS list', async ({
   page,
 }) => {
   test.setTimeout(360_000);
@@ -169,7 +189,7 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
     await page.getByRole('tab', { name: 'Boot' }).click();
     await page.getByLabel('AIS-API-Schlüssel (aisstream.io)').fill('FAKE-KEY');
     // The SW's one-shot "offline ready" toast has long appeared by now (planning
-    // took seconds); <820 px and the toast case: #1843.
+    // took seconds).
     await page
       .locator('.reload-prompt .banner-dismiss')
       .click({ timeout: 5_000 })
@@ -232,13 +252,14 @@ test('#1822: the Live card keeps its reroute control on screen under a long AIS 
           .toBe('scrolls');
       }
 
-      // 820 CSS px is the design floor and spans both layouts; below it, #1843.
+      // 820 CSS px is the design floor and spans both layouts; below it is nice-to-have.
       if (viewport.width >= 820) {
-        // #1843: at 820x1180 a capped list with a fresh fix overlaps .route-layer-controls by 11174 px².
-        if (viewport.width >= 1024) await expectTopClear(page, `capped AIS ${label}`);
+        // Worst case for the card's top: the Tier 2 route cluster expanded.
+        await expandRouteChrome(page);
+        await expectTopClear(page, `capped AIS ${label}`);
         await expect
           .poll(() => controlsOffenders(page), {
-            message: `${label}: fresh fix, reroute control and reason on screen, card not scrolling`,
+            message: `${label}: fresh fix, reroute control and reason on screen at the card's top`,
             timeout: 30_000,
           })
           .toEqual([]);

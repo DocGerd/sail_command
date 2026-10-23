@@ -546,6 +546,69 @@ export default function LiveView({
         </div>
       )}
 
+      {/* #1843: above the readouts, so a card capped below the sheet clips
+          the readouts before this action. #115 manual "reroute from here" — an explicit user action producing
+          a NEW routed plan (App.tsx wires it to useLiveReroute); only
+          meaningful with a current GPS fix, so it is disabled (with an i18n
+          hint) until tracking is on and a fix has arrived. It never starts
+          GPS itself.
+
+          #143: ALSO disabled while the simulator is driving this session's
+          fix — spike docs/spikes/749-live-view-demo-mode.md §7.2
+          precondition 2, shape 1: a synthetic fix must never reach
+          savePlan, and disabling the action here (rather than substituting
+          a no-op/throwing writer, §2.1's rejected shape 3) keeps the UI
+          HONEST at the point of the action instead of lying at the point of
+          the result. */}
+      {reroute && (
+        <div className="live-view-reroute">
+          <Button
+            variant="secondary"
+            disabled={simActive || fix === null || !rr.allowed || reroute.busy}
+            aria-busy={reroute.rerouting}
+            aria-describedby="live-reroute-reason"
+            onClick={() => {
+              if (fix) reroute.onReroute(fix.point);
+            }}
+          >
+            {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
+          </Button>
+          {reroute.rerouting && (
+            <Button variant="ghost" onClick={reroute.onCancel}>
+              {t('live.reroute.cancel')}
+            </Button>
+          )}
+          {/* One persistent live region: progress while rerouting, then the
+              success cue — mounted empty so its first text is announced. */}
+          <p
+            role="status"
+            aria-atomic="true"
+            className={
+              reroute.succeeded && !reroute.rerouting
+                ? 'live-view-reroute-status live-view-reroute-status--success'
+                : 'live-view-reroute-status'
+            }
+          >
+            {reroute.rerouting && reroute.phase !== null
+              ? t(REROUTE_PHASE_KEY[reroute.phase])
+              : reroute.succeeded
+                ? t('live.reroute.success')
+                : ''}
+          </p>
+          {reroute.error && (
+            <div role="alert" className="live-view-reroute-error">
+              <p>{t(reroute.error)}</p>
+              <Button variant="ghost" onClick={reroute.onDismissError}>
+                {t('live.reroute.error.dismiss')}
+              </Button>
+            </div>
+          )}
+          <p id="live-reroute-reason" className="live-view-reroute-hint">
+            {rerouteReason()}
+          </p>
+        </div>
+      )}
+
       {/* Stays mounted through lost and denied once a fix has arrived: RouteLayer's
           auto-fit latch reads its presence as "Live is active". */}
       {(steerable !== null || (active && gps.fix !== null)) && (
@@ -674,68 +737,6 @@ export default function LiveView({
               </p>
             </>
           )}
-        </div>
-      )}
-
-      {/* #115 manual "reroute from here" — an explicit user action producing
-          a NEW routed plan (App.tsx wires it to useLiveReroute); only
-          meaningful with a current GPS fix, so it is disabled (with an i18n
-          hint) until tracking is on and a fix has arrived. It never starts
-          GPS itself.
-
-          #143: ALSO disabled while the simulator is driving this session's
-          fix — spike docs/spikes/749-live-view-demo-mode.md §7.2
-          precondition 2, shape 1: a synthetic fix must never reach
-          savePlan, and disabling the action here (rather than substituting
-          a no-op/throwing writer, §2.1's rejected shape 3) keeps the UI
-          HONEST at the point of the action instead of lying at the point of
-          the result. */}
-      {reroute && (
-        <div className="live-view-reroute">
-          <Button
-            variant="secondary"
-            disabled={simActive || fix === null || !rr.allowed || reroute.busy}
-            aria-busy={reroute.rerouting}
-            aria-describedby="live-reroute-reason"
-            onClick={() => {
-              if (fix) reroute.onReroute(fix.point);
-            }}
-          >
-            {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
-          </Button>
-          {reroute.rerouting && (
-            <Button variant="ghost" onClick={reroute.onCancel}>
-              {t('live.reroute.cancel')}
-            </Button>
-          )}
-          {/* One persistent live region: progress while rerouting, then the
-              success cue — mounted empty so its first text is announced. */}
-          <p
-            role="status"
-            aria-atomic="true"
-            className={
-              reroute.succeeded && !reroute.rerouting
-                ? 'live-view-reroute-status live-view-reroute-status--success'
-                : 'live-view-reroute-status'
-            }
-          >
-            {reroute.rerouting && reroute.phase !== null
-              ? t(REROUTE_PHASE_KEY[reroute.phase])
-              : reroute.succeeded
-                ? t('live.reroute.success')
-                : ''}
-          </p>
-          {reroute.error && (
-            <div role="alert" className="live-view-reroute-error">
-              <p>{t(reroute.error)}</p>
-              <Button variant="ghost" onClick={reroute.onDismissError}>
-                {t('live.reroute.error.dismiss')}
-              </Button>
-            </div>
-          )}
-          <p id="live-reroute-reason" className="live-view-reroute-hint">
-            {rerouteReason()}
-          </p>
         </div>
       )}
     </div>
