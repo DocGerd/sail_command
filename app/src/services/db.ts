@@ -271,19 +271,23 @@ const AIS_SCRUB_DONE_KEY = 'sc-ais-key-scrub-done';
 /**
  * #1813: startup pass scrubbing `aisApiKey` from plans stored before
  * savePlan began stripping it. Rewrites only records still carrying the key,
- * in ONE readwrite transaction, so it serialises against savePlan/deletePlan
- * and a failed write aborts the transaction. Each record is rewritten as
- * itself minus the key, never rebuilt through migratePlan. No
- * DB_VERSION bump (maintainer ruling on the issue). Never throws: a failed
- * pass leaves the key in place and retries on the next boot.
+ * in ONE readwrite transaction, so it serialises against savePlan/deletePlan.
+ * Each record is rewritten as itself minus the key, never rebuilt through
+ * migratePlan. No DB_VERSION bump (per #1813). Never throws and never
+ * deletes a record. A request-level IndexedDB error aborts the transaction;
+ * a synchronous throw from `cursor.update` does not, so a failed pass may
+ * leave some records scrubbed and the rest still keyed. Either way the flag
+ * stays unset and the next boot retries.
  *
- * A completed pass sets a localStorage flag and later boots skip the scan, as
- * it deserialises every plan including wind grids. Residual: an older build
- * sharing this origin (prod vs /uat/) can still write a key-bearing plan
- * afterwards, which stays until the flag is cleared.
+ * A completed pass stores the app version in a localStorage flag, and later
+ * boots of the SAME build skip the scan, as it deserialises every plan
+ * including wind grids. A different build re-runs it once, which covers an
+ * older build sharing this origin (prod vs /uat/) re-dirtying plans. The
+ * residual: a key-bearing plan written by an older build after the flag was
+ * set stays until a build with another version boots.
  */
 export async function scrubStoredAisApiKeys(): Promise<number> {
-  if (safeGetItem(AIS_SCRUB_DONE_KEY) === '1') return 0;
+  if (safeGetItem(AIS_SCRUB_DONE_KEY) === __SC_APP_VERSION__) return 0;
   try {
     const tx = (await db()).transaction('plans', 'readwrite');
     let scrubbed = 0;
@@ -297,10 +301,10 @@ export async function scrubStoredAisApiKeys(): Promise<number> {
       cursor = await cursor.continue();
     }
     await tx.done;
-    safeSetItem(AIS_SCRUB_DONE_KEY, '1');
+    safeSetItem(AIS_SCRUB_DONE_KEY, __SC_APP_VERSION__);
     return scrubbed;
   } catch (err) {
-    console.error('scrubStoredAisApiKeys: pass failed, records left unchanged', err);
+    console.error('scrubStoredAisApiKeys: pass failed, will retry next boot', err);
     return 0;
   }
 }
