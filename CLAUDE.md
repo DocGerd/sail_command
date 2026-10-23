@@ -4436,13 +4436,18 @@ making design-level decisions; do not silently deviate.
   `dispose()`'s teardown rather than signalling the worker, and any future
   "ask it to stop" protocol is unimplementable without first making the solve
   loop yield.
-  STILL TRUE and load-bearing: `routing/`'s PRODUCTION files (its `.test.ts`
-  siblings excepted — some carry `console.*`) **and
-  `state/usePlanFlow.ts`** contain ZERO `console.*` calls, so an empty
-  console is DESIGNED behaviour,
-  not evidence nothing happened — never ask a reporter to check it.
-  `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
-  is the file a triager would expect to log. Measure that inventory with BOTH
+  Planning logs to the console since #1777 (`lib/planLog.ts`, one
+  `[SailCommand]` prefix; info, warn at half the budget, error): `workerClient.ts`'s
+  `plan()` logs start (boat, harbour ids or `tap`, never coordinates), finish,
+  a no-route result and the typed `RoutingFailureKind`; `protocol.ts` logs each
+  finished solve (pool path: internal cause and elapsed ms; single-worker path:
+  per sail from the final result only, as per-solve outcomes sit inside
+  `planRoute.ts`); `usePlanFlow.ts` logs phase changes and wind, start-up and
+  save failures. Never per ring, node, GPS fix or frame. STILL TRUE and
+  load-bearing: `planRoute.ts` and `isochrone.ts` contain ZERO `console.*` (the
+  #282 sweep closure), so the solver itself is silent by design. Ask a
+  reporter for their `[SailCommand]` lines, but a quiet console says nothing
+  about why a ring pruned. Measure the solver inventory with BOTH
   `grep -rE 'console\.[a-z]+\('` (invocations) and
   `grep -rE 'console\.[a-z]+[^(a-z]'` (bare refs
   like `.catch(console.error)` plus comment mentions) — `-E` is required (#1210): the invocation-only

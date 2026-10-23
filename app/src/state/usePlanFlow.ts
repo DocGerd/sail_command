@@ -3,6 +3,7 @@ import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from '../services/openMe
 import { savePlan } from '../services/db';
 import { pinRegionsAfterSave, type PinAfterSave } from '../services/pinAfterSave';
 import { loadRoutingAssets } from '../services/assets';
+import { planLog } from '../lib/planLog';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { noRouteMessageKey } from '../lib/plan';
@@ -205,11 +206,23 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // object with equal content still re-renders the un-memoised shell, and
   // progress repeats the same state many times per solve.
   const lastPlanningRef = useRef<PlanningState>({ phase: 'idle' });
+  // #1777: the stage last logged. Keyed on phase (plus pass 2), NOT on the
+  // state: with parallel rigs `sailId` flips on every progress message.
+  const lastLoggedStageRef = useRef('idle');
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const transition = useCallback((next: PlanningState) => {
     const wasBusy = phaseRef.current !== 'idle' && phaseRef.current !== 'error';
     const isBusy = next.phase !== 'idle' && next.phase !== 'error';
     phaseRef.current = next.phase;
+    const stage =
+      next.phase === 'routing' && next.secondPass ? 'routing-pass-2' : next.phase;
+    if (stage !== lastLoggedStageRef.current) {
+      lastLoggedStageRef.current = stage;
+      planLog.info('plan stage', {
+        stage,
+        ...(next.phase === 'error' ? { messageKey: next.messageKey } : {}),
+      });
+    }
     if (isBusy && !wasBusy) setStartedAtMs(Date.now());
     else if (!isBusy && wasBusy) setStartedAtMs(null);
 
@@ -427,6 +440,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             windGrid = stored;
             windFromStore = true;
           } else {
+            planLog.error(
+              'wind fetch failed',
+              { kind: err instanceof OpenMeteoError ? err.kind : 'unclassified' },
+              err,
+            );
             transition({ phase: 'error', messageKey: mapWindError(err) });
             return;
           }
@@ -473,6 +491,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
       if (outcome === null || !('client' in outcome)) {
+        planLog.error('routing start-up failed', {
+          failure: outcome?.failure ?? 'worker-init',
+        });
         transition({
           phase: 'error',
           messageKey: ROUTING_FAILURE_MESSAGE_KEY[outcome?.failure ?? 'worker-init'],
@@ -510,8 +531,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // recommendedResult()'s, which runs on a stack its caller owns.
           // This callback is invoked from workerClient's `worker.onmessage`,
           // so the error escapes as an uncaught error, and nothing in-app
-          // observes it: no error boundary, no window.onerror, and routing/
-          // plus this file carry zero console.* by design.
+          // observes it: no error boundary and no window.onerror; it surfaces
+          // only as the browser's uncaught-error report.
           // MEASURED against the fakeWorker harness, BOTH halves, because
           // either alone misleads: it aborts THAT ONE progress delivery (the
           // phase readout does not advance and run() is still pending), and
@@ -635,9 +656,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         await withTimeout(saving, SAVE_TIMEOUT_MS);
       } catch (err) {
         if (!(err instanceof TimeoutError)) {
+          planLog.error('saving the plan failed', { kind: 'persist-failed' }, err);
           transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
           return;
         }
+        planLog.warn('saving the plan timed out', { kind: 'persist-slow' });
         // #1776: the write may still land. Its banner offers no retry (a
         // re-plan would store a second copy); the outcome settles it below,
         // unless a newer run has started since.

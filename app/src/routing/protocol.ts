@@ -10,7 +10,8 @@ import type {
 } from '../types';
 import { NavMask } from '../lib/mask';
 import { WindField } from '../lib/wind';
-import type { DepthGate } from '../lib/depthGate';
+import { gateFloorM, type DepthGate } from '../lib/depthGate';
+import { planLog } from '../lib/planLog';
 import { boatById, type BoatId } from '../data/boats';
 import {
   pass2DeadlineFrom,
@@ -233,6 +234,30 @@ function attachSolver(port: MessagePort): SolverLink {
   return link;
 }
 
+/**
+ * #1777: one line per finished rig solve. Logged where the solve ran (ladder
+ * worker or sibling) so `elapsedMs` is the solve itself, not the wait for the
+ * ladder worker to get back to its message queue.
+ */
+function logSolveFinished(
+  planId: string,
+  run: RunOut,
+  gate: DepthGate,
+  secondPass: boolean,
+  elapsedMs: number,
+): void {
+  planLog.info('solve finished', {
+    planId,
+    sail: run.sailId,
+    status: run.rigResult !== null ? 'ok' : 'no-route',
+    // Internal SolveFailureCause; null when the rig found a route.
+    cause: run.cause,
+    gateM: gateFloorM(gate),
+    secondPass,
+    elapsedMs,
+  });
+}
+
 /** Odd-indexed rigs run on the sibling; the ladder worker solves the rest itself. */
 const runsOnSibling = (index: number): boolean => index % 2 === 1;
 
@@ -305,6 +330,7 @@ async function runStepOnPool(
   const out: RunOut[] = [];
   ctx.sailIds.forEach((sailId, i) => {
     if (runsOnSibling(i)) return;
+    const solveStartedMs = Date.now();
     out[i] = solveRig(
       ctx,
       sailId,
@@ -323,6 +349,7 @@ async function runStepOnPool(
           ...(info.secondPass ? { secondPass: true } : {}),
         }),
     );
+    logSolveFinished(wire.id, out[i], step.gate, step.pass2 !== null, Date.now() - solveStartedMs);
     post({ type: 'sailDone', id: wire.id, sailId, solveId: solveIds[i] });
   });
   for (const [i, promise] of remote) out[i] = await promise;
@@ -408,6 +435,20 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
           deadline,
           state.knownDisconnectedIds,
         );
+        // #1777: asymmetry with the pool path. Here planRoute.ts runs every
+        // solve internally and exposes no per-solve outcome or timing (and is
+        // not to be edited for logging), so one line per sail is derived from
+        // the final result instead: no cause, no elapsed.
+        if (result.status === 'ok') {
+          for (const s of result.sails) {
+            planLog.info('solve finished', {
+              planId: req.id,
+              sail: s.sailId,
+              status: s.result !== null ? 'ok' : 'no-route',
+              reason: s.reason,
+            });
+          }
+        }
         post({ type: 'result', id: req.id, result });
         return;
       }
@@ -514,6 +555,7 @@ export function createSolverHandler(
           if (m.pass2StartMs === undefined) throw new Error('pass 2 without a start instant');
           deadline = pass2DeadlineFrom(planDeadline, m.pass2StartMs, Date.now);
         }
+        const solveStartedMs = Date.now();
         const run = solveRig(
           c.ctx,
           m.sailId,
@@ -532,6 +574,7 @@ export function createSolverHandler(
               ...(info.secondPass ? { secondPass: true } : {}),
             }),
         );
+        logSolveFinished(c.planId, run, m.gate, m.secondPass, Date.now() - solveStartedMs);
         post({ type: 'sailDone', id: c.planId, sailId: m.sailId, solveId: m.stepId });
         port.postMessage({
           type: 'solved',
