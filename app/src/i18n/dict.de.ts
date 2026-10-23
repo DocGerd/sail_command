@@ -1240,6 +1240,37 @@ export const de = {
   'live.wake.notHeld': 'Bildschirm kann ausgehen — Dauer-An ist nicht aktiv',
   'live.wake.off': 'Bildschirm kann ausgehen — Dauer-An ist aus',
   'live.wake.unsupported': 'Bildschirm kann ausgehen — von diesem Browser nicht unterstützt',
+  // #1807: pre-sail readiness panel.
+  'live.ready.summary': 'Vor dem Ablegen: {ready} von {total} bereit',
+  'live.ready.intro': 'Prüft nur dieses Gerät und diese App.',
+  'live.ready.state.ok': 'Bereit',
+  'live.ready.state.no': 'Nicht bereit',
+  'live.ready.regions.label': 'Offline-Karte',
+  'live.ready.regions.ok': 'Für diese Route gespeichert.',
+  'live.ready.regions.pinning': 'Wird gespeichert…',
+  'live.ready.regions.no': 'Nicht als gespeichert bestätigt. Im Plan-Tab online speichern.',
+  'live.ready.glyphs.label': 'Kartenbeschriftung',
+  'live.ready.glyphs.ok': 'Offline verfügbar.',
+  'live.ready.glyphs.no': 'Nicht als offline verfügbar bestätigt. App online geöffnet lassen.',
+  'live.ready.gps.label': 'Standort',
+  'live.ready.gps.ok': 'Standortzugriff erlaubt.',
+  'live.ready.gps.prompt': 'Noch nicht erlaubt. Beim Start der Live-Ansicht erlauben.',
+  'live.ready.gps.denied':
+    'Standortzugriff verweigert. In den Website-Einstellungen des Browsers erlauben.',
+  'live.ready.gps.unknown': 'Standortzugriff lässt sich nicht prüfen.',
+  'live.ready.forecast.label': 'Windvorhersage',
+  'live.ready.forecast.ok': 'Die gespeicherte Vorhersage deckt die Passage ab.',
+  'live.ready.forecast.no':
+    'Die gespeicherte Vorhersage endet vor der voraussichtlichen Ankunft. Route online neu planen.',
+  'live.ready.wakeLock.label': 'Bildschirm an',
+  'live.ready.wakeLock.ok': 'Dieser Browser kann den Bildschirm anlassen.',
+  'live.ready.wakeLock.no': 'Dieser Browser kann den Bildschirm nicht anlassen.',
+  'live.ready.ais.label': 'AIS',
+  'live.ready.ais.ok': 'Schlüssel funktioniert, Verkehr wird empfangen.',
+  'live.ready.ais.off': 'Kein Schlüssel gesetzt: kein AIS-Verkehr auf See.',
+  'live.ready.ais.keyError': 'Schlüssel abgelehnt.',
+  'live.ready.ais.offline': 'Offline: Schlüssel nicht geprüft.',
+  'live.ready.ais.unconfirmed': 'Schlüssel noch nicht bestätigt: kein Verkehr empfangen.',
   // #361: siehe englisches Dict für den Hintergrund.
   'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
@@ -1255,7 +1286,8 @@ export const de = {
   // #1806: Fortschritt, Abbruch, Erfolgshinweis und Fehler der Neuplanung in der Karte.
   'live.reroute.phase.starting': 'Routenplaner wird gestartet…',
   'live.reroute.cancel': 'Neuplanung abbrechen',
-  'live.reroute.success': 'Neue Route ab aktueller Position ist aktiv. Der ursprüngliche Plan bleibt erhalten.',
+  'live.reroute.success':
+    'Neue Route ab aktueller Position ist aktiv. Der ursprüngliche Plan bleibt erhalten.',
   'live.reroute.error.dismiss': 'Fehlermeldung ausblenden',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
