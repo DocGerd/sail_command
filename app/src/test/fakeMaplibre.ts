@@ -6,6 +6,10 @@ import { vi } from 'vitest';
 // WebGL runtime, so components are exercised against this object via a
 // mocked useMapInstance().
 //
+// Verified against maplibre-gl 6.14.0 (the version `app/package-lock.json`
+// pins): addImage fires 'styledata' synchronously and addSource throws on a
+// duplicate id. Anchor on `Style#_afterImageUpdated` and `Style#addSource`.
+//
 // Evented model: plain on() listeners plus once() listeners (drained on
 // fire). MapLibre's Evented.off removes a listener regardless of whether it
 // was registered via on() or once() — the unmount cleanup of the shared
@@ -139,6 +143,12 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     layerOrder.length = 0;
     layerOrder.push(...stack.filter((id) => !isSeeded(id)));
   };
+  const fire = (type: string): void => {
+    for (const fn of [...bucket(listeners, type)]) fn();
+    const pending = [...bucket(onceListeners, type)];
+    bucket(onceListeners, type).clear();
+    for (const fn of pending) fn();
+  };
   return {
     sources,
     layers,
@@ -147,12 +157,7 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     setStyleLoaded: (v: boolean) => {
       state.styleLoaded = v;
     },
-    fire: (type: string) => {
-      for (const fn of [...bucket(listeners, type)]) fn();
-      const pending = [...bucket(onceListeners, type)];
-      bucket(onceListeners, type).clear();
-      for (const fn of pending) fn();
-    },
+    fire,
     // #232 item 3: delivers `event` to handlers registered via the delegated
     // `map.on(type, layerId(s), fn)` form (e.g. DataLayers' seamark click
     // handler) — reaches exactly the registrations `fire(type)` above is
@@ -205,7 +210,10 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       );
       if (idx !== -1) delegated.splice(idx, 1);
     }),
+    // Real MapLibre throws on a duplicate id (`Style#addSource`), so a setup
+    // that re-enters itself without a guard fails here as it does there.
     addSource: vi.fn((id: string, def: FakeSource['def']) => {
+      if (sources.has(id)) throw new Error(`Source "${id}" already exists.`);
       sources.set(id, { setData: vi.fn(), def });
     }),
     getSource: (id: string) => sources.get(id),
@@ -265,8 +273,13 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       sources.delete(id);
     }),
     hasImage: (id: string) => images.has(id),
+    // Real MapLibre fires 'styledata' synchronously from addImage
+    // (`Style#_afterImageUpdated`), re-entering any setup armed on it. addLayer
+    // and setPaintProperty do not: their 'styledata' comes later, from
+    // `Style#update`.
     addImage: vi.fn((id: string) => {
       images.add(id);
+      fire('styledata');
     }),
     setLayoutProperty: vi.fn((id: string, prop: string, value: unknown) => {
       const layer = layers.get(id);
