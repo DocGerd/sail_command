@@ -376,9 +376,17 @@ await page.screenshot({ path: 'docs/screenshots/start-view.png' });
 const BOAT_SELECTION_HEIGHT_PX = 1850;
 await page.setViewportSize({ width: 1280, height: BOAT_SELECTION_HEIGHT_PX });
 await page.getByRole('tab', { name: 'Boat' }).click();
-// Static, no plan/network dependency (unlike plan-route.png below), so a
-// short settle for the tab switch's own render is enough.
-await page.waitForTimeout(500);
+// No plan/network dependency (unlike plan-route.png below), but each card's
+// harbour-access check runs asynchronously: wait until no card still reads
+// `boat.harbors.pending` / `hintPending`, or the shot captures a half-checked
+// catalogue (v0.59.0 cut, PR #1844 review).
+await page.waitForFunction(
+  () =>
+    !document.body.innerText.includes('Harbour access not yet checked.') &&
+    !document.body.innerText.includes('still checking'),
+  undefined,
+  { timeout: 180_000 },
+);
 await assertFitsViewport(page, 'boat-selection.png', '.boat-picker-card');
 await page.screenshot({ path: 'docs/screenshots/boat-selection.png' });
 // Back to the Plan tab — the flow below expects it as the active tab (it's

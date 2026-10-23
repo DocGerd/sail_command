@@ -230,6 +230,13 @@ results table at the bottom, and note it in the box below the check.
       *and reload* — the default is seeded once when the route overlay
       mounts, and once you have toggled "Display options" by hand a
       resize alone will not re-seed it.)
+      The same control carries a "Show sea state" ("Seegang anzeigen")
+      checkbox, on by default (#1699). On a freshly planned route the map
+      shades significant wave height in colour bands with arrows for the
+      direction the waves travel, at the slider hour. On a plan saved
+      before v0.59.0, or whose marine forecast did not arrive, the checkbox
+      is disabled, with a note below it that sea-state data is not
+      available — a designed state, not a defect.
 
 - [ ] **AIS vessels in view, without a pointer.** Requires a personal
       aisstream.io key (Boat tab → "Live & AIS") and an internet connection
@@ -533,7 +540,7 @@ selected in §1.
       not a defect. Remove the point before §3.
 - [ ] **2.18 Cancel an in-flight solve (#1193).** Start a route plan and,
       while the planner shows a busy state (its status line reads a
-      fetching/routing/probing phase, not idle), press "Cancel route
+      fetching/start-up/routing/probing phase, not idle), press "Cancel route
       planning" ("Routenberechnung abbrechen") — visible only while busy,
       never while idle. Confirm the app returns to idle silently: no error
       banner appears, and any plan that was already displayed (e.g.
@@ -555,11 +562,13 @@ selected in §1.
       restored, resize the window, or dismiss the offline-ready notice: the
       route is fitted again and the labels stay clear. A label at or under a
       control or the sheet is a defect.
-- [ ] **2.21 Planning progress names all sails (#1350).** Press "Plan route"
-      and read the planner's status line while it is busy. Once the routing
-      phase starts it refers to all sails ("Calculating route for all sails…"
+- [ ] **2.21 Planning progress names all sails (#1350, #1794).** Press "Plan route"
+      and read the planner's status line while it is busy. With both sails aboard,
+      once the routing phase starts it refers to all sails ("Calculating route for all sails…"
       / "Route wird für alle Segel berechnet…"), never "sail 1 of 2" / "Segel
-      1 von 2"; the fetching and depth-probing phases name no sail. Cancelling
+      1 von 2"; with only one sail aboard it reads "Calculating route…" /
+      "Route wird berechnet…". The fetching, start-up and depth-probing
+      phases name no sail. Cancelling
       still behaves as in 2.18.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
@@ -613,6 +622,16 @@ Do this part on an actual Android phone with Chrome.
       stored forecast reaches the seeded departure, planning completes and the
       planner names the plan it reused; if it ends first, the planner says the
       departure needs a connection. Both are correct, so note which was seen.
+
+- [ ] **4.6 Pre-sail check (#1807).** With a plan loaded and Live view not
+      yet started, the Live tab shows a collapsed "Pre-sail check: N of 6
+      ready" ("Vor dem Ablegen: N von 6 bereit") panel. Open it: it lists
+      the offline map, map labels, location, wind forecast, screen-on and
+      AIS, each marked ready or not ready with a one-line reason. A
+      not-ready row whose reason is true for this device (no AIS key,
+      location not yet allowed, a stored forecast ending before arrival) is
+      correct, not a defect. Starting Live view hides the panel. Note how
+      many were ready.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
