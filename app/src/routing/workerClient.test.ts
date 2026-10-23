@@ -8,7 +8,7 @@ import {
   RoutingError,
   type RoutingFailureKind,
 } from './workerClient';
-import type { WorkerRequest, WorkerResponse } from './protocol';
+import { createHandler, type WorkerRequest, type WorkerResponse } from './protocol';
 import { buildExportEnvelope, exportEnvelopeToJson, parseExportFile } from '../lib/planExport';
 import { polarKey } from '../data/boats';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
@@ -986,6 +986,34 @@ describe('#295: stored wind grid must cover the mask domain', () => {
       void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
       await flush();
       expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(1);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+});
+
+// #1669: planRoute's over-cap throw (#1661) travels the REAL protocol.ts handler
+// (catch -> fatal) into RoutingClient, so the fake worker forwards every posted
+// message to createHandler. The throw sits in openLadder, before any polar
+// lookup, so the missing third polar key is irrelevant.
+describe('#1669: MAX_HEADSAILS throw reaches the client as worker-fatal', () => {
+  it(
+    'a 3-sail plan request rejects with RoutingError kind worker-fatal',
+    async () => {
+      const w = fakeWorker();
+      const handle = createHandler((m) => w.emit(m));
+      w.postMessage = function (m: WorkerRequest) {
+        this.posted.push(m);
+        handle(m);
+      };
+      const client = new RoutingClient(() => w as unknown as Worker);
+      await client.init(INIT_ASSETS);
+      const request: PlanRequest = { ...PLAN_REQUEST, sailIds: ['genoa', 'fock', 'genoa'] };
+      await expectRoutingError(
+        client.plan(request, uniformWindGrid(12, 0)),
+        'worker-fatal',
+        /#1661: 3 headsails requested, MAX_HEADSAILS is 2/,
+      );
+      expect(client.isDisposed).toBe(false);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
