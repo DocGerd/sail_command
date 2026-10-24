@@ -849,10 +849,11 @@ making design-level decisions; do not silently deviate.
   "style present"; a mid-session mount deferring on it via `once('load')`
   alone strands forever (#159). The fake's `addLayer` DROPS layers on a
   truthy-but-missing `beforeId` like real MapLibre — keep it strict (#163).
-- Cross-component layer z-order is anchored EXPLICITLY (DataLayers inserts
-  below `AIS_STACK_BOTTOM_LAYER` whenever the AIS stack exists, #160) —
-  never rely on setup timing for ordering; the asset-fetch delay makes
-  timing races real.
+- Cross-component layer z-order is anchored by an explicit `beforeId`, never
+  by setup timing (#160). `layerOrder.test.tsx` pins the DataLayers,
+  AisLayer, WaveLayer and SavedWaypointsLayer order across every mount order
+  and a style reload, with a stand-in for the route stack's bottom layer; a
+  new layer component is unguarded until it gets rows there.
 - Map-chrome stacking is a DECLARED tier order, written out in full above
   `.app-header` in `app/src/app.css` (#208): shell chrome (`.app-header`,
   `.banner-area`, `.app-tabs`) `z-index: 3` > map chrome (`.map-stack-tl`,
@@ -898,25 +899,13 @@ making design-level decisions; do not silently deviate.
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
   separately.
-- `@media not (min-width: 1024px)` is Media Queries Level 4 syntax (`not`
-  applied to a bare condition with no media type) — a Level 3 parser treats
-  it as a syntax error and drops the ENTIRE block silently, no console error,
-  nothing for CI to see. On WebKit, `:has()` shipped EARLIER than MQ4
-  boolean syntax, so for a rule using both there is a real iOS Safari band
-  where the selector matches and the query is discarded, losing the rule
-  entirely. `app/src/app.css`'s banner-clearance rule therefore uses
-  `@media (max-width: 1023.98px)` deliberately, accepting the 0.02px
-  hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
-  check the support floors of the features that must work TOGETHER, not
-  each in isolation.
-  **Update (PR #382): the `:has()` half of that combination is GONE**
-  — the rule's own `.app-shell:has(.banner-area .banner)` gate was removed
-  once a real `ResizeObserver` measurement made it redundant (a genuine 0px
-  reading collapses `top`/`max-height` back to their base values on its own,
-  no gate needed). The MQ3-vs-MQ4 choice above is UNCHANGED and
-  independently justified regardless — app.css's own updated comment: a
-  Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
-  on its own" — not merely a residual of the now-gone `:has()` pairing.
+- MQ4 `@media not (…)` is a syntax error to a Level 3 parser, which silently
+  drops the WHOLE block, so `app.css` writes complements MQ3-style
+  (`@media (max-width: 1023.98px)`, accepting the 0.02px hairline; never
+  "tidy" it to MQ4). `toastCompensationTwin.test.ts` reds on any
+  `@media … not (` in `app.css`; it does not scan `matchMedia` strings in
+  TypeScript. When swapping a syntax, check the support floors of the
+  features that must work TOGETHER, not each in isolation.
 - **A single-class MODIFIER loses to its base rule when the base is declared
   LATER** — specificity ties, source order decides. `app/src/app.css`'s
   `.chip` base sits BELOW its modifiers, so switching a hand-rolled span to
@@ -977,21 +966,10 @@ making design-level decisions; do not silently deviate.
   visit cannot silently erase a wide-screen preference. `panelWidth.test.ts`
   is the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern),
   pinning `app.css`'s `320px` literal against `PANEL_MIN_WIDTH_PX`.
-- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx`, not via a later
-  `setMaxPitch`/`setPitch`, pinned by `MapView.mount.test.tsx`'s
-  `'#207: constructs with pitch locked flat'`.
-  The old "a style reload could undo it" reason is HALF right, and the half
-  that is wrong is the one that names `setMaxPitch` (read against 6.2.0):
-  `setMaxPitch` DOES survive — `_maxPitch` is written only by it, the
-  constructor and `transform.apply()`, and `map.ts`'s constructor-registered
-  `style.load` handler re-applies only `center/zoom/bearing/pitch/roll`.
-  `setPitch` does NOT survive: that handler fires whenever
-  `transform.unmodified`, and `setPitch(0)` on an already-flat map
-  early-returns BEFORE clearing that flag, so a later `setStyle` whose root
-  sets `pitch` jumps the camera. Construction is still the right place — but
-  do not "correct" this to an absolute negative in either direction.
-  Pitch is deliberately unreachable; don't re-enable it without re-auditing
-  for terrain/sky/3D layers and pitch readers (there were none at #207).
+- `maxPitch: 0` is set at Map construction in `MapView.tsx`, pinned by
+  `MapView.mount.test.tsx`'s `#207` test (the constructor option, not
+  behaviour). Pitch is deliberately unreachable; don't re-enable it without
+  re-auditing for terrain/sky/3D layers and pitch readers.
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
   idempotent consumers (RouteLayer's `setFilter`); any network/subscription
   effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
@@ -1093,11 +1071,12 @@ making design-level decisions; do not silently deviate.
   `app/e2e/fit-route.spec.ts`). ROUND before comparing; never assert exact camera equality,
   even on a nominally deterministic map call. Note `Object.is(-0, 0)` is `false` and
   Playwright's `toBe` uses it, so normalise with `+ 0` as well.
-- `fitBounds` must pass `bearing: map.getBearing()` explicitly —
-  `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
-  Live reroute under way) silently un-rotates the chart and kills track-up
-  (#155). That default had previously masked a desync bug; preserving bearing
-  is what exposed the #203 north-up dead end above.
+- `fitBounds` must pass `bearing: map.getBearing()`: `cameraForBounds`
+  defaults it to 0, so every new `plan.id` (a Live reroute included)
+  un-rotates the chart and kills track-up (#155). `RouteLayer.test.tsx`'s
+  `#155` and `#297` rows pin the existing call;
+  `cameraAnimationCallSites.test.ts` reds on any new `fitBounds` call site
+  but does not check its bearing.
 - `icon-padding` (default 2 px/side) is part of MapLibre's collision box, not
   decoration — it's the lever for offsetting `icon-size` growth without
   changing the collision footprint (#191).
@@ -1127,66 +1106,23 @@ making design-level decisions; do not silently deviate.
   placement priority with no cross-layer `symbol-sort-key` coordination.
   Re-derived against `maplibre-gl@6.7.0`, 2026-09-08 — `_currentPlacementIndex`
   init at `:80`, decrements at `:124`, unmoved since 6.5.0.
-- `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
-  and are not: `allow-overlap` ("place me even if I collide") governs
-  whether *I* get culled by the collision index; `ignore-placement` ("do not
-  enter me into the collision index") governs whether I block OTHERS.
-  `sc-wind-barbs` (`RouteLayer.tsx`) had the first without the second —
-  `icon-allow-overlap: true` made barbs immune to being culled, but with
-  `icon-ignore-placement` unset (defaults false) every dense barb icon
-  (~96-110px screen spacing at every zoom, `routeGeoJson.ts`'s
-  `adaptiveBarbFeatures`) still INSERTED a collision box that blocked the
-  ETA/speed TEXT layers underneath. The visible symptom was on the labels
-  (`sc-eta-primary`/`sc-eta-secondary`/`sc-leg-speed` culled to 0 at some
-  zooms); the cause was on a layer that looked perfectly healthy (#378,
-  MEASURED via `queryRenderedFeatures`: hiding `sc-wind-barbs` alone took
-  `sc-eta-primary`'s evicted 'gybe' label at z12 from 0 back to present, and
-  `sc-leg-speed` on the same route from 0 to 7). The issue's own
-  hypothesis — the z12 `icon-overlap` threshold from #191/#192 — was WRONG
-  and refuted directly (these are point/line TEXT symbols with no
-  `icon-image`; `icon-overlap` is never set on them at all), as was a
-  primary-vs-secondary layer-order theory (hiding `sc-eta-secondary` alone
-  left `sc-eta-primary` still at 0). Fix: `'icon-ignore-placement': true` on
-  `sc-wind-barbs`. For TEXT symbols the analogue of `icon-padding`'s
-  collision-box lever is **`text-padding`** — `icon-padding` itself is
-  meaningless on a text-only layer.
-  SECOND consequence, and the one the "governs whether I block OTHERS"
-  framing hides: an ignore-placement layer's labels do not de-conflict
-  against EACH OTHER either, so `text-allow-overlap: false` has nothing left
-  to test against. Re-derived against `maplibre-gl@6.7.0` (matched the
-  lockfile, unmoved since 6.6.0): `collision_index.ts`'s `const grid = ignorePlacement ?
-  this.ignoredGrid : this.grid;` (:429/:436) routes the box to `ignoredGrid`,
-  whose ONLY query is in the `queryRenderedSymbols` path (:373-426, the
-  `.concat(this.ignoredGrid.query(...))` read at :388) —
-  `symbol/placement.ts` never references it. Measured at #1006 with
-  `text-ignore-placement: true` on `sc-saved-waypoint-labels`: 9 labels placed
-  inside an 82.4x143.1px span at ~110px per string, three per row fully
-  overprinted; flipping to `false` took them 9 -> 6 while sibling
-  `sc-harbor-labels`/`sc-harbor-points` stayed 1 -> 1 — that unchanged sibling
-  is the control that makes 9 -> 6 attributable to the knob.
-- **#378 route annotation layers** (`RouteLayer.tsx`): `sc-eta-primary`/
-  `sc-eta-secondary`/`sc-leg-speed`'s `text-size` is now zoom-interpolated —
-  `['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15]` — replacing
-  a flat `text-size: 11` that was legible at a desk but too small on a phone
-  on deck in daylight. Growth is deliberately gated to z12+ (held near
-  current size through 9→12, +9%) because MapLibre's collision footprint
-  scales 1:1 with text-size and a bigger box culls MORE labels under
-  `text-allow-overlap: false` — the same coupling #378 itself found and
-  exists to fix. The two ETA layers (not `sc-leg-speed`, which places along
-  the line and can't use this) replaced a fixed `text-anchor`/`text-offset`
-  (exactly ONE candidate placement per point — any collision there culled
-  the label outright with no fallback) with `text-variable-anchor:
-  ['left','right','top','bottom']` + `text-radial-offset: 0.9` +
-  `text-justify: 'auto'` (up to 4 fallback placements before giving up) —
-  these three are MUTUALLY INCOMPATIBLE with `text-anchor`/`text-offset` in
-  the MapLibre style spec, never combine them. `text-padding` on all three
-  annotation layers trimmed from the 2px default to `1` to partially offset
-  the larger collision box the zoom-interpolated text-size introduces.
-  `sc-leg-speed`'s culling-by-line-length (`symbol-placement: 'line-center'`
-  — short legs stay unlabeled at low zoom, no hand-tuned nm threshold) and
-  `sc-maneuver-labels`' `text-allow-overlap`/`text-ignore-placement: true`
-  overlap exemption are UNCHANGED by #378 and remain deliberate (per their
-  own code comments, not previously written up here).
+- `icon-allow-overlap` stops a layer being culled; `*-ignore-placement` stops
+  it blocking OTHERS and also stops its own labels de-conflicting with each
+  other, so `text-allow-overlap: false` then tests nothing (#1006).
+  `text-padding` is the text-layer collision lever. Culled labels can be
+  caused by ANOTHER layer's boxes: at #378 the wind barbs culled the ETA/speed
+  labels. The per-site choices are pinned by `RouteLayer.test.tsx`
+  (`sc-wind-barbs`), `SavedWaypointsLayer.test.tsx` (labels) and
+  `AisLayer.test.tsx` (vessels); a new symbol layer is unguarded.
+- **#378 route annotation layers** (`RouteLayer.tsx`): `RouteLayer.test.tsx`'s
+  `#378` describe pins a zoom-interpolated `text-size` on the ETA/speed
+  layers and the ETA layers' `text-variable-anchor` + `text-radial-offset`
+  (never combine those with `text-anchor`/`text-offset`). It does not pin
+  the stops: keep `text-size` growth gated to z12+, because the collision
+  box scales with it and culls more labels. `text-padding: 1` and
+  `sc-leg-speed`'s `line-center` placement are unpinned, with their reasons
+  in `RouteLayer.tsx`'s comments; so is `sc-maneuver-labels`' overlap
+  exemption.
 
 ## PWA / E2E / deploy
 
@@ -1492,26 +1428,14 @@ making design-level decisions; do not silently deviate.
   PERMISSION_DENIED watch is dead (a re-grant needs a new `watchPosition`),
   every `setGeolocation` is preceded by a transient POSITION_UNAVAILABLE, and
   headless never changes `visibilityState` (probe on #1800's comments).
-- **maplibre-gl 6's worker must be BUNDLED, not copied** (#253): v6 loads its
-  worker via `new Worker(url, {type:'module'})` from a URL built dynamically
-  inside the library, which Vite cannot see — so nothing is emitted and the
-  basemap silently does not render. The fix is `setWorkerUrl` fed by
-  `import ... from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'` in
-  `MapView.tsx`. The `worker: { format: 'es' }` in `vite.config.ts` that keeps
-  the module-type `Worker` construction valid was ALREADY there — it predates
-  #253 and is not part of the fix; don't go looking for it in that diff.
-  **`?url`
-  is the trap**: it copies the file VERBATIM without resolving its imports,
-  and maplibre ships the worker split — `maplibre-gl-worker.mjs` opens with
-  `import{...}from"./maplibre-gl-shared.mjs"`, whose sibling never gets
-  emitted, so the worker 404s on its own dependency. The signature of the
-  broken form is a ~19 KB emitted chunk that still contains a
-  `from"./maplibre-gl-shared.mjs"`; the correct form emits a ~468 KB
-  self-contained chunk with NO import specifiers at all. Verify with
-  `grep -o 'from"[^"]*"'` on the emitted chunk — existence, correct name,
-  hashing, and a 200 response all look right in the broken case. No
-  `globPatterns` change is needed: Vite's worker pipeline emits `.js`, which
-  the existing precache token already covers.
+- **maplibre-gl 6's worker must be BUNDLED, not copied** (#253): `MapView.tsx`
+  feeds `setWorkerUrl` from
+  `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url`. A bare `?url` copies
+  the split worker verbatim, its `./maplibre-gl-shared.mjs` import 404s and
+  the basemap silently does not render. `offline.spec.ts`'s `built output
+  guards` test reds unless the precache holds a self-contained
+  `maplibre-gl-worker` chunk; it does not check the runtime `setWorkerUrl`
+  call.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -1996,18 +1920,13 @@ making design-level decisions; do not silently deviate.
   governs `@font-face` only, which this app doesn't use for map labels.
   Label RENDERING is asserted since #320/PR #375 — `app/e2e/labels.spec.ts`,
   written up in full under Verification lessons; #320 is closed.
-- `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
-  suite has: `annotations.spec.ts:244-247` asserts ZERO Open-Meteo requests
-  (the assertion moved from :167 when #378/PR #381 added ~247 lines earlier
-  in this file; re-derived session 25, where the previously cited `:246` was
-  the message argument rather than the `expect(` itself),
-  every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
-  and jsdom enforces no CSP at all — so a directive wrong in either direction
-  (too tight, blocking startup; too loose, degraded to unrestrictive) would
-  pass every other spec. It asserts ALL non-`example.com` violations are
-  empty across the whole page lifetime, not an allowlist of expected ones —
-  a narrower per-origin filter was tried and would have missed exactly the
-  PR's own B2 finding.
+- `app/e2e/csp.spec.ts` is the only spec that listens for
+  `securitypolicyviolation`; jsdom enforces no CSP and planning specs use
+  `?windFixture=`. Over a bare page load it fails on any non-`example.com`
+  violation (keep that whole-lifetime form, never a per-origin allowlist)
+  and unless both `example.com` probes violate `connect-src`. It cannot see
+  a loosened directive other than `connect-src`, or anything after
+  startup.
 
 ## Release & branching
 
@@ -2152,16 +2071,11 @@ making design-level decisions; do not silently deviate.
   rejected; check the build log or `ls changelog.d/` against the
   filename pattern by eye if a fragment seems to be missing (release runbook
   §2b makes the same check explicit at the fold step).
-  **That fail-open covers the FILENAME, never the CONTENT** — and content fails
-  the OTHER way, loudly and wrongly rather than invisibly. A fragment whose body
-  opens with `### Fixed` is ACCEPTED, and `normalizeFragmentText` joins every
-  non-empty line with a space, so it ships to the About dialog as
-  `### Fixed - The map's scale bar…` and is what the cut folds in unless a human
-  catches it (§2b's fold is by hand). A leading `- ` IS tolerated and stripped.
-  Measured over the 6 fragments of one train: 2 carried a heading (the real
-  defect, both from ONE PR), 3 a leading `- `, 1 clean — 3 of the 4 PRs that
-  added a fragment deviated from the convention, so it is not discoverable at
-  the point of writing. `app/vite.config.ts`'s
+  **That fail-open covers the FILENAME, never the CONTENT**: a body whose
+  first line is a markdown heading (`### Fixed`) would ship glued into its
+  entry, because `normalizeFragmentText` joins lines and strips only a
+  leading `- `; `changelogFragmentShape.test.ts` (#730) reds `app` on it.
+  `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
   build time (dev server, every `vite build` including the UAT deploy) and
   exposes them through the `virtual:changelog-fragments` module;
