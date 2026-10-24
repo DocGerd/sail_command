@@ -168,6 +168,44 @@
         "short-horizon": "67629a697d3521eb"
       },
       "note": "PR #1831 (#1699) HEAD, sharded 2x2; BASE reused from the e6a3e5e entry (closure.mjs reuse e6a3e5e 6c8ea2f = REUSE); 12/12 arm hashes match it, 552/552 plans byte-identical; later types.ts edits are comment-only (TypeScript token streams identical)"
+    },
+    {
+      "sha": "517fe0e011dace753ba09086cd03e5d225d2abbf",
+      "date": "2026-10-23",
+      "arms": {
+        "becalmed": "c6bec0c0bc3e37aa",
+        "breeze": "371c6c33398899e4",
+        "deep-becalmed": "3d14baed4e5a9d23",
+        "light-motorless": "8f3d0dd18cf8deb1",
+        "margin-extreme": "8f049bf143bd12ec",
+        "margin-zero": "cf8c1c1982737beb",
+        "motorless-short-horizon": "c3ecd01d0436af70",
+        "no-comfort": "f837902117228130",
+        "relaxation-dense": "ea29b2c4e6396641",
+        "salona44-breeze": "1ef10fe5628a6c87",
+        "salona44-relaxation": "e738b8b81cee34c6",
+        "short-horizon": "67629a697d3521eb"
+      },
+      "note": "PR #1838 (#1754) HEAD, unsharded; recorded late, in the v0.60.0 cycle. PR #1863's BASE at 7a08b939, sharded 2x2 on 2026-10-24, matched it 12/12 (closure.mjs diff 517fe0e 7a08b939 = NOT OWED)"
+    },
+    {
+      "sha": "943951a4e4f82350b00c8ebfd2dcd55fdcb7c0b0",
+      "date": "2026-10-24",
+      "arms": {
+        "becalmed": "c6bec0c0bc3e37aa",
+        "breeze": "2faa6ccdf6be522b",
+        "deep-becalmed": "3d14baed4e5a9d23",
+        "light-motorless": "4e558756a1e23d8d",
+        "margin-extreme": "4c48c3ee1ca60490",
+        "margin-zero": "cf8c1c1982737beb",
+        "motorless-short-horizon": "c3ecd01d0436af70",
+        "no-comfort": "f837902117228130",
+        "relaxation-dense": "09faf7aa55f492a6",
+        "salona44-breeze": "17a9b7237411ac40",
+        "salona44-relaxation": "f7b26982d43fe762",
+        "short-horizon": "67629a697d3521eb"
+      },
+      "note": "PR #1863 (#1842) HEAD, sharded 2x2; BASE 7a08b939 matched the 517fe0e entry 12/12; compare.mjs 453/552 plans byte-identical, the 99 changed ones in the PR's sweep comment; merge commit 85fe7dde has the same closure"
     }
   ]
 }
