@@ -256,7 +256,8 @@ included with a misleadingly "safe" snap point.
 Flensburg seed at the 3.5 m gate within 300 m of the OSM marina feature, the deepest one
 at most 30 m farther from the feature than the nearest, nearest on ties. Their notes follow
 the ~140 m criterion above; Lohals (85 m) has none. Selection and per-harbor distances:
-PR #1623's body.
+PR #1623's body. #1874's Marina Minde (OSM way 673871962, centroid) used the same rule:
+135 m, no note. Selection: PR #1878's body.
 
 Regenerate:
 
