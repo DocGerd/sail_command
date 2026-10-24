@@ -1,7 +1,8 @@
 import json, math, sys
 
 root = sys.argv[1]
-m = open(root + '/app/public/data/mask.bin', 'rb').read()
+with open(root + '/app/public/data/mask.bin', 'rb') as f:
+    m = f.read()
 cols, rows = 3025, 3120
 CX, CY = 1375, 2400
 LATS = [round(54.3 + i * 0.1, 1) for i in range(14)]
@@ -25,7 +26,8 @@ def km(a, b):
     return math.hypot(dlat, dlon)
 
 
-H = json.load(open(root + '/app/public/data/harbors.json'))
+with open(root + '/app/public/data/harbors.json') as f:
+    H = json.load(f)
 bad = []
 dists = []
 for h in H:
