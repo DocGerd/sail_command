@@ -1,0 +1,118 @@
+{
+ "$comment": "Hand-authored. Read by build_mask.py, which raises (never lowers) the mask depth along each centreline, only on cells whose centre lies inside sourceExtent, and fails if any centreline cell is OSM land. seamarkIndex is the feature's position in app/public/data/seamarks.json when authored; lat/lon and seamarkType identify the mark if that file is regenerated. A point with marks is their midpoint; a point without marks states its basis.",
+ "channels": [
+  {
+   "id": "soenderborg-alssund",
+   "harbour": "soenderborg",
+   "issue": "https://github.com/DocGerd/sail_command/issues/1875",
+   "depthM": 6.0,
+   "depthBasis": "Read off the harbour plan; the page's depth section says only 'Se plan.'. 6.0 m is the plan's 6 m depth contour, which runs on both sides of the fairway just north of the Kong Christian X's Bro passage span; the 10 m contour bounds the entrance between the Fl.R/Fl.G lights. The soundings the plan prints along the fairway from the harbour limit to the last centreline point read 14.2, 11, 10.3, 16, 17, 17.7, 16.5, 14.2, 13.4, 16.9 and 14.8 m, all deeper than the contour.",
+   "source": {
+    "publisher": "Geodatastyrelsen, Den danske Havnelods",
+    "title": "Sønderborg Havn",
+    "url": "https://www.danskehavnelods.dk/Havnelodsen/harbours/d9eb9b5c-16e2-46d3-bb4d-4f6d025d5de3.html",
+    "textDate": "05-10-2026",
+    "planDate": "05-10-2026",
+    "plan": "LFTSONBG.jpg, 1:12500, WGS-84 (https://www.danskehavnelods.dk/Planer/jpg_200/LFTSONBG.jpg)",
+    "quote": "Dybder: Se plan.",
+    "bridge": {
+     "title": "Kong Christian X's Bro",
+     "url": "https://www.danskehavnelods.dk/Havnelodsen/bridges/aa6d840b-7664-4b3f-8b01-deec8d7c6e02.html",
+     "textDate": "14-09-2026",
+     "planDate": "12-01-2018",
+     "plan": "KOBCHRIX.jpg, 1:2500 (passage-span lights; no depths)"
+    }
+   },
+   "sourceExtent": {
+    "south": 54.9043333,
+    "north": 54.9255,
+    "west": 9.7625,
+    "east": 9.7871667,
+    "basis": "The plan's printed frame corners, 54°54,26'N 9°45,75'E and 54°55,53'N 9°47,23'E."
+   },
+   "caveats": [
+    "The plan prints a horizontal datum (WGS-84) and no vertical one; the mask is LAT (EMODnet).",
+    "The page states no tidal range; wind can raise or lower the water by up to 1.2 m.",
+    "The passage span is 30 m wide (bridge page), narrower than one ~46 m mask cell, so the 6.0 m applies to the cell run along the fairway axis, not to each cell's whole area.",
+    "The bridge opens at listed times, and the bridge page announces the passage span closed 2 November to 18 December 2026; the mask models neither."
+   ],
+   "centreline": [
+    {
+     "lat": 54.900303,
+     "lon": 9.7850919,
+     "note": "Single mark: the port-hand buoy south of the entrance. It lies outside sourceExtent, so it only orients the first segment.",
+     "marks": [
+      {
+       "seamarkIndex": 344,
+       "lat": 54.900303,
+       "lon": 9.7850919,
+       "seamarkType": "buoy_lateral",
+       "category": "port"
+      }
+     ]
+    },
+    {
+     "lat": 54.9067086,
+     "lon": 9.7816885,
+     "note": "Entrance gate: the plan's Fl.R.5s / Fl.G.5s lights.",
+     "marks": [
+      {
+       "seamarkIndex": 291,
+       "lat": 54.9065634,
+       "lon": 9.7809106,
+       "seamarkType": "beacon_lateral",
+       "category": "port"
+      },
+      {
+       "seamarkIndex": 873,
+       "lat": 54.9068537,
+       "lon": 9.7824664,
+       "seamarkType": "beacon_lateral",
+       "category": "starboard"
+      }
+     ]
+    },
+    {
+     "lat": 54.9110026,
+     "lon": 9.7830141,
+     "note": "Kong Christian X's Bro passage span: its four Fl.3s lights (bridge plan KOBCHRIX.jpg). light_minor in seamarks.json, so they carry a light colour, not a category.",
+     "marks": [
+      {
+       "seamarkIndex": 2262,
+       "lat": 54.9109513,
+       "lon": 9.7833292,
+       "seamarkType": "light_minor",
+       "lightColour": "green"
+      },
+      {
+       "seamarkIndex": 2263,
+       "lat": 54.9110585,
+       "lon": 9.7826976,
+       "seamarkType": "light_minor",
+       "lightColour": "green"
+      },
+      {
+       "seamarkIndex": 2264,
+       "lat": 54.9109058,
+       "lon": 9.7827331,
+       "seamarkType": "light_minor",
+       "lightColour": "red"
+      },
+      {
+       "seamarkIndex": 2265,
+       "lat": 54.9110947,
+       "lon": 9.7832964,
+       "seamarkType": "light_minor",
+       "lightColour": "red"
+      }
+     ]
+    },
+    {
+     "lat": 54.915402,
+     "lon": 9.779052,
+     "basis": "Position of the plan's 14.8 m sounding north of the bridge, read off LFTSONBG.jpg (1398 x 2000 px) by linear interpolation between the frame corners in sourceExtent; the printed 9°46,60'E meridian and 54°55,00'N parallel fall within 1 px of that scale. No mark-derived point is used here: a straight segment from the bridge span to the next lateral mark north (buoy 1259) or to the Alssundbroen span crosses OSM land."
+    }
+   ]
+  }
+ ]
+}

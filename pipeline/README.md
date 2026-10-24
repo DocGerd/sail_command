@@ -353,6 +353,16 @@ About dialog):
   threshold. Note: Nominatim-fetched relation geometry may drift on future
   re-fetches (same caveat as the EMODnet coverage ID), and Nominatim's usage
   policy makes this a manual on-demand step, not CI-suitable.
+- **Charted channels** (#1875): `charted-channels.json` is hand-authored.
+  `build_mask.py` raises the mask, never lowers it, to a cited nautical
+  source's depth along each channel's centreline, only on cells whose centre
+  lies inside the source's extent, and fails if a centreline cell is OSM land.
+  It is for fairways narrower than the DTM resolves: Alssund at Sønderborg is
+  a one-pixel, diagonally joined channel in EMODnet that the conservative
+  blend closes. Each entry records its source, dates, depth basis and caveats;
+  `tests/test_charted_channels.py` checks the marks against `seamarks.json`
+  and the committed mask against the entry. Any edit changes `mask.bin`, so a
+  #282 sweep is owed. Why: `docs/adr/0003-charted-channel-override.md`.
 
 Regenerate:
 

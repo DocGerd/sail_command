@@ -24,6 +24,8 @@ rather than reusing or renumbering the old one.
   Keep the native `datetime-local` input for departure entry.
 - [0002-pre-1.0-db-migration-low-priority.md](0002-pre-1.0-db-migration-low-priority.md) —
   Pre-1.0.0, local-DB migration is low priority.
+- [0003-charted-channel-override.md](0003-charted-channel-override.md) —
+  Open Alssund with a charted-channel override in the mask build.
 
 This index lists ADRs only — see "Two decision-record locations" below for
 `docs/spikes/`.
