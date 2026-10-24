@@ -396,8 +396,9 @@ measured to contain 30 further defects, 9 of them major.
   the shared checkout on its own branch.
 - **Triage the post-merge CodeQL `push` run on `develop`.** PR-scoped CodeQL analysis is
   DIFF-SCOPED, so a PR's zero-alert result carries no inventory information, and CodeQL is not a
-  required check — alerts accumulate silently. A dismissal comment caps at 280 chars, so point it
-  at a linked evidence record.
+  required check — alerts accumulate silently. Its inline findings on a PR's own diff are review
+  threads, though, and block that PR's merge until resolved (PR #1872). A dismissal comment caps at
+  280 chars, so point it at a linked evidence record.
 - Run `/remember` to write the handoff.
 - The Phase 1 allocation policy is now recorded in `CONTRIBUTING.md`. If a cut CHANGES it, update
   that section in the same PR — and check the twin in this
