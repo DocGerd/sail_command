@@ -474,6 +474,19 @@
   "knownDisconnected": true
  },
  {
+  "id": "minde",
+  "names": {
+   "de": "Marina Minde",
+   "da": "Marina Minde",
+   "en": "Marina Minde"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.89562,
+   "lon": 9.61709
+  }
+ },
+ {
   "id": "marstal",
   "names": {
    "de": "Marstal",
