@@ -150,10 +150,16 @@ instead of here.
   mask's east edge for 55.3-55.55°N and the missing part is north of 55.6°N; go on far-shore harbours in
   the current box, no-go on a north extension until a harbour north of 55.6°N
   is named and three measurements (§7.2) are in
+- [1854-forecast-view-ux.md](1854-forecast-view-ux.md) — #1854: wind and
+  sea state before a destination exists. Recommends a "Wetter" tab and a
+  water-clipped sea-state raster that can ship alone; design only, awaiting
+  the maintainer's ruling (screenshots and measurement scripts in
+  `1854-forecast-view-ux/`)
 
-Five entries carry a same-named subdirectory of supporting artifacts rather
+Six entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
 `354-mode-churn/` (the reproduction test file and its measured output),
 `1136-motor-off-solve-termination/` (the §11 probe scripts and results),
 `1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
-results) and `1360-aaroesund-relaxation-cost/` (the probe and its results).
+results), `1360-aaroesund-relaxation-cost/` (the probe and its results)
+and `1854-forecast-view-ux/` (screenshots and the measurement scripts).
