@@ -5,14 +5,15 @@ import { describe, it, expect } from 'vitest';
 import { CLUSTER_PADDING_PX, MAP_CHROME_TOP_PX } from '../components/DataLayers';
 
 // #909: the compensated sheet cap `55vh - var(--sc-toast-height, 0px)` is
-// encoded in FOUR places and no compiler spans them:
+// encoded in FIVE places and no compiler spans them:
 //
 //   1. `app.css`  `.app-bottom-sheet`                 (narrow) — grants it
 //   2. `app.css`  `.map-stack-tl, .route-layer-controls` (narrow) — spends it
 //   3. `app.css`  `.depth-legend-body`                — spends it, one level in
 //   4. `DataLayers.tsx`'s `budgetPx`                  — decides `hidden` from it
+//   5. app.css .live-view (unscoped base rule; narrow card) — spends it beneath the sheet
 //
-// Drop the term from ONE and the other three are silently wrong in a way
+// Drop the term from ONE and the other four are silently wrong in a way
 // nothing else observes: the sheet is trimmed and the map chrome never gets
 // the room back, or the legend gate computes a budget the CSS does not
 // actually grant it. Same shape as this repo's `156543.03` twin failure.
@@ -52,7 +53,7 @@ const FLAT_CSS = flat(CSS);
 
 const COMPENSATED_CAP = '(55vh - var(--sc-toast-height, 0px))';
 
-describe('#909: the compensated sheet cap is one value in four places', () => {
+describe('#909: the compensated sheet cap is one value in five places', () => {
   it('the comment stripper leaves real declarations behind', () => {
     expect(CSS.length).toBeGreaterThan(0);
     expect(
@@ -99,15 +100,15 @@ describe('#909: the compensated sheet cap is one value in four places', () => {
     ).not.toBeNull();
   });
 
-  it('no FOURTH stylesheet declaration encodes the cap, and none of the three was lost', () => {
+  it('no FIFTH stylesheet declaration encodes the cap, and none of the four was lost', () => {
     const occurrences = FLAT_CSS.split(COMPENSATED_CAP).length - 1;
     expect(
       occurrences,
-      `expected exactly 3 declaration sites for \`${COMPENSATED_CAP}\` (the sheet, the map-chrome ` +
-        'clusters, the depth-legend body). The short-landscape overrides deliberately carry ' +
+      `expected exactly 4 declaration sites for \`${COMPENSATED_CAP}\` (the sheet, the map-chrome ` +
+        'clusters, the depth-legend body, the Live card). The short-landscape overrides deliberately carry ' +
         '`--sc-banner-height` INSTEAD — that property already includes the toast since #909, so ' +
         'subtracting both would count it twice',
-    ).toBe(3);
+    ).toBe(4);
   });
 
   it('site 4: DataLayers adds the toast height back into budgetPx', () => {

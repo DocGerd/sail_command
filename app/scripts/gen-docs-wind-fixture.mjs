@@ -138,7 +138,22 @@
 // 82.7% sail / 17.3% motor on the recommended (★) Genoa tab and 86.3%/13.7%
 // on Fock, both comfortably above the >50% sail-dominance requirement.
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+// #1846: ALSO writes wave-docs-plan-route.json, the matching Open-Meteo Marine
+// response consumed via `?waveFixture=`. Without it a `?windFixture=` plan
+// stays offline for waves (usePlanFlow.ts) and the README hero shows the
+// sea-state overlay as unavailable. Built here rather than in a second
+// generator because docs-screenshots.yml runs only this script. Gitignored by
+// the existing `wave-*.json` entry. NOT gen-wave-fixture.mjs's field, which
+// stripes all five WMO bands by latitude row (a synthetic tell in a hero).
+//
+// The field is a fetch-limited wind sea (JONSWAP growth,
+// Hs = 0.0016 * U * sqrt(F / g)) driven by the SAME windAt() field as the wind
+// fixture, with F the open-water distance upwind of each lattice point,
+// walked on the committed mask.bin. Open water therefore comes out
+// smooth-to-slight, rising eastward with the wind, and the inner fjord and
+// lee shores stay smoother. A minimum fetch keeps every point finite.
+
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -188,10 +203,66 @@ function windAt(lat, lon) {
   return { speedKn, dirDeg };
 }
 
+// ---- #1846 sea-state field ----
+const G = 9.81;
+const KN_TO_MS = 0.514444;
+const FETCH_STEP_M = 200;
+const FETCH_MAX_M = 60_000;
+const FETCH_MIN_M = 1_500; // keeps every point finite
+const M_PER_DEG_LAT = 111_320;
+const HS_FETCH_COEFF = 0.0016; // JONSWAP: gHs/U^2 = 0.0016 * sqrt(gF/U^2)
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const dataDir = resolve(__dirname, '../public/data');
+const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8'));
+const maskBytes = readFileSync(resolve(dataDir, 'mask.bin'));
+// Integer cells per degree, as lib/mask.ts's cellsPerDegree.
+const cpdLon = Math.round(maskMeta.cols / (maskMeta.east - maskMeta.west));
+const cpdLat = Math.round(maskMeta.rows / (maskMeta.north - maskMeta.south));
+
+// null outside the mask, true for water (byte 0 = land/unknown)
+function isWater(lat, lon) {
+  const col = Math.floor((lon - maskMeta.west) * cpdLon);
+  const row = Math.floor((lat - maskMeta.south) * cpdLat);
+  if (col < 0 || row < 0 || col >= maskMeta.cols || row >= maskMeta.rows) return null;
+  return maskBytes[row * maskMeta.cols + col] !== 0;
+}
+
+// Open-water distance (m) upwind of a point; stops at the first land cell.
+// Outside the mask counts as open water (the Baltic east/south of the box).
+function upwindFetchM(lat, lon, windFromDeg) {
+  const rad = (windFromDeg * Math.PI) / 180;
+  const dLat = (Math.cos(rad) * FETCH_STEP_M) / M_PER_DEG_LAT;
+  const dLonPerM = Math.sin(rad) / (M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180));
+  let fetchM = 0;
+  // A land start cell (coarse lattice point on a shore) marches on to open water first.
+  let started = isWater(lat, lon) !== false;
+  for (let d = FETCH_STEP_M; d <= FETCH_MAX_M; d += FETCH_STEP_M) {
+    const w = isWater(lat + dLat * (d / FETCH_STEP_M), lon + dLonPerM * d);
+    if (w === false) {
+      if (started) break;
+    } else {
+      started = true;
+      fetchM += FETCH_STEP_M;
+    }
+  }
+  return Math.max(fetchM, FETCH_MIN_M);
+}
+
+function waveAt(lat, lon) {
+  const { speedKn, dirDeg } = windAt(lat, lon);
+  const u = speedKn * KN_TO_MS;
+  const fetchM = upwindFetchM(lat, lon, dirDeg);
+  const hs = HS_FETCH_COEFF * u * Math.sqrt(fetchM / G);
+  const period = 1.8 + 2.4 * Math.sqrt(hs); // short wind-sea periods
+  return { hs, period, dirFromDeg: dirDeg };
+}
+
 const startS = Math.floor(Date.now() / 1000 / 3600) * 3600; // current UTC hour boundary, unix seconds
 const time = Array.from({ length: N_HOURS }, (_, i) => startS + i * 3600);
 
 const fixture = [];
+const waveFixture = [];
 for (let i = 0; i < N_POINTS_LAT; i++) {
   const lat = Number((LAT0 + i * 0.1).toFixed(1));
   for (let j = 0; j < N_POINTS_LON; j++) {
@@ -200,6 +271,15 @@ for (let i = 0; i < N_POINTS_LAT; i++) {
     const speed1 = round1(speedKn);
     const dir1 = round1(dirDeg);
     const gust1 = round1(speedKn * GUST_FACTOR);
+    const wave = waveAt(lat, lon);
+    waveFixture.push({
+      hourly: {
+        time,
+        wave_height: Array(N_HOURS).fill(Math.round(wave.hs * 100) / 100),
+        wave_direction: Array(N_HOURS).fill(round1(wave.dirFromDeg)),
+        wave_period: Array(N_HOURS).fill(round1(wave.period)),
+      },
+    });
     fixture.push({
       hourly: {
         time,
@@ -211,11 +291,17 @@ for (let i = 0; i < N_POINTS_LAT; i++) {
   }
 }
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const outPath = resolve(__dirname, '../public/test-fixtures/wind-docs-plan-route.json');
 mkdirSync(dirname(outPath), { recursive: true });
 const json = JSON.stringify(fixture);
 writeFileSync(outPath, json);
+
+const waveOutPath = resolve(__dirname, '../public/test-fixtures/wave-docs-plan-route.json');
+writeFileSync(waveOutPath, JSON.stringify(waveFixture));
+const hsAll = waveFixture.map((p) => p.hourly.wave_height[0]);
+console.log(
+  `wrote ${waveOutPath} — Hs ${Math.min(...hsAll).toFixed(2)}-${Math.max(...hsAll).toFixed(2)} m`,
+);
 
 const routeStart = windAt(54.798, 9.4338); // Flensburg (measured GPX start)
 const routeEnd = windAt(54.905, 9.7857); // Sønderborg (measured GPX end)
