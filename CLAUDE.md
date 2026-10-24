@@ -866,12 +866,12 @@ making design-level decisions; do not silently deviate.
   `addImage` re-enters `setup` synchronously through `styledata` (maplibre-gl
   6.14.0); read `styleReload.ts`'s header for the guard shapes that survive it.
   The fake models that since #1840, pinned by `fakeMaplibre.test.ts`.
-- Cross-component layer z-order is anchored by an explicit `beforeId`, never
-  by setup timing (#160). `layerOrder.test.tsx` pins DataLayers, AisLayer
-  and WaveLayer across every mount order, with and without a route-stack
-  stand-in, and after a style reload; SavedWaypointsLayer only against
-  WaveLayer, in two orders. A new layer component is unguarded until it gets
-  rows there.
+- Cross-component layer z-order is anchored by an explicit `beforeId`, never by
+  setup timing (#160). `layerOrder.test.tsx` pins DataLayers, AisLayer and
+  WaveLayer across every mount order, with and without a route-stack stand-in,
+  and after a style reload. At `85fe7dde` SavedWaypointsLayer had two rows,
+  both orders against WaveLayer with DataLayers mounted first and no AisLayer.
+  A new layer component is unguarded until it gets rows there.
 - Map-chrome stacking is a DECLARED tier order, written out in full above
   `.app-header` in `app/src/app.css` (#208): shell chrome (`.app-header`,
   `.banner-area`, `.app-tabs`) `z-index: 3` > map chrome (`.map-stack-tl`,
@@ -1127,24 +1127,25 @@ making design-level decisions; do not silently deviate.
   init at `:80`, decrements at `:124`, unmoved since 6.5.0.
 - `icon-allow-overlap` stops a layer being culled; `*-ignore-placement` stops
   it blocking OTHERS. `text-ignore-placement` also stops a layer's labels
-  de-conflicting with each other, so its `text-allow-overlap: false` then
-  tests nothing (#1006). `text-padding` is the text-layer collision lever.
-  Culled labels can be caused by ANOTHER layer's boxes: at #378 the wind
-  barbs culled the ETA/speed labels. Pinned per site by `RouteLayer.test.tsx`
-  (`sc-wind-barbs`), `WaveLayer.test.tsx` (arrows),
-  `SavedWaypointsLayer.test.tsx` (labels) and `AisLayer.test.tsx` (vessels).
-  Unpinned: seamarks' zoom-stepped `icon-ignore-placement` (#1126),
-  DataLayers' contour labels and `sc-maneuver-labels`; a new symbol layer is
-  unguarded too.
+  de-conflicting with each other, so that layer's `text-allow-overlap: false`
+  then tests nothing (#1006). `text-padding` is the text-layer collision lever.
+  Culled labels can be caused by ANOTHER layer's boxes: at #378 the wind barbs
+  culled the ETA/speed labels. At `85fe7dde` the `*-ignore-placement` values
+  were pinned by `RouteLayer.test.tsx` (`sc-wind-barbs`), `WaveLayer.test.tsx`
+  (arrows), `SavedWaypointsLayer.test.tsx` (labels) and `AisLayer.test.tsx`
+  (vessels). Seamarks' zoom-stepped one (#1126) was guarded only behaviourally,
+  by `seamark-collision-icon-size-981.spec.ts`'s `#1126` tests. DataLayers'
+  contour labels and `sc-maneuver-labels` had no guard, and neither does a new
+  symbol layer.
 - **#378 route annotation layers** (`RouteLayer.tsx`): `RouteLayer.test.tsx`'s
-  `#378` describe pins a zoom-interpolated `text-size` on the ETA/speed
-  layers and the ETA layers' `text-variable-anchor` + `text-radial-offset`
-  (never combine those with `text-anchor`/`text-offset`). It does not pin
-  the stops: keep `text-size` growth gated to z12+, because the collision
-  box scales with it and culls more labels. `text-padding: 1` and
-  `sc-leg-speed`'s `line-center` placement are unpinned, with their reasons
-  in `RouteLayer.tsx`'s comments. `sc-maneuver-labels`' overlap exemption is
-  unpinned and uncommented.
+  `#378` describe pins a zoom-interpolated `text-size` on the ETA/speed layers
+  and the ETA layers' `text-variable-anchor` + `text-radial-offset` (never
+  combine those with `text-anchor`/`text-offset`). It does not pin the stops:
+  keep `text-size` growth gated to z12+, because the collision box scales with
+  it and culls more labels. `text-padding: 1` and `sc-leg-speed`'s
+  `line-center` placement are unpinned, with their reasons in
+  `RouteLayer.tsx`'s comments. At `85fe7dde` `sc-maneuver-labels`' overlap
+  exemption had no pin and no comment.
 
 ## PWA / E2E / deploy
 
@@ -1945,10 +1946,10 @@ making design-level decisions; do not silently deviate.
 - `app/e2e/csp.spec.ts` is the only spec that listens for
   `securitypolicyviolation`; jsdom enforces no CSP and planning specs use
   `?windFixture=`. Over a bare page load it fails on any non-`example.com`
-  violation (keep that whole-lifetime form, never a per-origin allowlist)
-  and unless both `example.com` probes violate `connect-src`. It sees a
-  loosened `connect-src` only if it admits `example.com`, no other loosened
-  directive, and nothing after startup.
+  violation (keep that whole-lifetime form, never a per-origin allowlist) and
+  unless both `example.com` probes violate `connect-src`. At `85fe7dde` it
+  caught a loosened `connect-src` only if that directive admitted
+  `example.com`, and no other loosened directive or anything after startup.
 
 ## Release & branching
 
@@ -2377,11 +2378,11 @@ making design-level decisions; do not silently deviate.
   occlusion). Don't re-investigate it at the next ship gate.
 - **Headless Chromium paints a ghost band of the sticky `.planner-actions` bar
   across the top of the map in narrow (820x1180) plan-tab screenshots.** At the
-  v0.58.0 gate it read as a capture artifact: it appears in headless-shell
-  screenshots of both prod v0.57.0 and UAT, disappears when `.planner-actions`
-  is hidden, and is absent headed (v0.58.0 gate). That licenses skipping it at
-  a ship gate, not closing #1557, whose close condition is a real-tablet check
-  (its 2026-10-23 comment).
+  v0.58.0 gate it read as a capture artifact: it appeared in headless-shell
+  screenshots of prod v0.57.0 and UAT, disappeared when `.planner-actions` was
+  hidden, and was absent headed. That licenses skipping it at a ship gate, not
+  closing #1557, whose close condition is a real-tablet check (its 2026-10-23
+  comment).
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
@@ -3746,10 +3747,11 @@ making design-level decisions; do not silently deviate.
   reset to the shared 800px height straight afterwards. Three different viewport
   heights in one flow is deliberate — the first is the `newPage` viewport and
   only the other two are `setViewportSize`; do not collapse them.
-  Hero CLIPPING is now pinned by a GUARD, not by this prose: #1088's
-  `assertFitsViewport()` (called at the start-view and boat-selection captures)
-  THROWS the exact pixel shortfall instead of emitting a clipped PNG. Raising a
-  constant to silence a throw is the wrong fix. First exercised
+  Clipping of start-view.png and boat-selection.png is pinned by a GUARD, not
+  by this prose: #1088's `assertFitsViewport()` THROWS the exact pixel
+  shortfall instead of emitting a clipped PNG; plan-route.png is exempt by
+  design (the comment above that function). Raising a constant to silence a
+  throw is the wrong fix. First exercised
   at the v0.28.0 cut and passed. Since #1846 `capture.mjs` also throws
   unless `plan-route.png`'s sea-state toggle is enabled, checked and carries no
   unavailable note, so a capture without `?waveFixture=` reds the advisory
@@ -5133,11 +5135,11 @@ making design-level decisions; do not silently deviate.
   string-level check cannot see — cwd + bare filename, variable or
   programmatic path construction, quote-splitting — enumerated in the hook's
   own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
-  current list. A workflow agent cannot answer the spec-path ask: a Bash
-  read the read-only exemptions do not clear (`git -C <dir> show …`,
-  anything with `cd` or `$`) blocked agents for up to 224 min in the v0.60.0
-  cycle (Claude Code 2.1.309–2.1.310). Brief them to read specs with Read or
-  Grep, which the hook does not see (at `85fe7dde` it matches only
+  current list. A workflow or background subagent cannot answer the spec-path
+  ask: a Bash read the read-only exemptions do not clear (`git -C <dir> show
+  …`, anything with `cd` or `$`) blocked agents for up to 224 min in the
+  v0.60.0 cycle (Claude Code 2.1.309–2.1.310). Brief them to read specs with
+  Read or Grep, which the hook does not see (at `85fe7dde` it matches only
   `Edit|Write` and `Bash`).
   Personal opt-out: `SC_SPEC_GATE=advisory` in the hook's environment downgrades these spec asks to advisories, subagent spec writes included. A `.claude/settings.local.json` `env` entry reaches the hook from the next session start (measured 2026-10-15).
 - `.superpowers/` (SDD ledger) is gitignored — append session records
