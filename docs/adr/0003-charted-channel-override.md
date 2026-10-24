@@ -32,8 +32,8 @@ the plan's 6 m contour, read off the image; the entry records how.
 
 ## Consequences
 
-- Every edit to `charted-channels.json` changes `mask.bin` and owes the #282
-  sweep.
+- Editing a depth or a centreline in `charted-channels.json` changes
+  `mask.bin` and owes the #282 sweep.
 - An overridden cell's depth comes from a chart, not from the DTM.
   `mask.meta.json` still names only EMODnet and OSM.
 - `verify_mask.py` now fails if Sønderborg cannot reach Als Fjord inside

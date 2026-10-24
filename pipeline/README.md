@@ -361,8 +361,8 @@ About dialog):
   a one-pixel, diagonally joined channel in EMODnet that the conservative
   blend closes. Each entry records its source, dates, depth basis and caveats;
   `tests/test_charted_channels.py` checks the marks against `seamarks.json`
-  and the committed mask against the entry. Any edit changes `mask.bin`, so a
-  #282 sweep is owed. Why: `docs/adr/0003-charted-channel-override.md`.
+  and the committed mask against the entry. Editing a depth or a centreline
+  changes `mask.bin`, so a #282 sweep is owed. Why: `docs/adr/0003-charted-channel-override.md`.
 
 Regenerate:
 
