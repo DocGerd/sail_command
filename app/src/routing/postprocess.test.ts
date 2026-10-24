@@ -250,15 +250,15 @@ describe('#452 graft 5: mergeCollinearLegs re-validates against the per-cell gat
 // chord. Each original step must now keep its own clearance, capped at the
 // comfort depth, along the part of the chord that replaces it.
 // Grid: 0.005° per row/col, row 0 at lat 54.3.
-describe("#1842: merge comfort is judged per original step", () => {
+describe('#1842: merge comfort is judged per original step', () => {
   const gate = uniformGate(DEFAULT_SETTINGS.safetyDepthM);
-  // Above the 10 m deep water, as at margin-extreme on Damp (comfort 11 m,
+  // Above the 10 m deep water, as at margin-extreme on Damp (comfort 10.9 m,
   // step 6.1 m), so the comfort cap never binds in these cases.
   const deepComfort = 11.0;
   const wind = new WindField(uniformWindGrid(12, 180));
   const motor = (leg: SailLeg): Leg => ({
     ...leg,
-    kind: "motor",
+    kind: 'motor',
     board: null,
     maneuverAtStart: null,
   });
@@ -283,7 +283,7 @@ describe("#1842: merge comfort is judged per original step", () => {
     lon: from.lon + (to.lon - from.lon) * x,
   });
 
-  it("fixture: the A→C chord crosses the 5.0 m patch that no step touches", () => {
+  it('fixture: the A→C chord crosses the 5.0 m patch that no step touches', () => {
     const { mask, a, b, c } = legsOver(true);
     expect(mask.segmentClearanceM(a.start, a.end, gate)).toBeCloseTo(3.5, 6);
     expect(mask.segmentClearanceM(b.start, b.end, gate)).toBeCloseTo(10, 6);
@@ -291,20 +291,18 @@ describe("#1842: merge comfort is judged per original step", () => {
     expect(mask.segmentClearanceM(a.start, b.end, gate)).toBeCloseTo(3.5, 6);
     expect(mask.segmentClearanceM(a.start, c.end, gate)).toBeCloseTo(3.5, 6);
     // C's share of the chord (from two thirds on) holds the patch.
-    expect(
-      mask.segmentClearanceM(chordAt(a.start, c.end, 2 / 3), c.end, gate),
-    ).toBeCloseTo(5.0, 6);
+    expect(mask.segmentClearanceM(chordAt(a.start, c.end, 2 / 3), c.end, gate)).toBeCloseTo(5.0, 6);
     const { mask: clean } = legsOver(false);
     expect(clean.segmentClearanceM(a.start, c.end, gate)).toBeCloseTo(5.0, 6);
   });
 
-  it("control: without the far shoal, cutting C onto the 5.0 m patch is rejected", () => {
+  it('control: without the far shoal, cutting C onto the 5.0 m patch is rejected', () => {
     const { mask, a, b, c } = legsOver(false);
     const out = mergeCollinearLegs([a, b, c], mask, wind, gate, deepComfort);
     expect(out.map((l) => l.end)).toEqual([b.end, c.end]);
   });
 
-  it("a shallow step early in the run does not license a shallower cut later", () => {
+  it('a shallow step early in the run does not license a shallower cut later', () => {
     const { mask, a, b, c } = legsOver(true);
     const out = mergeCollinearLegs([a, b, c], mask, wind, gate, deepComfort);
     expect(out.map((l) => l.end)).toEqual([b.end, c.end]);
@@ -313,25 +311,22 @@ describe("#1842: merge comfort is judged per original step", () => {
   // The maintainer's clamp (#1842 issue comment 6381338942): a share at or
   // above the comfort depth is free water, however much deeper the step was.
   // C reads 20 m, its share 5.0 m, the comfort depth 5.0 m.
-  it("a share at or above the comfort depth is accepted even if shallower than its step", () => {
+  it('a share at or above the comfort depth is accepted even if shallower than its step', () => {
     const { mask, a, b, c } = legsOver(true, 200);
     expect(mask.segmentClearanceM(c.start, c.end, gate)).toBeCloseTo(20, 6);
-    expect(
-      mask.segmentClearanceM(chordAt(a.start, c.end, 2 / 3), c.end, gate),
-    ).toBeCloseTo(5.0, 6);
-    expect(
-      mergeCollinearLegs([a, b, c], mask, wind, gate, 5.0).map((l) => l.end),
-    ).toEqual([c.end]);
+    expect(mask.segmentClearanceM(chordAt(a.start, c.end, 2 / 3), c.end, gate)).toBeCloseTo(5.0, 6);
+    expect(mergeCollinearLegs([a, b, c], mask, wind, gate, 5.0).map((l) => l.end)).toEqual([c.end]);
     // Control: a comfort depth above the share brings the refusal back.
-    expect(
-      mergeCollinearLegs([a, b, c], mask, wind, gate, 5.5).map((l) => l.end),
-    ).toEqual([b.end, c.end]);
+    expect(mergeCollinearLegs([a, b, c], mask, wind, gate, 5.5).map((l) => l.end)).toEqual([
+      b.end,
+      c.end,
+    ]);
   });
 
   // Same legs, but the 5.0 m patch sits in B's share of the A→C chord
   // (row 79). B was already absorbed into A's leg, whose own chord reads
   // 3.5 m, so treating that merged leg as one step would accept this cut.
-  it("an already-absorbed deep step keeps its own clearance", () => {
+  it('an already-absorbed deep step keeps its own clearance', () => {
     const mask = makeMask((r, c) => {
       if (r === 80 && c === 130) return 35;
       if (r === 79 && c >= 158 && c <= 163) return 50;
@@ -342,10 +337,7 @@ describe("#1842: merge comfort is judged per original step", () => {
     expect(mask.segmentClearanceM(a.start, b.end, gate)).toBeCloseTo(3.5, 6);
     expect(mask.segmentClearanceM(b.start, b.end, gate)).toBeCloseTo(10, 6);
     expect(mask.segmentClearanceM(c.start, c.end, gate)).toBeCloseTo(10, 6);
-    expect(mask.segmentClearanceM(f(1 / 3), f(2 / 3), gate)).toBeCloseTo(
-      5.0,
-      6,
-    );
+    expect(mask.segmentClearanceM(f(1 / 3), f(2 / 3), gate)).toBeCloseTo(5.0, 6);
     expect(mask.segmentClearanceM(f(0), f(1 / 3), gate)).toBeCloseTo(3.5, 6);
     expect(mask.segmentClearanceM(f(2 / 3), f(1), gate)).toBeCloseTo(10, 6);
     const out = mergeCollinearLegs([a, b, c], mask, wind, gate, deepComfort);
@@ -357,7 +349,7 @@ describe("#1842: merge comfort is judged per original step", () => {
   // row 80, where a 6.0 m patch sits at 25-45% of the chord. By length that
   // is B's share (from 20%), judged against B's 10 m: refused. An equal split
   // would put it in A's share (to 50%), judged against A's 4.0 m: accepted.
-  it("splits the chord by step length, not by step count", () => {
+  it('splits the chord by step length, not by step count', () => {
     const mask = makeMask((r, c) => {
       if (r === 80 && (c === 120 || c === 121)) return 40;
       if (r === 80 && c >= 136 && c <= 144) return 60;
@@ -379,7 +371,7 @@ describe("#1842: merge comfort is judged per original step", () => {
     expect(out.map((l) => l.end)).toEqual([a.end, b.end]);
   });
 
-  it("comfort preference off: unchanged, the gate alone governs", () => {
+  it('comfort preference off: unchanged, the gate alone governs', () => {
     const { mask, a, b, c } = legsOver(true);
     expect(mergeCollinearLegs([a, b, c], mask, wind, gate).length).toBe(1);
   });
@@ -389,7 +381,7 @@ describe("#1842: merge comfort is judged per original step", () => {
   // through 4.0 m water while their chord A stays in 20 m. B turns south, so
   // the A1→B chord crosses a 10.0 m patch in A2's share: deeper than A2's own
   // 4.0 m, shallower than chord A's 20 m.
-  it("keeps the whole-chord check: a merge it rejects stays rejected", () => {
+  it('keeps the whole-chord check: a merge it rejects stays rejected', () => {
     const mask = makeMask((r, c) => {
       if ((r === 81 || r === 82) && c >= 120 && c <= 189) return 40;
       if (r === 79 && c >= 164 && c <= 180) return 100;
