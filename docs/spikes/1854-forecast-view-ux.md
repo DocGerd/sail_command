@@ -1,8 +1,8 @@
 # #1854 — "Wetter" tab: wind and sea state before choosing a destination
 
-Status: UX design spike, written at develop `7a08b939` and revised once after critique. It ends in a recommendation and is not a spec. Building it needs the maintainer's ruling posted on #1854, then four ask-gated spec edits in the main session: (a) waves spec §0's "Plan-bound … No browsing before a plan exists" rule; (b) waves spec §0's cell rendering, worded to cover water-clipped raster cells, the arrow-or-dot marker and the removal of `sc-waves-edge`; (c) the ui-modernization §6 tab list; (d) the source spec's Offline-scope row (`2026-07-14-sail-command-design.md` line 26), for a browse view that needs the network and offline shows only an in-memory forecast with its age. One question stays open for the maintainer: whether planning may fall back offline to the Wetter session grid (§11). This design does not do that.
+Status: UX design spike, written at develop `7a08b939` and revised once after critique. It ends in a recommendation and is not a spec. The maintainer approved this direction on 2026-10-24 (ruling on #1854). Building it first needs ask-gated spec edits in the main session. Two claim audits found these: (a) waves spec §0's "Plan-bound … No browsing before a plan exists" rule; (b) waves spec §0's cell rendering, worded to cover water-clipped raster cells, the arrow-or-dot marker and the removal of `sc-waves-edge`; (c) the ui-modernization §6 tab list; (d) the source spec's Offline-scope row (`2026-07-14-sail-command-design.md` line 26), for a browse view that needs the network and offline shows only an in-memory forecast with its age; (e) ui-modernization §2's "only planning needs network; everything else keeps working offline" constraint, for the same browse view; (f) ui-modernization §2's "map barbs sample the plan grid at the SLIDER hour" line, because Wetter's barbs sample the area forecast at the card's hour (§6); (g) waves spec §0's "Map only." bullet, because the card shows Hs in its place lines, strip and area line; (h) the source spec's §3.2 Persistence bullet's line "everything except *new* planning works offline" (~:139–140), the second copy of (d)'s rule; (i) the source spec's Route-presentation addendum line "all wind/depth data comes from the plan's stored grid … never re-fetched" (~:206–208), for the same reason as (f). Promoting the design to a spec re-checks the specs for others. One question stays open for the maintainer: whether planning may fall back offline to the Wetter session grid (§11). This design does not do that.
 
-Code anchors use the form `file:symbol (~:line)` and refer to `7a08b939`. Paths are relative to `app/src/` unless stated. Measured figures come from two sources in `1854-forecast-view-ux/`: the grounding run's `measure.json` (written by `ux-measure.mjs`; `ux-capture.mjs` took the screenshots), and this revision's `harbour_wave.py`, run against the committed `mask.bin` and `harbors.json` at `7a08b939`. Every other number is an estimate and is labelled as one. Screenshots `01`–`04` there show the shipped state the design starts from; `03` and `04` show sea-state cells drawn over land.
+Code anchors use the form `file:symbol (~:line)` and refer to `7a08b939`. Paths with a directory part are relative to `app/src/` unless they begin with `app/` or `changelog.d/` (repo root); bare file names omit their directory. Supporting files are in the sibling directory `1854-forecast-view-ux/`. Measured figures come from the grounding run's `measure.json` (written by `ux-measure.mjs`) and from this revision's `harbour_wave.py`, run against the committed `mask.bin` and `harbors.json` at `7a08b939`. Screenshots `01`–`04` were taken during the grounding run; `03` and `04` show sea-state cells drawn over land. `ux-capture.mjs` took them; `02`–`04` load the e2e `wind-sw12.json` and `wave-bands.json` fixtures, and `01` is a cold load without them. The build it was served was not recorded. `judges.json`, `critique.json` and `revision-log.md` hold the judges' scores, the critique's findings and the revision's dispositions, recorded before the claim audit; where the log and this document differ, this document is current.
 
 ## 0. Basis
 
@@ -19,7 +19,7 @@ Goal: before a destination exists, the skipper sees wind and sea state for the w
 
 Non-goals:
 - No routing change, no backend, no change to the Live tab. Browsing never writes the departure or the planner's Start and Ziel.
-- No wind colour field and no wind-sea/swell split (spec §0). No dark basemap (2026-08-25 ruling) and no pitch.
+- No wind colour field (§15) and no wind-sea/swell split (spec §0). No dark basemap (2026-08-25 ruling) and no pitch.
 - No IndexedDB writes or `DB_VERSION` bump. `sw.ts` does not change; the service worker never caches Open-Meteo.
 - No reachable area; that is #1855, and §12 reserves its place.
 
@@ -64,7 +64,7 @@ Non-goals:
 - The Disclosure is closed. The strip is a grid of 8 (card inner width ≈762 px, estimate).
 - Estimated height: about 609–641 px against the measured 649 px cap. Rows: tab strip 45 (measured); header 44, or 76 when the update button wraps; hour 44; Start 44; Ziel 22; actions 44; notice 44; depth 44; strip 80; Disclosure 44; 8 gaps of 12 (`.sc-card` gap 0.75rem); card padding and border 34; panel padding 24. All but the tab strip are estimates.
 - The actions row ends about 262–294 px below the card top (estimate), whatever the strip, a toast or a banner does. AC-11 is the testable claim.
-- The whole area does not fit above the sheet: the sheet starts at y=531 (measured), leaving about 470 px of map; a fit would need about z7.2 (estimate), below the maxBounds floor z7.97 (measured). The skipper pans.
+- The whole area does not fit above the sheet: the Plan tab's sheet starts at y=531 (measured), leaving about 470 px of map; a fit would need about z7.2 (estimate), below the maxBounds floor z7.97 (measured). The skipper pans.
 - Any gain in map area is unmeasured and is not claimed.
 
 **Phone <820 (nice-to-have).**
@@ -117,7 +117,7 @@ y1180 +--------------------------------------------------------------+
 | Ziel Sonderburg: Wind aus SW ||                                       |
 |   (220°) 13 kn … · Seegang   ||                                       |
 |   0,4 m (schwach bewegt) am  ||                                       |
-|   nächsten Modellpunkt, 2,1 sm SO                                     |
+|   nächsten Modellpunkt, 4,0 sm O                                      |
 | Route berechnet mit der      ||                                       |
 |   Vorhersage, abgerufen Do 18:40.                                     |
 | [Als Abfahrt übernehmen]     ||                                       |
@@ -159,7 +159,7 @@ y1180 +--------------------------------------------------------------+
 **Place readout (Start, Ziel, harbour popup).**
 - Wind is `WindField.sample` at the harbour's snap point.
 - Sea state comes from the nearest in-mask water lattice point among the place's own nearest lattice point and its eight neighbours, labelled with distance (nm) and compass point. If none of those nine is water: `conditions.place.seaNone`. A wind hour with no wave hour: `conditions.sea.noHour`. The words "kein Seegang" and "no sea state" are never used, because they read as calm.
-- Measured (`harbour_wave.py`: nearest lattice point per axis, cell `floor((v − origin)·cpd)` with `GridAxis.index`'s `≥ end` exclusion): 134 of the 322 lattice points are in-mask water, and for 28 of the 46 harbours the nearest point is not, Flensburg among them. With the own-or-adjacent rule, 44 harbours get a model point. Flensburg and Aabenraa get `seaNone`; their nearest water points are about 8.4 and 7.1 nm away.
+- Measured with `harbour_wave.py` (nearest lattice point per axis, cell `floor((v − origin)·cpd)` with `GridAxis.index`'s `≥ end` exclusion): for 28 of the 46 harbours the nearest point is not in-mask water, Flensburg among them; Flensburg's and Aabenraa's nearest water points are about 15.6 and 13.2 km away (about 8.4 and 7.1 nm). Derived from the same lattice but not printed by the script: 134 of the 322 lattice points are in-mask water, and with the own-or-adjacent rule 44 harbours get a model point; Flensburg and Aabenraa get `seaNone`.
 - This labels a model point; no water is shaded from a neighbour, so the no-borrowing rule in §15 still holds.
 
 **Sea state (PR A; plan mode too, which fixes the land tint everywhere).**
@@ -169,7 +169,7 @@ y1180 +--------------------------------------------------------------+
 - **Size.** 1513 × ≈1586 px ≈ 2.4 MP: 9.6 MB RGBA plus a 4.8 MB Uint16 index. Each of the two depth canvases is full `meta.cols` wide (`DataLayers.tsx` ~:230/:266), about 38 MB. Quarter resolution is the fallback, chosen by one main-thread measurement (§14).
 - **Pixel rule.** A pixel maps to its own nearest lattice point, which reproduces today's rectangle partition exactly. It is coloured only if the mask cell is water (byte > 0), its own lattice point is in-mask water (the §0 centre cull is kept; nothing is borrowed from a neighbour), and Hs is finite. The index is built once per mask and cached at module level; each hour is one pass through a 322-entry colour table.
 - **Data cue.** The `sc-waves-edge` line layer is removed. Each shaded cell instead carries exactly one marker: the travel arrow (unchanged), or a new small `sc-wave-dot` ring when the direction is NaN. A calm cell is near-white plus a marker; a cell with no data or on land has neither.
-- **Marker placement (PR B; both modes, because it needs the hour's wind).** Wave and wind share one lattice (`services/openMeteo.ts:latLonParams` builds both), and `adaptiveBarbFeatures` anchors barbs on lattice indices, so today barbs sit on wave arrows wherever both share a lattice point. The barb icon is centred on its point, with the station 12 px downwind and the feathers at the upwind tip (`lib/windBarbs.ts` ~:13–16). While barbs are visible, a marker therefore moves to the quarter-cell point of its own cell that lies on the downwind side and farther from that cell's wind axis at the hour. With barbs hidden it sits at the cell centre. Accepted cost: a marker jumps to another quadrant when its cell's wind axis crosses a quadrant boundary between hours, so markers move while scrubbing. The intent is that no marker lies on a barb's shaft or feathers. That is pinned by a unit test of the rule and checked in the daylight browser pass (§14); it is not a general collision-free claim.
+- **Marker placement (PR B; both modes, because it needs the hour's wind).** Wave and wind share one lattice (`services/openMeteo.ts:latLonParams` builds both), and `adaptiveBarbFeatures` anchors lattice barbs at multiples of 2^n native steps from grid index 0, with n no lower than `MIN_SUBDIV_N` (−2), so today barbs sit on wave arrows wherever both share a lattice point. The barb icon is centred on its point, with the station 12 px downwind and the feathers at the upwind tip (`lib/windBarbs.ts` ~:13–16). While barbs are visible, a marker therefore moves to the quarter-cell point of its own cell that lies on the downwind side and farther from that cell's wind axis at the hour. With barbs hidden it sits at the cell centre. Accepted cost: a marker jumps to another quadrant when its cell's wind axis crosses a quadrant boundary between hours, so markers move while scrubbing. The intent is that no marker lies on a barb's shaft or feathers. That intent fails from about z10.9 (512 px tiles), where n reaches `MIN_SUBDIV_N` and the lattice step is a quarter native step. The barb lattice then includes every quarter-cell point (±0.025° from the cell centre). A marker there lands on a barb's anchor wherever that barb is drawn; for a non-calm barb the anchor is the shaft midpoint. In plan mode it also fails near the route at any zoom, because route-ribbon barbs sit every ~110 px along the legs (`RIBBON_PX`), off the lattice. This spike resolves neither case. The unit test of the rule (AC-4) cannot see either; the daylight browser pass (§14) covers z10–12. This is not a general collision-free claim.
 - **Popup.** Raster layers are not queryable, so the `click` on `WAVE_FILL_LAYER` (`WaveLayer.tsx` ~:269) becomes a map-level click, using one shared `nearestWaveCell(grid, lngLat)` lookup, the same one the raster uses.
   - In plan mode it opens only where the tapped pixel is shaded, as today. On Wetter it opens on any in-mask water.
   - On Wetter a harbour tap opens the same popup at the harbour, titled `map.forecast.popup.harbour`, with [Als Start] and [Als Ziel] (≥44 px). App routes DataLayers' `onHarborPick` on Wetter into a small module store, `state/harbourForecast.ts`, which WaveLayer subscribes to; the buttons call App's `handlePickOrigin`/`handlePickDestination` with `harborToPickedPoint(h, lang)`.
@@ -210,7 +210,7 @@ A visually hidden polite region announces status transitions; errors use `role="
 - **Refetch triggers:** automatic on tab re-entry or the `online` event when the held forecast is older than 1 h; manual with the button from 10 min. The clock tick never fetches.
 - **Offline, nothing held:** `conditions.offline.none`. No layers, and the strip and scrubber are hidden.
 - **Offline, held:** `conditions.offline.held`. "Held" means the newest wind by `fetchedAtMs` among this session's grid and the active plan's `windGrid`; the waves of that same source go with it, mirroring usePlanFlow's rule that stored wind never pairs with fresh waves. A plan source is labelled `conditions.status.fromPlan`. IndexedDB is never read.
-- **Fetch failure, nothing shown:** mapped through the hoisted `mapWindError` (`state/usePlanFlow.ts` ~:100) to `error.offline`, `error.rateLimited` or `error.windService`, as an alert with [Vorhersage aktualisieren].
+- **Fetch failure, nothing shown:** mapped through the hoisted `mapWindError` (`state/usePlanFlow.ts` ~:100) to `error.offline`, `error.rateLimited`, `error.windService` or, for a non-`OpenMeteoError`, `error.windUnknown`, as an alert with [Vorhersage aktualisieren].
 - **Fetch failure, grid held:** quiet. The held grid stays with its age, and the chip shows `conditions.status.refreshFailed`; no alert.
 - **Rate limit:** after `error.rateLimited` the update button is disabled for 60 s, with `conditions.update.cooldown` as visible text.
 - **Partial:** if waves failed, wind is drawn, `conditions.error.waves` shows, and the ribbon is empty. Waves are never fetched after a wind failure (`usePlanFlow.ts` returns at ~:430, before the wave fetch at ~:448), so there is no sea-only state.
@@ -284,7 +284,7 @@ A visually hidden polite region announces status transitions; errors use `role="
 | map.forecast.popup.wind / .gust | Wind / Böen | Wind / Gusts |
 | map.forecast.popup.setStart / .setDestination | Als Start / Als Ziel | Set as start / Set as destination |
 
-Reused unchanged: `error.offline`, `error.rateLimited`, `error.windService`, `route.windBarbs.toggle`, `route.waves.toggle`, `route.legend.seaState*` (including `seaStateArrow`, which explains that wave arrows point where the waves travel), `seaState.band.*` and `map.waves.popup.*` (including "Modellschätzung, keine amtliche Angabe.").
+Reused unchanged: `error.offline`, `error.rateLimited`, `error.windService`, `error.windUnknown`, `route.windBarbs.toggle`, `route.waves.toggle`, `route.legend.seaState*` (including `seaStateArrow`, which explains that wave arrows point where the waves travel), `seaState.band.*` and `map.waves.popup.*` (including "Modellschätzung, keine amtliche Angabe.").
 
 ## 9. Accessibility
 
@@ -302,7 +302,7 @@ Reused unchanged: `error.offline`, `error.rateLimited`, `error.windService`, `ro
 | Uhrzeit für Wind und Seegang / Time for wind and sea state | "Vorhersagezeitpunkt"/"Forecast time" (RouteLayer slider); "Vorhersagestunde" | "Vorhersagestunden" is live text in `planner.departureSafetyContext` (dict.de.ts ~:302) |
 | Zeitleiste, Ebenen und Zeichenerklärung / Timeline, layers and key | "Legende"/"Legend" | 1 non-exact `getByText('Legende')` site (`compass.spec.ts:1446`, scoped to the controls); the `datalayers.spec.ts` sites pass `exact: true` |
 | Vorhersage aktualisieren / Update forecast | `banner.retry` "Erneut versuchen"; "Neu laden"/"Reload" | the global error banner can share the screen |
-| Wetter / Weather | — | EN "Weather" is a substring of the attribution link text (dict.en.ts ~:1346), so new specs use role-scoped `exact: true` |
+| Wetter / Weather | — | EN "Weather" is a substring of the map attribution link (`components/MapView.tsx`'s Open-Meteo `<a>`), and "Weather"/"Wetter" both occur in `about.sources.openMeteo`, so new specs use role-scoped `exact: true` |
 | Als Abfahrt übernehmen / Jetzt als Abfahrt | `getByLabel('Abfahrt')` (7 sites) | button text is not a label; no `aria-label` is set |
 | Als Start / Als Ziel | `getByRole('region', { name: 'Start' / 'Ziel' })` in several e2e specs | different role; the popup exists only on Wetter |
 | Tiefen zeigen; "Wassertiefen ausgeblendet …" | checkbox "Wassertiefen" | different role; no `getByText('Wassertiefen')` site in `app/e2e` at `7a08b939` |
@@ -325,7 +325,7 @@ harbourForecast store ◀── App onHarborPick (Wetter only) ──▶ WaveLay
 
 - **Placement.** The tabpanel (`.app-panel` in `.app-bottom-sheet`) is outside `<MapView>` (`App.tsx` ~:1697–1825), where `useMapInstance()` is null. ConditionsPanel therefore mounts inside MapView and portals into a Wetter slot, as `SeamarksInView` does into `seamarksSlot` (~:1821).
 - **Fetch and cache.** Reuses `services/openMeteo.ts:fetchWindGrid`/`fetchWaveGrid` (~:375/:458) and their `createGridCache` (~:334): 10-minute TTL, in-flight dedupe, a deep clone per read. Reads `?windFixture=`/`?waveFixture=` exactly as `usePlanFlow.ts` does (~:414); a wind fixture without a wave fixture means no waves. Waves are fetched only after wind resolves (`usePlanFlow.ts` ~:443–454). Held grids live only in the hook's state, for the session.
-- **No backend; no CSP change.** `vite.config.ts`'s `connect-src` (~:163) already lists `https://api.open-meteo.com` and `https://marine-api.open-meteo.com`.
+- **No backend; no CSP change.** `app/vite.config.ts`'s `connect-src` (~:163) already lists `https://api.open-meteo.com` and `https://marine-api.open-meteo.com`.
 
 **PR A (land tint; plan mode first; ships alone):**
 - `lib/waveMap.ts`: adds `seaStateRasterIndex`, `paintSeaState`, `nearestWaveCell` and arrow/dot marker features; removes the cell-polygon builder and `WAVE_EDGE_*`.
@@ -333,7 +333,7 @@ harbourForecast store ◀── App onHarborPick (Wetter only) ──▶ WaveLay
 - `lib/windBarbs.ts` (halo, 36 px canvas) and `components/RouteLegend.tsx` (two legend lines).
 - `app.css`: the popup close-button rule.
 - `changelog.d/1854.changed.md`, ending "(#1854).".
-- Tests that pin the edge or fill layers or the barb canvas ops: `WaveLayer.test.tsx`, `RouteLayer.test.tsx`, `layerOrder.test.tsx`, `App.test.tsx`, `lib/windBarbs.test.ts`, `e2e/waves.spec.ts`.
+- Tests that pin the edge or fill layers, the cell-polygon builder or the barb canvas ops: `lib/waveMap.test.ts` (`waveFeaturesAt`), `WaveLayer.test.tsx`, `RouteLayer.test.tsx`, `layerOrder.test.tsx`, `App.test.tsx`, `lib/windBarbs.test.ts`, `app/e2e/waves.spec.ts`.
 
 **PR B (the tab):**
 - New: `state/conditionsHour.ts`; `state/harbourForecast.ts`; `state/useAreaForecast.ts`; `state/windErrorKey.ts` (`mapWindError` hoisted; `usePlanFlow.ts` imports it); `lib/beaufort.ts` (`beaufortForce` hoisted from `DepartureCompare.tsx` ~:37); `lib/areaForecast.ts` (place readout, Revier and viewport scopes, hourly summaries, strip columns, speed-weighted circular mean, "variable" below a resultant of 0.5); `components/ConditionsPanel.tsx` (scrubber, day strip, key); `components/SeaStateLegend.tsx`; `components/WindBarbKey.tsx`.
@@ -346,7 +346,7 @@ harbourForecast store ◀── App onHarborPick (Wetter only) ──▶ WaveLay
   - `DepartureCompare.tsx`; `lib/plan.ts` (export `STALE_THRESHOLD_MS`); `lib/format.ts` (`formatCompassPoint`, `formatAgeShort`, `formatDayShort`).
   - `app.css`: token-only `.conditions-*` rules, `.chip.conditions-status`, the sticky hour row, the slider rule, the tab padding and container query; no z-index.
   - Both dicts and `changelog.d/1854.added.md`.
-- **Not touched:** `types.ts`, `lib/wind.ts` and `lib/mask.ts`, all IN the #282 sweep closure; new code only builds `NavMask` views over the cached buffer. Also `services/openMeteo.ts`, `services/db.ts`, `sw.ts`, `routing/**`. The files listed above that exist at `7a08b939` are NOT_IN_CLOSURE (`closure.mjs files` at `7a08b939`), so NOT OWED is expected. Confirm that with `closure.mjs diff <merge-base> <head>` before merging. `offline-pwa-reviewer` is not needed.
+- **Not touched:** `types.ts`, `lib/wind.ts` and `lib/mask.ts`, all IN the #282 sweep closure; new code only builds `NavMask` views over the cached buffer. Also `services/openMeteo.ts`, `services/db.ts`, `sw.ts`, `routing/**`. The files listed above that exist at `7a08b939` are NOT_IN_CLOSURE (`closure.mjs files` at `7a08b939`), so NOT OWED is expected. Confirm that with `closure.mjs diff <merge-base> <head>` before merging.
 
 ## 11. Handoff to planning
 
@@ -390,7 +390,7 @@ Cut order if time runs short: "Revier zeigen" first, then the sparkline (the rib
 
 ## 14. Test plan
 
-**Guard prerequisite.** `test/setup.ts` stubs `getContext` to null for every jsdom test, so the sea-state canvas source and the depth layers are never created there. Any test asserting them, their sources or their visibility (AC-7, AC-17, the WaveLayer, RouteLayer, DataLayers and App tests) installs `layerOrder.test.tsx`'s size-discriminated `getContext` fake, imported per file. It is never registered in `setup.ts`: `vitest.config.ts` → `setup.ts` is in the sweep closure's `EXTRA_EDGES`, so that would make the #282 sweep owed.
+**Guard prerequisite.** `test/setup.ts` stubs `getContext` to null for every jsdom test, so the sea-state canvas source and the depth layers are never created there. Any test asserting them, their sources or their visibility (AC-7, AC-17, the WaveLayer, RouteLayer, DataLayers and App tests) installs, per file, a size-discriminated `getContext` fake like `layerOrder.test.tsx`'s, keyed to that file's own fixture width. It is never registered in `setup.ts`: `app/sweep/vitest.config.ts` → `setup.ts` is in the sweep closure's `EXTRA_EDGES`, so that would make the #282 sweep owed.
 
 **Unit, PR A:**
 - The raster index partition equals today's ±0.05° rectangles minus land pixels. Positive control: a coastal water point whose rectangle covers land maps those land pixels to "none".
@@ -404,7 +404,7 @@ Cut order if time runs short: "Revier zeigen" first, then the sparkline (the rib
 - `areaForecast`: the place readout over every `harbors.json` entry (AC-16); Revier and viewport scopes; min/max, gust, circular mean and "variable"; no data never counted as calm; 3-hourly columns without past or beyond-horizon hours; the nearest-point fallback; the marker placement rule (AC-4). Also the store's seed rule.
 - ConditionsPanel renders every state; the clock tick with fake timers (AC-8), including that the age text is outside the polite region; focus never moves on load. Any ref written in a cleanup is also set in setup, and the test renders under `<StrictMode>`.
 - Handoff: the `Date.now()` rounding at press time; pointer versus keyboard focus targets; the offline note.
-- RouteLayer override (barbs from `forecast.wind` with `legs = []`, Disclosure absent, one WaveLayer, Wetter route styling and hidden labels, rAF-coalesced barb rebuilds); DataLayers `conditionsActive` and `suppressDepth`; the harbour tap on Wetter leaves Start and Ziel unchanged; `sessionSnapshot` writes `'conditions'` as `'plan'`; App.test's #704 tests (~:929, ~:960) updated to five tabs; dict and placeholder parity.
+- RouteLayer override (barbs from `forecast.wind` with `legs = []`, Disclosure absent, one WaveLayer, Wetter route styling and hidden labels, rAF-coalesced barb rebuilds); DataLayers `conditionsActive` and `suppressDepth`; the harbour tap on Wetter leaves Start and Ziel unchanged; `sessionSnapshot` writes `'conditions'` as `'plan'`; App.test's #704 arrow-key test (~:929) updated to five tabs; dict and placeholder parity.
 
 **e2e:**
 - New `conditions.spec.ts` with `?windFixture=` and `?waveFixture=`, over the `STANDARD_VIEWPORTS` entries ≥820 (desktop4k, desktopHd, tabletLandscape, tabletPortrait), in both themes via `emulateMedia`. It covers:
@@ -421,7 +421,6 @@ Cut order if time runs short: "Revier zeigen" first, then the sparkline (the rib
 ## 15. Considered and rejected
 
 - **D1 forecast dock (map-mode chip plus a bottom dock).**
-  - At 820x1180 it leaves about 342 px of map.
   - It adds a Tier-2 participant to three same-tier height budgets plus ScaleBar's occluder set.
   - An always-visible chip changes every spec's start state.
 - **D2 card at the top of Planen, with hour = departure.** Browsing rewrites a routing input and dirties a loaded plan. It also pushes Start and Ziel under the sticky "Route planen" bar at 820.
@@ -431,7 +430,7 @@ Cut order if time runs short: "Revier zeigen" first, then the sparkline (the rib
 - **A disabled handoff for the current hour.** "Can I leave now?" is the on-deck question, and a disabled button gives no feedback on touch. "Jetzt als Abfahrt" replaces it.
 - **The copy "kein Seegang" / "no sea state".** It reads as calm water, and the usual cause is the location, not the hour.
 - **Keeping depth shading under sea state on Wetter.** The composited hues match neither legend.
-- **An on-map hour label in `.route-layer-controls`.** The container is not rendered on Wetter; the sticky hour row is the clock.
+- **An on-map hour label in `.route-layer-controls`.** On Wetter the container renders only for ViaMarkers' status chip; the sticky hour row is the clock.
 - **Numeric wind labels on the map (this round).** A new symbol layer would join the collision index beside #378's annotation layers; revisit after the daylight check.
 - **The two Wetter toggles as header chips, or in Anzeigeoptionen.** The header row has no width for them at 820 beside the status chip and update button (estimate), and new rows in Anzeigeoptionen hit the depth-legend budget. They stay in the Disclosure, which is open on wide.
 - **A "Hier (GPS)" line.** It adds a row to the narrow budget, and a fix exists only while `showOwnship` or Live tracking runs.
@@ -441,13 +440,13 @@ Cut order if time runs short: "Revier zeigen" first, then the sparkline (the rib
 - **A separate ConditionsLayer with its own barb source.** That means two owners of the same layers and shared source ids. RouteLayer already owns barbs and WaveLayer.
 - **Hour in App state.** Every tick would re-render the whole App tree.
 - **Linear raster resampling.** It produces colours between bands that the legend does not list when the raster is magnified; `nearest` avoids that only under magnification (§5).
-- **In-canvas cell outlines.** They are sub-pixel at z8 and 4–16 px thick at z10–12.
+- **In-canvas cell outlines.** They are drawn in raster pixels, so their on-screen width follows the raster's magnification: thin at overview zoom, thick when zoomed in.
 - **Bilinear Hs, or borrowing a neighbour's value into fjords.** Either invents data; land-point behaviour is unverified (spec §0). The place readout's labelled model point shades nothing.
 - **Masking with the basemap's land layers.** Ordering is fragile, and the coastline differs from the nav mask.
 - **A wind colour field.** A second colour scale would collide with the sea-state ramp, and the Okabe-Ito lock keeps barbs ink.
 - **A viewport range as the only readout.** It moves with pan and gives no value at the harbour; the place lines are primary instead.
 - **A horizontally scrolling or wrapping strip.** Scrolling hides columns and a 4×2 wrap breaks the timeline; narrow strips become a list instead.
-- **Persisting the area forecast to IndexedDB or the service worker.** Spec §0 and CLAUDE.md say the SW never caches Open-Meteo, and a `DB_VERSION` bump breaks production through the shared `/uat/` origin.
+- **Persisting the area forecast to IndexedDB or the service worker.** CLAUDE.md says the SW never caches Open-Meteo, and spec §0 says a DB version bump breaks production for anyone who opens `/uat/`.
 - **Auto-fitting the camera on tab entry.** At 820 the maxBounds floor (z7.97) and the sheet prevent a whole-area fit, and moving the camera unasked is a surprise.
 - **"Vorhersage" as the tab name; reusing "Vorhersagezeitpunkt" or `banner.retry`.** Substring and same-screen collisions (§9).
 - **A dark or night basemap.** Settled ruling, never proposed.
