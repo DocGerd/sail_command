@@ -16,9 +16,10 @@ interface Step {
 }
 
 /**
- * #1842: each covered step must keep its own clearance along the part of the
- * merged chord that replaces it. The chord is split by the steps' cumulative
- * length fraction; lerping in lat/lon is linear in the mask's grid space.
+ * #1842: each covered step must keep its own clearance, capped at the comfort
+ * depth, along the part of the merged chord that replaces it. The chord is
+ * split by the steps' cumulative length fraction; lerping in lat/lon is linear
+ * in the mask's grid space.
  */
 function chordKeepsStepClearances(
   start: LatLon,
@@ -26,6 +27,7 @@ function chordKeepsStepClearances(
   steps: readonly Step[],
   mask: NavMask,
   gate: DepthGate,
+  comfortDepthM: number,
 ): boolean {
   const totalNm = steps.reduce((sum, s) => sum + s.distanceNm, 0);
   if (!(totalNm > 0)) return true;
@@ -43,7 +45,7 @@ function chordKeepsStepClearances(
     const from = at(doneNm / totalNm);
     doneNm += s.distanceNm;
     const part = mask.segmentClearanceM(from, at(doneNm / totalNm), gate);
-    if (part === null || part < s.clearanceM) return false;
+    if (part === null || part < Math.min(s.clearanceM, comfortDepthM)) return false;
   }
   return true;
 }
@@ -92,7 +94,8 @@ function tryMerge(
     // #1842: `a` may already be a merge, so the check above lets one shallow
     // step anywhere in it lower the bar for the whole chord. This conjoined
     // check is local to each original step; it can only reject more merges.
-    if (!chordKeepsStepClearances(a.start, b.end, [...aSteps, ...bSteps], mask, gate)) return null;
+    const steps = [...aSteps, ...bSteps];
+    if (!chordKeepsStepClearances(a.start, b.end, steps, mask, gate, comfortDepthM)) return null;
   }
   const headingDeg = initialBearingDeg(a.start, b.end);
   if (a.kind === 'sail') {
@@ -131,6 +134,7 @@ export function mergeCollinearLegs(
       start: leg.start,
       end: leg.end,
       distanceNm: haversineNm(leg.start, leg.end),
+      // A non-gate-valid step (unreachable for solver legs) gets Infinity and so refuses every merge it is in; the opposite of `?? Infinity` in tryMerge.
       clearanceM:
         comfortDepthM === undefined
           ? Infinity
