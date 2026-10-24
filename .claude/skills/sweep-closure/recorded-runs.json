@@ -186,7 +186,7 @@
         "salona44-relaxation": "e738b8b81cee34c6",
         "short-horizon": "67629a697d3521eb"
       },
-      "note": "PR #1838 (#1754) HEAD, unsharded; recorded late, in the v0.60.0 cycle. PR #1863's BASE at 7a08b939, sharded 2x2 on 2026-10-24, matched it 12/12 (closure.mjs diff 517fe0e 7a08b939 = NOT OWED)"
+      "note": "PR #1838 (#1754) head at its sweep (later commits touch only a test and the fragment), unsharded; recorded late, in the v0.60.0 cycle. PR #1863's BASE at 7a08b939, sharded 2x2 on 2026-10-24, matched it 12/12 (closure.mjs diff 517fe0e 7a08b939 = NOT OWED)"
     },
     {
       "sha": "943951a4e4f82350b00c8ebfd2dcd55fdcb7c0b0",

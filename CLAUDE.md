@@ -273,9 +273,10 @@ making design-level decisions; do not silently deviate.
   RUN `closure.mjs closure` FOR THE MEMBER LIST: it prints the import-walk
   members and names the `PATH_PREFIXES` without expanding them, while
   `closure.mjs files <path>…` classifies the paths it is given. #944 (read a
-  purely additive export as NOT OWED) was deferred after three review rounds each found a
-  fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}` then `(`);
-  its deferral comment recommends a real parser; `app/src/test/libTypesImportLayering.test.ts`
+  purely additive export as NOT OWED) was deferred after three review rounds
+  each found a fail-open in its hand-rolled lexer (ASI, `\r`/U+2028/U+2029, `}`
+  then `(`); its deferral comment recommends a real parser;
+  `app/src/test/libTypesImportLayering.test.ts`
   (#1602) adopted `ts.createSourceFile`, the first in-repo use, after its own
   hand-rolled stripper failed open on a regex literal. The closure is wider than the
   obvious routing/mask/sweep/pipeline paths: it reaches the boat catalogue and
@@ -509,10 +510,10 @@ making design-level decisions; do not silently deviate.
   docs-only classifier and must not be described as one. Read the cost
   figures off #877, never off this sentence.
   **A green `app`/`e2e` on a `develop` tip can have executed nothing**: the
-  retest check counts a docs-only-skipped PR run as already tested (push run
-  40012634007, 2026-10-23). To ask whether `develop` is green, find the
-  latest run whose `npm run test`/`npm run e2e` STEPS ran, on any branch,
-  and diff its head against the tip.
+  retest check (`classify-retest.sh` at `85fe7dde`) counts a docs-only-skipped
+  PR run as already tested (push run 40012634007, 2026-10-23). To ask whether
+  `develop` is green, find the latest run whose `npm run test`/`npm run e2e`
+  STEPS ran, on any branch, and diff its head against the tip.
   **CodeQL has run on every PR to `main`/`develop` since PR #1701 (#72)
   removed `codeql.yml`'s pull-request `paths:` filter**, so "docs-only" now
   has one sense: `classify-docs-only.sh`'s.
@@ -629,11 +630,11 @@ making design-level decisions; do not silently deviate.
   with nothing here to catch it; `codeql.yml`'s own comment says the same).
   CodeQL is
   NOT a required check, so alerts accumulate
-  silently — triage the post-merge push run. Its inline PR findings are
-  review threads, though, and `protect-main`'s thread-resolution rule counts
-  them: PR #1872, every check green, got 405 "A conversation must be
-  resolved" until both CodeQL threads were fixed and resolved. Dismissal comments are
-  capped at **280 chars**, so a dismissal must point at a linked evidence record (#600).
+  silently — triage the post-merge push run. Its inline PR findings are review
+  threads, though, and `protect-main`'s thread-resolution rule counts them: PR
+  #1872, every check green, got 405 "A conversation must be resolved" until
+  both CodeQL threads were fixed and resolved. Dismissal comments are capped at
+  **280 chars**, so a dismissal must point at a linked evidence record (#600).
   Moving the flagged code closes the dismissed alert as fixed and opens a NEW
   one under a new number (#13 -> #52, #15 -> #51 after #1793): re-dismiss
   citing the original.
@@ -811,8 +812,9 @@ making design-level decisions; do not silently deviate.
   the id unchanged. Use ``key={`${plan.id}-${plan.createdAtMs}`}``. A
   fresh-mount test passes with either bug live; only a TRANSITION test sees them.
   An EFFECT keyed on `plan.id` has the same gap: recalculate-replace and
-  departure-compare confirm both keep the id, so it re-runs on neither
-  (#1761, fixed in PR #1858 with a `[plan]`-keyed effect).
+  departure-compare confirm both keep the id, so it re-runs on neither (#1761,
+  fixed in PR #1858 with a `[plan]`-keyed effect gated on an object-identity
+  `freshResultRef`).
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -861,14 +863,15 @@ making design-level decisions; do not silently deviate.
   "style present"; a mid-session mount deferring on it via `once('load')`
   alone strands forever (#159). The fake's `addLayer` DROPS layers on a
   truthy-but-missing `beforeId` like real MapLibre — keep it strict (#163).
-  `addImage` re-enters `setup` synchronously through `styledata`; read
-  `styleReload.ts`'s header for the guard shapes that survive it. The fake
-  models that since #1840, pinned by `fakeMaplibre.test.ts`.
+  `addImage` re-enters `setup` synchronously through `styledata` (maplibre-gl
+  6.14.0); read `styleReload.ts`'s header for the guard shapes that survive it.
+  The fake models that since #1840, pinned by `fakeMaplibre.test.ts`.
 - Cross-component layer z-order is anchored by an explicit `beforeId`, never
-  by setup timing (#160). `layerOrder.test.tsx` pins the DataLayers,
-  AisLayer, WaveLayer and SavedWaypointsLayer order across every mount order
-  and a style reload, with a stand-in for the route stack's bottom layer; a
-  new layer component is unguarded until it gets rows there.
+  by setup timing (#160). `layerOrder.test.tsx` pins DataLayers, AisLayer
+  and WaveLayer across every mount order, with and without a route-stack
+  stand-in, and after a style reload; SavedWaypointsLayer only against
+  WaveLayer, in two orders. A new layer component is unguarded until it gets
+  rows there.
 - Map-chrome stacking is a DECLARED tier order, written out in full above
   `.app-header` in `app/src/app.css` (#208): shell chrome (`.app-header`,
   `.banner-area`, `.app-tabs`) `z-index: 3` > map chrome (`.map-stack-tl`,
@@ -984,7 +987,8 @@ making design-level decisions; do not silently deviate.
 - `maxPitch: 0` is set at Map construction in `MapView.tsx`, pinned by
   `MapView.mount.test.tsx`'s `#207` test (the constructor option, not
   behaviour). Pitch is deliberately unreachable; don't re-enable it without
-  re-auditing for terrain/sky/3D layers and pitch readers.
+  re-auditing for terrain/sky/3D layers and pitch readers. The
+  setMaxPitch/setPitch reasoning is in `MapView.tsx`'s #207 comment.
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
   idempotent consumers (RouteLayer's `setFilter`); any network/subscription
   effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
@@ -1122,13 +1126,16 @@ making design-level decisions; do not silently deviate.
   Re-derived against `maplibre-gl@6.7.0`, 2026-09-08 — `_currentPlacementIndex`
   init at `:80`, decrements at `:124`, unmoved since 6.5.0.
 - `icon-allow-overlap` stops a layer being culled; `*-ignore-placement` stops
-  it blocking OTHERS and also stops its own labels de-conflicting with each
-  other, so `text-allow-overlap: false` then tests nothing (#1006).
-  `text-padding` is the text-layer collision lever. Culled labels can be
-  caused by ANOTHER layer's boxes: at #378 the wind barbs culled the ETA/speed
-  labels. The per-site choices are pinned by `RouteLayer.test.tsx`
-  (`sc-wind-barbs`), `SavedWaypointsLayer.test.tsx` (labels) and
-  `AisLayer.test.tsx` (vessels); a new symbol layer is unguarded.
+  it blocking OTHERS. `text-ignore-placement` also stops a layer's labels
+  de-conflicting with each other, so its `text-allow-overlap: false` then
+  tests nothing (#1006). `text-padding` is the text-layer collision lever.
+  Culled labels can be caused by ANOTHER layer's boxes: at #378 the wind
+  barbs culled the ETA/speed labels. Pinned per site by `RouteLayer.test.tsx`
+  (`sc-wind-barbs`), `WaveLayer.test.tsx` (arrows),
+  `SavedWaypointsLayer.test.tsx` (labels) and `AisLayer.test.tsx` (vessels).
+  Unpinned: seamarks' zoom-stepped `icon-ignore-placement` (#1126),
+  DataLayers' contour labels and `sc-maneuver-labels`; a new symbol layer is
+  unguarded too.
 - **#378 route annotation layers** (`RouteLayer.tsx`): `RouteLayer.test.tsx`'s
   `#378` describe pins a zoom-interpolated `text-size` on the ETA/speed
   layers and the ETA layers' `text-variable-anchor` + `text-radial-offset`
@@ -1136,8 +1143,8 @@ making design-level decisions; do not silently deviate.
   the stops: keep `text-size` growth gated to z12+, because the collision
   box scales with it and culls more labels. `text-padding: 1` and
   `sc-leg-speed`'s `line-center` placement are unpinned, with their reasons
-  in `RouteLayer.tsx`'s comments; so is `sc-maneuver-labels`' overlap
-  exemption.
+  in `RouteLayer.tsx`'s comments. `sc-maneuver-labels`' overlap exemption is
+  unpinned and uncommented.
 
 ## PWA / E2E / deploy
 
@@ -1939,9 +1946,9 @@ making design-level decisions; do not silently deviate.
   `securitypolicyviolation`; jsdom enforces no CSP and planning specs use
   `?windFixture=`. Over a bare page load it fails on any non-`example.com`
   violation (keep that whole-lifetime form, never a per-origin allowlist)
-  and unless both `example.com` probes violate `connect-src`. It cannot see
-  a loosened directive other than `connect-src`, or anything after
-  startup.
+  and unless both `example.com` probes violate `connect-src`. It sees a
+  loosened `connect-src` only if it admits `example.com`, no other loosened
+  directive, and nothing after startup.
 
 ## Release & branching
 
@@ -2368,13 +2375,13 @@ making design-level decisions; do not silently deviate.
   `width: 14rem` and `max-width: none`. The trade-off is measured and
   deliberately accepted in that commit's own comment (20rem rejected as map
   occlusion). Don't re-investigate it at the next ship gate.
-- **Headless Chromium paints a ghost band of the sticky `.planner-actions`
-  bar across the top of the map in narrow (820x1180) plan-tab screenshots.**
-  It is a capture artifact: it appears in headless-shell screenshots of both
-  prod v0.57.0 and UAT, disappears when `.planner-actions` is hidden, and is
-  absent headed (v0.58.0 gate). That licenses skipping it at a ship gate,
-  not closing #1557, whose close condition is a real-tablet check (its
-  2026-10-23 comment).
+- **Headless Chromium paints a ghost band of the sticky `.planner-actions` bar
+  across the top of the map in narrow (820x1180) plan-tab screenshots.** At the
+  v0.58.0 gate it read as a capture artifact: it appears in headless-shell
+  screenshots of both prod v0.57.0 and UAT, disappears when `.planner-actions`
+  is hidden, and is absent headed (v0.58.0 gate). That licenses skipping it at
+  a ship gate, not closing #1557, whose close condition is a real-tablet check
+  (its 2026-10-23 comment).
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
@@ -3740,11 +3747,11 @@ making design-level decisions; do not silently deviate.
   heights in one flow is deliberate — the first is the `newPage` viewport and
   only the other two are `setViewportSize`; do not collapse them.
   Hero CLIPPING is now pinned by a GUARD, not by this prose: #1088's
-  `assertFitsViewport()` (`capture.mjs:246`, called at both hero sites)
-  THROWS the exact pixel shortfall instead of emitting a clipped PNG.
-  Raising a constant to silence a throw is the wrong fix. First exercised
+  `assertFitsViewport()` (called at the start-view and boat-selection captures)
+  THROWS the exact pixel shortfall instead of emitting a clipped PNG. Raising a
+  constant to silence a throw is the wrong fix. First exercised
   at the v0.28.0 cut and passed. Since #1846 `capture.mjs` also throws
-  unless the hero's sea-state toggle is enabled, checked and carries no
+  unless `plan-route.png`'s sea-state toggle is enabled, checked and carries no
   unavailable note, so a capture without `?waveFixture=` reds the advisory
   `capture` job. What these guards do NOT cover stays
   human judgement: whether the capture REPRESENTS the product
@@ -4130,10 +4137,12 @@ making design-level decisions; do not silently deviate.
   `npm --prefix pipeline run polars`; never hand-edit the shipped assets.
   **Edit `polars-source.json` with `sed -i` via Bash, NOT Edit/Write** — the
   PostToolUse prettier hook (Working style, below) matches `Edit|Write` on
-  `*.json` with only `*package-lock.json` excluded, and the root
-  `.prettierignore` lists only `pipeline/orc-sources/`, so it reformatted
-  this file 287 -> 343 lines (measured 2026-08-24), churning the Salona 45 block exactly as `pipeline/README.md`
-  warns. Bash carries no `file_path`, so the hook never fires.
+  `*.json` with only `*package-lock.json` excluded, and no ignore file covered
+  it, so it reformatted this file 287 -> 343 lines (measured 2026-08-24; at
+  `85fe7dde` the root `.prettierignore`, added 2026-10-15, lists only
+  `pipeline/orc-sources/`), churning the Salona 45 block exactly as
+  `pipeline/README.md` warns. Bash carries no `file_path`, so the hook never
+  fires.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -4388,8 +4397,9 @@ making design-level decisions; do not silently deviate.
   `ok` final result only, since that path calls the synchronous
   `planWithHarborHandover`, which returns only the final `PlanResult`;
   `usePlanFlow.ts` logs stage changes and each wind, start-up or save failure
-  that shows a banner (a save that times out and then fails logs only its
-  timeout warn and the stage line, #1871); a wind failure answered from the stored grid logs
+  that shows a banner (at `85fe7dde` a save that times out and then fails
+  logs no failure line, only its timeout warn and a stage line per banner,
+  #1871); a wind failure answered from the stored grid logs
   nothing.
   Never per ring, node, GPS fix or frame. STILL TRUE and load-bearing: every
   `routing/` production file except `protocol.ts` and `workerClient.ts` calls
@@ -4414,7 +4424,8 @@ making design-level decisions; do not silently deviate.
   line: this is a place the fix WORKED.
   At `85fe7dde` only `offline.spec.ts` failed on any `console.error`, and
   only in its offline-reload window (boot, session restore, saved-plan
-  load); grep `app/e2e` for `on('console'` before adding error-level output.
+  load, endpoint picking); grep `app/e2e` for `on('console'` before adding
+  error-level output.
 - **`mask.ts` :: `snapToNavigable` NEVER returns its input — always the cell
   CENTRE, on every path.** It has ONE point-returning statement, `return best ?
   best.p : null`, and `best.p` is only ever assigned `center`. Consequence, and
@@ -4880,13 +4891,13 @@ making design-level decisions; do not silently deviate.
   in the v0.59.0 cycle; an environment property, re-check after a harness
   change). Commit and push in small steps, re-run only a sweep's unfinished
   arms with `app/sweep/README.md`'s positional arm filter, and arm a
-  `send_later` check-in before any long wait. In the v0.60.0 cycle the
-  container booted fresh six times, killing every detached `setsid` process
-  each time. Both timed deaths came ~4.5 min after the last turn ended, one
-  with 3 GB of 16 GB in use; the cause is not established. A pending
-  `send_later` did not prevent one, a subagent's live `run_in_background`
-  task did not prevent the other, and the container once survived 60 idle
-  minutes while a main-session `run_in_background` waiter ran.
+  `send_later` check-in before any long wait. In the v0.60.0 cycle (Claude Code
+  2.1.309–2.1.310) the container booted fresh six times, killing every detached
+  `setsid` process each time. Both timed deaths came ~4.5 min after the last
+  turn ended, one with 3 GB of 16 GB in use; the cause is not established. A
+  pending `send_later` did not prevent one, a subagent's live
+  `run_in_background` task did not prevent the other, and the container once
+  survived 60 idle minutes while a main-session `run_in_background` waiter ran.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
@@ -5122,11 +5133,12 @@ making design-level decisions; do not silently deviate.
   string-level check cannot see — cwd + bare filename, variable or
   programmatic path construction, quote-splitting — enumerated in the hook's
   own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
-  current list. A workflow or background agent cannot answer that ask: a
-  Bash read the read-only exemptions do not clear (`git -C <dir> show …`,
+  current list. A workflow agent cannot answer the spec-path ask: a Bash
+  read the read-only exemptions do not clear (`git -C <dir> show …`,
   anything with `cd` or `$`) blocked agents for up to 224 min in the v0.60.0
-  cycle. Brief them to read specs with Read or Grep, which the hook does not
-  see (it matches only `Edit|Write` and `Bash`).
+  cycle (Claude Code 2.1.309–2.1.310). Brief them to read specs with Read or
+  Grep, which the hook does not see (at `85fe7dde` it matches only
+  `Edit|Write` and `Bash`).
   Personal opt-out: `SC_SPEC_GATE=advisory` in the hook's environment downgrades these spec asks to advisories, subagent spec writes included. A `.claude/settings.local.json` `env` entry reaches the hook from the next session start (measured 2026-10-15).
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
@@ -5151,15 +5163,14 @@ making design-level decisions; do not silently deviate.
   `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
   PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
   discover someone else's broken branch.
-  At `85fe7dde` (2026-10-24) nothing in CI ran prettier, so an unformatted
-  file merged silently (#1866 merged two). Prettier 3 run from the main checkout reads its `.gitignore`,
-  which ignores `.claude/worktrees`, so a worktree file is skipped: `--check`
-  reports everything formatted and `--write` changes nothing, both exiting 0.
-  Run it from the worktree root or pass `--ignore-path
-  <worktree>/.prettierignore`, prove a check with a misformatted control,
-  and never pipe it into `tail`, which hides the exit 2 of a path matching
-  no file. A file outside
-  `app/` gets prettier's defaults (double quotes, width 80), not
+  At `85fe7dde` (2026-10-24) nothing in CI ran prettier, so an unformatted file
+  merged silently (#1866 merged two). Prettier 3 run from the main checkout
+  reads its `.gitignore`, which ignores `.claude/worktrees`, so a worktree file
+  is skipped: `--check` reports everything formatted and `--write` changes
+  nothing, both exiting 0. Run it from the worktree root or pass `--ignore-path
+  <worktree>/.prettierignore`, prove a check with a misformatted control, and
+  never pipe it into `tail`, which hides the exit 2 of a path matching no file.
+  A file outside `app/` gets prettier's defaults (double quotes, width 80), not
   `app/.prettierrc.json`.
 - **A `gh api … -X PATCH` inside a `for` LOOP was denied by the auto-mode permission
   classifier while the IDENTICAL single call succeeded** (11 milestone assignments, observed
@@ -5180,11 +5191,11 @@ making design-level decisions; do not silently deviate.
   re-check after a harness change). The session runs as uid 0, so
   `changelogFragmentsFs.test.ts`'s mode-000 permission row fails here and is
   not a regression. `ss` and `netstat` are absent. The proxy refuses EMODnet,
-  so `npm --prefix pipeline run mask` cannot run here. Node 22's bare `fetch`
-  ignores `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1`; curl reaches
-  Open-Meteo. The full vitest suite does not finish in one 600 s Bash call:
-  run explicit file-list chunks and diff their union against `find app/src
-  -name '*.test.ts*'`.
+  so `npm --prefix pipeline run mask` cannot run here. Node 22.22.0's bare
+  `fetch` ignores `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1`; curl reaches
+  Open-Meteo. The full vitest suite does not finish in one 600 s Bash call: run
+  explicit file-list chunks and diff their union against `find app/src -name
+  '*.test.ts*'`; slow `src/routing` chunks still overrun and get backgrounded.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
