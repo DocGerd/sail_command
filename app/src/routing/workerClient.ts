@@ -2,6 +2,7 @@ import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { SolverInitRequest, WorkerRequest, WorkerResponse } from './protocol';
 import { BOATS, polarKey, type BoatId } from '../data/boats';
 import { windGridCoversBounds, type WindLatticeCoverageBounds } from '../lib/wind';
+import { planLog } from '../lib/planLog';
 
 type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number, secondPass: boolean) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
@@ -273,6 +274,8 @@ interface PendingEntry {
   onProgress?: ProgressCb;
   onProbe?: ProbeCb;
   timer: ReturnType<typeof setTimeout>;
+  // #1777: one-shot warn at half the worker's budget; absent when unbudgeted.
+  halfBudgetTimer?: ReturnType<typeof setTimeout>;
   // #1280 review Major 1: the ORIGINAL fixed deadline (plan start + this
   // call's own timeoutMs) — a re-arm may EXTEND past this, never resolve to
   // a moment before it. Without this floor, armLiveness()'s window-only form
@@ -437,6 +440,7 @@ export class RoutingClient {
     const entry = this.pending.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
+    clearTimeout(entry.halfBudgetTimer);
     this.pending.delete(id);
     this.clearProgress(id);
     run(entry);
@@ -482,6 +486,7 @@ export class RoutingClient {
     this.readyReject(err);
     for (const entry of this.pending.values()) {
       clearTimeout(entry.timer);
+      clearTimeout(entry.halfBudgetTimer);
       entry.reject(err);
     }
     this.pending.clear();
@@ -518,12 +523,81 @@ export class RoutingClient {
 
   // `timeoutMs` defaults to DEFAULT_PLAN_TIMEOUT_MS; overridable so tests
   // don't need to wait out (or fake-timer-advance) four real minutes.
+  //
+  // #1777: the console log lives HERE, around the solve, so every caller
+  // (planner, replan, reroute, departure compare) is covered once. Solve-level
+  // lines come from protocol.ts.
   async plan(
     request: PlanRequest,
     windGrid: WindGrid,
     onProgress?: ProgressCb,
     timeoutMs: number = DEFAULT_PLAN_TIMEOUT_MS,
     onProbe?: ProbeCb,
+  ): Promise<PlanResult> {
+    const id = crypto.randomUUID();
+    const startedAtMs = Date.now();
+    const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
+    planLog.info('plan start', {
+      planId: id,
+      boat: request.boat.id,
+      sails: request.sailIds,
+      // Harbour ids only: a non-harbour end (map tap, GPX import, or a
+      // reroute's GPS fix) may be the user's position, so no coordinates.
+      origin: request.originHarborId ?? 'point',
+      destination: request.destinationHarborId ?? 'point',
+      vias: request.viaPoints.length,
+      departure: Number.isFinite(request.departureMs)
+        ? new Date(request.departureMs).toISOString()
+        : 'invalid',
+      safetyDepthM: request.settings.safetyDepthM,
+      budgetMs: budgetMs > 0 ? budgetMs : null,
+    });
+    try {
+      const result = await this.planWithId(id, request, windGrid, onProgress, timeoutMs, onProbe);
+      const elapsedMs = Date.now() - startedAtMs;
+      if (result.status === 'ok') {
+        planLog.info('plan finished', {
+          planId: id,
+          status: 'ok',
+          recommended: result.recommended,
+          comparisonComplete: result.comparisonComplete,
+          elapsedMs,
+        });
+      } else {
+        planLog.warn('plan finished: no route', {
+          planId: id,
+          reason: result.reason,
+          elapsedMs,
+        });
+      }
+      return result;
+    } catch (err) {
+      const elapsedMs = Date.now() - startedAtMs;
+      if (err instanceof RoutingError && err.kind === 'cancelled') {
+        planLog.info('plan cancelled', { planId: id, elapsedMs });
+      } else {
+        planLog.error(
+          'plan failed',
+          {
+            planId: id,
+            // Typed discriminator only; never derived from the message text.
+            kind: err instanceof RoutingError ? err.kind : 'unclassified',
+            elapsedMs,
+          },
+          err,
+        );
+      }
+      throw err;
+    }
+  }
+
+  private async planWithId(
+    id: string,
+    request: PlanRequest,
+    windGrid: WindGrid,
+    onProgress: ProgressCb | undefined,
+    timeoutMs: number,
+    onProbe: ProbeCb | undefined,
   ): Promise<PlanResult> {
     // #1193 residual: a cancel() landing between this line and pending.set()
     // below sees nothing pending and no-ops. Unreachable today — by the time
@@ -550,7 +624,6 @@ export class RoutingClient {
         'stored wind grid does not cover the mask domain',
       );
     }
-    const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
       // A hung worker (message lost, or stuck past its own step budget)
       // otherwise leaves this promise — and the UI's "routing…" state —
@@ -623,6 +696,20 @@ export class RoutingClient {
       // absent — the same direction as the rest of the design, and the client
       // deadline still bounds the wait.
       const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
+      // #1777: a timer rather than a progress-message check, so a silent
+      // worker is flagged too. Cleared by settle()/failAll().
+      if (budgetMs > 0) {
+        const planStartedAtMs = Date.now();
+        entry.halfBudgetTimer = setTimeout(() => {
+          const solving = [...new Set([...entry.active.values()].map((r) => r.sailId))];
+          planLog.warn('plan past half its budget', {
+            planId: id,
+            elapsedMs: Date.now() - planStartedAtMs,
+            budgetMs,
+            ...(solving.length > 0 ? { solving } : {}),
+          });
+        }, budgetMs / 2);
+      }
       // #553 / spec §I.3: the boat resolved from `request.boat.id` above —
       // NEVER DEFAULT_BOAT_ID. `boatId` selects BOTH the polar tables
       // (`polarKeys`) and, through protocol.ts's `boatById(req.boatId)` ->

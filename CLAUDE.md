@@ -4436,14 +4436,31 @@ making design-level decisions; do not silently deviate.
   `dispose()`'s teardown rather than signalling the worker, and any future
   "ask it to stop" protocol is unimplementable without first making the solve
   loop yield.
-  STILL TRUE and load-bearing: `routing/`'s PRODUCTION files (its `.test.ts`
-  siblings excepted — some carry `console.*`) **and
-  `state/usePlanFlow.ts`** contain ZERO `console.*` calls, so an empty
-  console is DESIGNED behaviour,
-  not evidence nothing happened — never ask a reporter to check it.
-  `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
-  is the file a triager would expect to log. Measure that inventory with BOTH
-  `grep -rE 'console\.[a-z]+\('` (invocations) and
+  Planning logs to the console since #1777 (`lib/planLog.ts`, one
+  `[SailCommand]` prefix; info; warn at half the budget, for a no-route
+  result and for a save timeout; error): `workerClient.ts`'s
+  `plan()` logs start (boat, harbour ids or `point`, never coordinates), finish,
+  cancel, a no-route result and the typed `RoutingFailureKind` (`unclassified` otherwise), plus one warn
+  at half the worker budget (its `solving` list names pool-path rig solves in
+  flight only and is omitted when empty, as it always is on the single-worker
+  path);
+  `protocol.ts` logs one line per rig solve on the pool path (internal cause,
+  gate floor, elapsed ms) and, on the single-worker path, one line per sail of an
+  `ok` final result only, since that path calls the synchronous
+  `planWithHarborHandover`, which returns only the final `PlanResult`;
+  `usePlanFlow.ts` logs stage changes and each wind, start-up or save failure
+  that shows a banner; a wind failure answered from the stored grid logs
+  nothing.
+  Never per ring, node, GPS fix or frame. STILL TRUE and load-bearing: every
+  `routing/` production file except `protocol.ts` and `workerClient.ts` calls
+  neither `console.*` nor `planLog` (`planRoute.ts` and `isochrone.ts` are in
+  the #282 sweep closure), so the solver itself is silent by design.
+  Ask a reporter who has devtools for their `[SailCommand]` lines (the #435
+  spike, Q1, records an installed phone PWA as having "on iOS, effectively no
+  reachable devtools"); a quiet console says nothing about why a ring pruned.
+  Measure that inventory with BOTH
+  `grep -rE 'console\.[a-z]+\(|console\[|planLog\.[a-z]+\('` (invocations,
+  including `planLog.ts`'s own `console[level](...)`) and
   `grep -rE 'console\.[a-z]+[^(a-z]'` (bare refs
   like `.catch(console.error)` plus comment mentions) — `-E` is required (#1210): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
