@@ -229,10 +229,10 @@ data; the code license is covered in the [License](#license) section below.
   the destination" message.
 - Plans through Alssund pass under the Kong Christian X bascule bridge at
   Sønderborg. The app does not model the bridge's opening times
-  or closures. Only Sønderborg's approach note mentions them, and a plan
+  or closures. In the planner, only Sønderborg's approach note mentions them, and a plan
   that passes the bridge on the way to another harbour does not show it
   ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). Plans
-  leaving Sønderborg northward still go around Als
+  leaving Sønderborg northward can still go around Als
   ([#1879](https://github.com/DocGerd/sail_command/issues/1879)).
 - Seamarks are not a routing input. A route whose active rig passes closer
   than 300 m to a cardinal or isolated-danger mark is flagged in the results

@@ -35,23 +35,24 @@ spike's prose ([#1657](https://github.com/DocGerd/sail_command/issues/1657)) and
 changed no user-visible behaviour. On 2026-10-23, after the `v0.59.0` cut,
 multi-day trip records ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) moved on to `v0.61.0` and "leg N of M"
 planning progress ([#1775](https://github.com/DocGerd/sail_command/issues/1775)) and the MET Norway fallback ([#1713](https://github.com/DocGerd/sail_command/issues/1713)) went to
-`Backlog`; the GPS re-render measurement ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the on-water test protocol
+`Backlog`; on 2026-10-24 the forecast view ([#1854](https://github.com/DocGerd/sail_command/issues/1854)) moved on to `v0.61.0`; the GPS re-render measurement ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the on-water test protocol
 ([#1808](https://github.com/DocGerd/sail_command/issues/1808)), the `v0.59.0` walkthrough ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the `certifi` bump ([#1852](https://github.com/DocGerd/sail_command/issues/1852))
 rolled to `v0.61.0` at this cut.
 
 ## Next — v0.61.0
 
 The [`v0.61.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds ten open issues as of this cut. Five moved here from `v0.60.0`: multi-day trip
+holds ten open issues as of this cut. Six moved here from `v0.60.0`: multi-day trip
 records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)), the on-water Live test
 protocol for the first trip ([#1808](https://github.com/DocGerd/sail_command/issues/1808)), the CPU measurement of the per-second
 GPS re-render and GNSS-time timestamps ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the hands-on check of
-`v0.59.0` postponed from its cut ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the `certifi` bump for
-Dependabot alert 15 ([#1852](https://github.com/DocGerd/sail_command/issues/1852)). Two are features filed after the `v0.59.0` cut: a
-forecast view of wind and sea state before choosing a destination ([#1854](https://github.com/DocGerd/sail_command/issues/1854))
-and the area reachable from an origin within a trip duration ([#1855](https://github.com/DocGerd/sail_command/issues/1855)). Three
+`v0.59.0` postponed from its cut ([#1845](https://github.com/DocGerd/sail_command/issues/1845)), the `certifi` bump for
+Dependabot alert 15 ([#1852](https://github.com/DocGerd/sail_command/issues/1852)) and a forecast view of wind and sea state
+before choosing a destination ([#1854](https://github.com/DocGerd/sail_command/issues/1854)). One is a feature filed
+straight into it after the `v0.59.0` cut: the area reachable from an origin within a trip
+duration ([#1855](https://github.com/DocGerd/sail_command/issues/1855)). Three
 are follow-ups: four prose fixes left in the forecast-view spike ([#1873](https://github.com/DocGerd/sail_command/issues/1873)),
-plans leaving Sønderborg northward still going around Als ([#1879](https://github.com/DocGerd/sail_command/issues/1879)), and
+plans leaving Sønderborg northward that can still go around Als ([#1879](https://github.com/DocGerd/sail_command/issues/1879)), and
 removing the dated bridge closure from Sønderborg's approach note after
 18 December 2026 ([#1880](https://github.com/DocGerd/sail_command/issues/1880)). The milestone page is the only
 authoritative view, check it directly rather than this file.

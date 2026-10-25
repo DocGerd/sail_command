@@ -230,8 +230,6 @@ registered on the maintainer's GitHub account; see the `v0.8.1` CHANGELOG
 entry), and `git tag -v` reports a good signature for it regardless. Any
 reader can re-derive this rather than trust the list:
 `gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification`.
-`v0.59.0` was released from `main` before its signed tag was pushed, so it
-has no tag to verify yet ([#1848](https://github.com/DocGerd/sail_command/issues/1848)).
 So a user CAN independently verify that a tag corresponds to a commit the
 maintainer actually authored. That does not close the gap fully: signing covers the
 tagged *commit*, not the
@@ -239,7 +237,11 @@ tagged *commit*, not the
 GitHub Pages is still trusted to serve exactly what CI built from that
 commit, and a user has no independent way to check the bytes their browser
 received against the signature. `v0.1.0` through `v0.7.0` remain unsigned
-permanently (not retroactive). See [§7](#7-known-gaps-and-accepted-risk).
+permanently (not retroactive).
+A release can reach `main` before its signed tag is pushed, and has no tag to
+verify until it is; `v0.59.0` is one
+([#1848](https://github.com/DocGerd/sail_command/issues/1848)).
+See [§7](#7-known-gaps-and-accepted-risk).
 
 ### T6 — Local attacker with access to the device
 

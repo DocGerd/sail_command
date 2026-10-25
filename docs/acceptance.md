@@ -169,9 +169,10 @@ results table at the bottom, and note it in the box below the check.
       carrying that same sentence in place of the generic "No route found —
       the search could not find a way to the destination …" message (#834).
       Clear the destination again before continuing.
-- [ ] **Marina Minde in the harbour list (#1874).** Search "Minde": Marina
-      Minde (Egernsund, Flensburg Fjord) appears among the results, is
-      selectable, and carries no known-disconnected note.
+- [ ] **Marina Minde in the harbour list (#1874).** Search "Minde": the
+      option "Marina Minde" (at Egernsund, Flensburg Fjord) appears among
+      the results, is selectable, and carries no known-disconnected note.
+      Clear the selection again before continuing.
 - [ ] **Per-boat harbour access marker in search (#1291).** A different
       marker from the known-disconnected one above: it is per-BOAT and
       per-safety-depth, not a fact about the harbour alone, so it does not
@@ -590,17 +591,20 @@ apply here too, with the same expected outcomes.
       matches the expected outcome for the boat (see §2.5).
 - [ ] **3.5** Motor legs (if any) gray-dashed and listed.
 - [ ] **3.6** ETA plausible (~5–7 kn average).
-- [ ] **3.7 Through Alssund (#1875).** Use "Pick on map" ("Auf Karte
-      wählen") to set the origin on open water in Als Fjord (e.g. near
-      55.03 N 9.68 E) and pick Sønderborg as the destination. Expect the
-      route to run south through Alssund, under the Kong Christian X bridge,
-      rather than around Als (`realmask.repro.alssund.test.ts` pins this
-      for the Salona 45 at default settings in a uniform 12 kn westerly;
-      live wind differs, so note which way it went). Sønderborg's approach
+- [ ] **3.7 Through Alssund (#1875).** With the Salona 45 at default
+      settings, use "Pick on map" ("Auf Karte wählen") to set the origin on
+      open water in Als Fjord (e.g. near 55.03 N 9.68 E), keep Sønderborg as
+      the destination and press "Plan route" ("Route planen").
+      `realmask.repro.alssund.test.ts` pins a route south through Alssund,
+      under the Kong Christian X bridge, for that boat in a uniform 12 kn
+      westerly; live wind can still send it around Als, so note which way it
+      went rather than failing the check on that alone. Sønderborg's approach
       note under the destination names the bridge's announced closure from
-      2 November to 18 December 2026; the route itself ignores the bridge's
-      openings and closures, by design. Swapped, Sønderborg → Als Fjord
-      still goes around Als: that is
+      2 November to 18 December 2026; the route does not model the bridge's
+      openings or closures
+      ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). With
+      Sønderborg as origin and the Als Fjord point as destination the route
+      can still go around Als: that is
       [#1879](https://github.com/DocGerd/sail_command/issues/1879), not a
       new defect. About's depth caveat now says its tolerance bound does
       not hold on the Alssund cells whose depth comes from a published
