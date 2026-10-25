@@ -216,7 +216,7 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
-- As of v0.59.0, Live mode has not been tested on the water; the on-water test protocol
+- As of v0.60.0, Live mode has not been tested on the water; the on-water test protocol
   for the first trip is tracked in
   [#1808](https://github.com/DocGerd/sail_command/issues/1808).
 - Only a curated set of harbors is included; a handful of shallow/narrow
@@ -227,6 +227,13 @@ data; the code license is covered in the [License](#license) section below.
   destination, and a plan that fails as unreachable against one names that
   same limit in place of the generic "the search could not find a way to
   the destination" message.
+- Plans through Alssund pass under the Kong Christian X bascule bridge at
+  Sønderborg. The app does not model the bridge's opening times
+  or closures. In the planner, only Sønderborg's approach note mentions them, and a plan
+  that passes the bridge on the way to another harbour does not show it
+  ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). Plans
+  leaving Sønderborg northward can still go around Als
+  ([#1879](https://github.com/DocGerd/sail_command/issues/1879)).
 - Seamarks are not a routing input. A route whose active rig passes closer
   than 300 m to a cardinal or isolated-danger mark is flagged in the results
   panel — with a count when there is more than one — and nothing more: the
