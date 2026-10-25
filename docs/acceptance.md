@@ -170,9 +170,8 @@ results table at the bottom, and note it in the box below the check.
       the search could not find a way to the destination …" message (#834).
       Clear the destination again before continuing.
 - [ ] **Marina Minde in the harbour list (#1874).** Search "Minde": Marina
-      Minde (Egernsund, Flensburg Fjord) is listed and selectable. With the
-      Salona 45 at its default safety depth it carries neither the
-      known-disconnected note nor a per-boat access marker.
+      Minde (Egernsund, Flensburg Fjord) appears among the results, is
+      selectable, and carries no known-disconnected note.
 - [ ] **Per-boat harbour access marker in search (#1291).** A different
       marker from the known-disconnected one above: it is per-BOAT and
       per-safety-depth, not a fact about the harbour alone, so it does not
