@@ -593,7 +593,7 @@ apply here too, with the same expected outcomes.
 - [ ] **3.6** ETA plausible (~5–7 kn average).
 - [ ] **3.7 Through Alssund (#1875).** With the Salona 45 at default
       settings, use "Pick on map" ("Auf Karte wählen") to set the origin on
-      open water in Als Fjord (e.g. near 55.03 N 9.68 E), keep Sønderborg as
+      open water in Als Fjord (e.g. near 55.01 N 9.68 E), keep Sønderborg as
       the destination and press "Plan route" ("Route planen").
       `realmask.repro.alssund.test.ts` pins a route south through Alssund,
       under the Kong Christian X bridge, for that boat in a uniform 12 kn
