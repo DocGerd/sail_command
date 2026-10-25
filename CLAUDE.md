@@ -4013,14 +4013,15 @@ making design-level decisions; do not silently deviate.
   control the reviewer reproduced INDEPENDENTLY with their own
   reimplementation: 0 of 5,280,000 bytes differ.
 - **Charted-channel override (ADR-0003, #1875).**
-  `pipeline/charted-channels.json` raises, never lowers, a fairway's
-  centreline cells to a cited chart depth, only inside the source's extent; a centreline cell on OSM land fails the
-  build. At #1875 its one entry raised 29 Alssund cells at Sønderborg to
-  6.0 m; a second entry means revisiting ADR-0003 first. `depth_blend <=
-  depth_max + T` still holds there, but those cells ship the chart's depth,
-  so the floors below that rest on the shipped depth (#455's navigable-at-G
-  floor, #493's cautious floor, #539's per-boat floors) do not hold on them.
-  #1883 (filed 2026-10-25) lists code comments that stated them unscoped.
+  `pipeline/charted-channels.json` raises, never lowers, a fairway's centreline
+  cells to a cited chart depth, only inside the source's extent; a centreline
+  cell on OSM land fails the build. At #1875 its one entry raised 29 Alssund
+  cells at Sønderborg to 6.0 m; a second entry means revisiting ADR-0003 first.
+  `depth_blend <= depth_max + T` still holds there, but those cells ship the
+  chart's depth, so the floors below that rest on the shipped depth (#455's
+  navigable-at-G floor, #493's cautious floor, #539's per-boat floors) do not
+  hold on them. #1883 (filed 2026-10-25) lists code comments that stated them
+  unscoped.
 - **`TOLERANCE_M` = 0.9 is a STRUCTURAL bound, not a tuning knob** (#455, PR
   #476, `docs/spikes/455-depth-mask-optimism.md`). `build_mask.py` takes
   bilinear over the conservative `Resampling.max` only where they agree within
