@@ -174,6 +174,9 @@ map area is already saved and what downloading it would cost.
   data and is made available under the
   [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1.0/).
   © OpenStreetMap contributors.
+- **Charted fairway depth, Alssund at Sønderborg**: Geodatastyrelsen, Den
+  danske Havnelods (Sønderborg Havn plan, 05-10-2026), via
+  `pipeline/charted-channels.json` (#1875).
 - **Basemap rendering**: [Protomaps](https://protomaps.com/), an ODbL
   Produced Work derived from OpenStreetMap data. Map fonts (Noto Sans,
   [SIL OFL 1.1](app/public/basemap-assets/fonts/OFL.txt)) and sprites

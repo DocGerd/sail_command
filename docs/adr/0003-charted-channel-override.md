@@ -47,8 +47,8 @@ the plan's 6 m contour, read off the image; the entry records how.
   `Mask integrity` job, not a required check.
 - The mask does not model the bridge's opening times or closures.
 - Plans leaving Sønderborg northwards can still go around Als (#1879).
-- Sønderborg's approach note now states the bridge's announced closure; removing
-  that dated clause and a route-level bridge notice are #1880 and #1881.
+- Sønderborg's approach note now states the bridge's announced closure. #1880
+  removes that dated clause; #1881 is a route-level bridge notice.
 
 ## Considered and rejected
 
