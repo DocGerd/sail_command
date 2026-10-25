@@ -2333,6 +2333,10 @@ making design-level decisions; do not silently deviate.
   #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
   branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
   instead of six.
+- **Split a PR without a force-push** by opening a second PR from a new branch
+  at an earlier commit of the same branch; after it merges, the first PR's
+  diff shrinks to the rest once `develop` is merged into it (#1885 out of
+  #1878, 2026-10-25).
 - **Merging a PR whose branch is another open PR's BASE closed that stacked PR
   instead of retargeting it** — the repo has `delete_branch_on_merge` on, so
   the base branch goes with or without `--delete-branch` (#1567/#1568,
@@ -2463,8 +2467,10 @@ making design-level decisions; do not silently deviate.
   compared to a browser worker's budget.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
-  channels ≤30 m wide are the real barrier) — reconnecting them requires
-  fabricating depth; don't attempt without hi-res bathymetry. A finer grid
+  channels ≤30 m wide are the real barrier) — reconnecting them from the DTM
+  requires fabricating depth; don't attempt without hi-res bathymetry or a
+  cited chart depth under ADR-0003, whose second entry reopens that ADR first.
+  A finer grid
   is NOT that hi-res bathymetry and has been measured to make things worse
   — see the #245 rule under Domain rules.
 - Issue texts are not ground truth for states they don't describe: #31's
@@ -4005,6 +4011,13 @@ making design-level decisions; do not silently deviate.
   stays connected for any user who lowers the gate). Licensed by a fidelity
   control the reviewer reproduced INDEPENDENTLY with their own
   reimplementation: 0 of 5,280,000 bytes differ.
+- **Charted-channel override (ADR-0003, #1875).** `pipeline/charted-channels.json`
+  raises, never lowers, a fairway's centreline cells to a cited chart depth,
+  only inside the source's extent; a centreline cell on OSM land fails the
+  build. Its one entry raises 29 Alssund cells at Sønderborg to 6.0 m; a
+  second entry reopens ADR-0003. Every `TOLERANCE_M` and cautious-floor
+  statement below (#455, #493, #539) describes DTM-derived cells and does not
+  hold on those 29; code comments still stating it unscoped are #1883.
 - **`TOLERANCE_M` = 0.9 is a STRUCTURAL bound, not a tuning knob** (#455, PR
   #476, `docs/spikes/455-depth-mask-optimism.md`). `build_mask.py` takes
   bilinear over the conservative `Resampling.max` only where they agree within
@@ -4900,6 +4913,12 @@ making design-level decisions; do not silently deviate.
   pending `send_later` did not prevent one, a subagent's live
   `run_in_background` task did not prevent the other, and the container once
   survived 60 idle minutes while a main-session `run_in_background` waiter ran.
+  Files under `/tmp/claude-0` survived the 2026-10-25 09:37Z boot, earlier
+  sessions' scratchpads included. A stored run's merged arm JSONs that
+  hash-match a ledger entry can serve as the sweep BASE; `--harbour-superset`
+  needs those rows, and `closure.mjs reuse` gives only hashes. A driver making
+  one vitest call per (shard, arm) and skipping finished part files should lose
+  only in-flight slices to a restart; its resume path is untested.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
@@ -5192,12 +5211,25 @@ making design-level decisions; do not silently deviate.
 - **Cloud-container facts, measured 2026-10-23/24** (harness properties;
   re-check after a harness change). The session runs as uid 0, so
   `changelogFragmentsFs.test.ts`'s mode-000 permission row fails here and is
-  not a regression. `ss` and `netstat` are absent. The proxy refuses EMODnet,
-  so `npm --prefix pipeline run mask` cannot run here. Node 22.22.0's bare
+  not a regression. `ss` and `netstat` are absent. The proxy refuses hosts
+  outside the environment's Allowed domains. After the maintainer added
+  EMODnet, osmdata.openstreetmap.de, Nominatim and www.danskehavnelods.dk on
+  2026-10-24 they answered in the running session and `build_mask.py` ran;
+  Overpass and openstreetmap.org stayed refused. Node 22.22.0's bare
   `fetch` ignores `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1`; curl reaches
   Open-Meteo. The full vitest suite does not finish in one 600 s Bash call: run
   explicit file-list chunks and diff their union against `find app/src -name
   '*.test.ts*'`; slow `src/routing` chunks still overrun and get backgrounded.
+- **In a cloud session every GraphQL call 403s** ("GitHub GraphQL is not
+  available from Claude Code sessions", measured 2026-10-25), so `gh auth
+  status`, `gh pr view`/`checks`, `gh issue view`, `gh label list`, `gh
+  release list`, `gh repo view` and `resolve-threads.sh` fail while REST `gh
+  api` works. Use the routes the error names: `GET pulls/N/ccr/review_threads`
+  (rows carry `comment_ids`, no node id), `POST
+  pulls/N/ccr/comments/{id}/resolve` and `POST pulls/N/ccr/ready_for_review`;
+  merge with `PUT pulls/N/merge` pinning `sha` (all used on PRs #1878 and
+  #1885). `premerge-verify.sh` then asks on every merge: its `gh repo view`
+  403s.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
