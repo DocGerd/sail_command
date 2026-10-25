@@ -4012,9 +4012,9 @@ making design-level decisions; do not silently deviate.
   stays connected for any user who lowers the gate). Licensed by a fidelity
   control the reviewer reproduced INDEPENDENTLY with their own
   reimplementation: 0 of 5,280,000 bytes differ.
-- **Charted-channel override (ADR-0003, #1875).** `pipeline/charted-channels.json`
-  raises, never lowers, a fairway's centreline cells to a cited chart depth,
-  only inside the source's extent; a centreline cell on OSM land fails the
+- **Charted-channel override (ADR-0003, #1875).**
+  `pipeline/charted-channels.json` raises, never lowers, a fairway's
+  centreline cells to a cited chart depth, only inside the source's extent; a centreline cell on OSM land fails the
   build. At #1875 its one entry raised 29 Alssund cells at Sønderborg to
   6.0 m; a second entry means revisiting ADR-0003 first. `depth_blend <=
   depth_max + T` still holds there, but those cells ship the chart's depth,
