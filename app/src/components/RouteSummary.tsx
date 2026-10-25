@@ -471,9 +471,10 @@ function ShallowLegMarker({
           depth: formatDepthM(minDepthM, lang),
         })}
       </Chip>
-      {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
-          reading, derived from the SAME shipped figure the chip above
-          already shows — see cautiousDepthLowerBoundM's own doc comment
+      {/* #493/#504: sound lower bound (except the ADR-0003 charted cells) on
+          the mask's more cautious (conservative) reading, derived from the
+          SAME shipped figure the chip above already shows — see
+          cautiousDepthLowerBoundM's own doc comment
           (app/src/lib/mask.ts) for the derivation. Rendered alongside, never
           replacing, the shipped number: the two are meant to read
           differently, and the user must be able to tell them apart. Uses the

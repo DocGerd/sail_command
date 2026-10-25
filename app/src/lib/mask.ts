@@ -44,7 +44,9 @@ export const MASK_TOLERANCE_M = 0.9;
  * cannot be below. Directly from build_mask.py's blend rule: depth_blend <=
  * depth_max + MASK_TOLERANCE_M, so depth_max >= depth_blend -
  * MASK_TOLERANCE_M. Gate-independent — a property of the mask build, not of
- * any safety gate a user picks.
+ * any safety gate a user picks. Holds for every cell except those
+ * build_mask.py's charted-channel override raises (ADR-0003), whose depth is
+ * a cited chart figure.
  *
  * Floors to 0.1 m (never rounds), so the displayed figure can never read
  * deeper than this bound provably allows, and clamps at 0 (depth cannot be

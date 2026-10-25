@@ -40,8 +40,9 @@
  * BASIS OF EVERY NUMBER IT PRINTS. `shallowExposureNm(legs, mask, gate + T)`
  * asks "does the CAUTIOUS reading of the same EMODnet product fall below the
  * gate anywhere along this route" — because the mask is built so
- * `depth_blend <= depth_max + T`, so `depth_max >= shipped - T`, so
- * `shipped < gate + T` is exactly the set whose conservative lower bound can
+ * `depth_blend <= depth_max + T`, so `depth_max >= shipped - T` (except the
+ * ADR-0003 charted cells), so `shipped < gate + T` is exactly the set whose
+ * conservative lower bound can
  * sit under the gate. It is a bound BETWEEN TWO READINGS OF ONE SOURCE. It is
  * not chart truth and not a clearance: the real seabed may be shallower than
  * either reading.

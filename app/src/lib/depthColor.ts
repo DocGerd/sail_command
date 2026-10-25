@@ -600,8 +600,10 @@ export const HATCH_FALLBACK_BAND: HatchBand = hatchBandForZoom(HATCH_FALLBACK_ZO
  * BASIS, and why it is the CONSERVATIVE reading rather than the shipped
  * one: pipeline/build_mask.py blends bilinear over the conservative
  * Resampling.max reading only where the two agree within
- * mask.ts's MASK_TOLERANCE_M, so for every cell depth_blend <= depth_max +
- * MASK_TOLERANCE_M — run backwards, depth_max >= depth_blend -
+ * mask.ts's MASK_TOLERANCE_M, so for every cell except those
+ * build_mask.py's charted-channel override raises (ADR-0003), whose depth is
+ * a cited chart figure, depth_blend <= depth_max + MASK_TOLERANCE_M — run
+ * backwards, depth_max >= depth_blend -
  * MASK_TOLERANCE_M, a SOUND lower bound (mask.ts's own derivation for
  * cautiousDepthLowerBoundM; restated here because this is a second
  * consumer of the same inequality, not a new claim). Keying the hatch on
