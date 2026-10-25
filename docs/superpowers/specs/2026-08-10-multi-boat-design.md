@@ -110,6 +110,8 @@ navigable at gate G   ⟹   depth_max  ≥  depth_blend − T  ≥  G − T
 
 **The conservative floor of any routable cell is `G − T`.** A property of the mask alone; it says nothing about any boat.
 
+*Amended 2026-10-25 (#1875, ADR-0003):* `build_mask.py` then raises the centreline cells of `pipeline/charted-channels.json` that read below its cited chart depth, inside the source's extent, to that depth. On those cells neither this floor nor the C.3 guarantee holds; the chart supports their depth.
+
 ### C.2 Why today's numbers are an equality, not a coincidence
 
 ```

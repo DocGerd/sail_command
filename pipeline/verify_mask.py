@@ -798,6 +798,33 @@ for b in CATALOGUE_BOATS:
         flag = "LOW  " if margin_m < SNAP_MARGIN_FLOOR_M else "OK   "
         print(f"  {flag} {hid:16} snap {snap_m:.1f} m  gate {eff_gate_m:.1f} m  margin {margin_m:+.1f} m")
 
+# ---- Alssund passage (#1875) ----
+# The seed flood above cannot tell the route through Alssund from the one around
+# Als: Sønderborg reaches open water either way. This flood drops every cell
+# outside 9.55-9.86 E, which excludes Als's east coast, so Sønderborg's snap
+# reaches Als Fjord only through the sound - open in the mask only via
+# build_mask.py's charted-channel override. Python-only, like the probes above
+# (app/src/test/verifyMaskConnectivity.test.ts's SCOPE comment).
+ALSSUND_LON_WINDOW = (9.55, 9.86)
+ALS_FJORD_RC = next(rc_of(lat, lon) for name, lat, lon, _ in WATER_PROBES if name == "Als Fjord")
+if "soenderborg" not in harbor_rc:
+    raise AssertionError("Alssund check: harbor 'soenderborg' is missing from harbors.json")
+_win_c0 = rc_of(meta["south"], ALSSUND_LON_WINDOW[0])[1]
+_win_c1 = rc_of(meta["south"], ALSSUND_LON_WINDOW[1])[1]
+print(f"\nAlssund passage, Sønderborg snap to Als Fjord within {ALSSUND_LON_WINDOW[0]}-{ALSSUND_LON_WINDOW[1]} E:")
+for _gate_dm in sorted(CATALOGUE_GATE_DM):
+    _labeled, _ = ndimage.label(_depth_grid[:, _win_c0 : _win_c1 + 1] >= _gate_dm / 10.0, structure=FOUR_CONNECTIVITY)
+    _a = int(_labeled[harbor_rc["soenderborg"][0], harbor_rc["soenderborg"][1] - _win_c0])
+    _b = int(_labeled[ALS_FJORD_RC[0], ALS_FJORD_RC[1] - _win_c0])
+    _open = _a != 0 and _a == _b
+    print(f"  gate {_gate_dm / 10.0:.1f} m: {'open' if _open else 'CLOSED'}")
+    if not _open:
+        failures.append(
+            f"ALSSUND soenderborg snap does not reach Als Fjord {ALS_FJORD_RC} at gate {_gate_dm / 10.0} m "
+            f"within {ALSSUND_LON_WINDOW} E - the sound is closed in the mask (#1875)"
+        )
+    del _labeled
+
 # Boat-independent, so printed once: what each harbor's connectivity ceiling
 # actually is, rather than only whether it clears today's gates.
 print("\ndeepest gate at which each harbor's EXACT snap cell still reaches open water (not the app's 300 m snap):")

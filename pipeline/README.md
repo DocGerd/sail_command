@@ -256,7 +256,8 @@ included with a misleadingly "safe" snap point.
 Flensburg seed at the 3.5 m gate within 300 m of the OSM marina feature, the deepest one
 at most 30 m farther from the feature than the nearest, nearest on ties. Their notes follow
 the ~140 m criterion above; Lohals (85 m) has none. Selection and per-harbor distances:
-PR #1623's body.
+PR #1623's body. #1874's Marina Minde (OSM way 673871962, centroid) used the same rule:
+135 m, no note. Selection: PR #1878's body.
 
 Regenerate:
 
@@ -352,6 +353,19 @@ About dialog):
   threshold. Note: Nominatim-fetched relation geometry may drift on future
   re-fetches (same caveat as the EMODnet coverage ID), and Nominatim's usage
   policy makes this a manual on-demand step, not CI-suitable.
+- **Charted channels** (#1875): `charted-channels.json` is hand-authored.
+  `build_mask.py` raises the mask, never lowers it, to a cited nautical
+  source's depth along each channel's centreline, only on cells whose centre
+  lies inside the source's extent, and fails if a centreline cell is OSM land.
+  It is for a charted fairway the DTM shows but the conservative blend
+  closes: Alssund at Sønderborg is a one-pixel, diagonally joined channel in
+  EMODnet. A second entry reopens the decision (the ADR's "Revisiting this").
+  Each entry records its source, dates, depth basis and caveats;
+  `tests/test_charted_channels.py` checks the marks against `seamarks.json`
+  and the committed mask against the entry. Editing a depth, a centreline or
+  a `sourceExtent` changes `mask.bin` once rebuilt, so a #282 sweep is owed;
+  `closure.mjs` reports any edit to this file as owed. Why:
+  `docs/adr/0003-charted-channel-override.md`.
 
 Regenerate:
 

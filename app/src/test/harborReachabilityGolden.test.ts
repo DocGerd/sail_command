@@ -17,13 +17,13 @@ const mask = new NavMask(maskMeta, maskBytes);
 // Pins the reachable set of the flood fill, so any change of its queue
 // representation must leave the bitset byte-identical.
 const FLOOD_GOLDEN_SHA256: ReadonlyArray<readonly [number, string]> = [
-  [2.2, '6cc039f904e41f3618cb2976389c94a86cabed8c4b69409d0826f03014121d7b'],
-  [3.0, '881ea099316a6b4d8460ff455d867ea9c9dbe3ffb2eba5c9d26f753633229b4a'],
-  [4.0, '485ce1f3c48f43b6b192ee1515718c72dfead96d37b260b281326ce19ffb990d'],
+  [2.2, 'bc485e01a03f20f25bc57d700b5aa666de7984fc897b3875c168650d3e3d1965'],
+  [3.0, 'be2d0560aab7256210a5dab250959da07212b2213ef5a4052eb510357ff47763'],
+  [4.0, 'f088b58437579e23b0aac9b1fafa845cdc2730d3c3a35d19fcb67e92833de5b4'],
 ];
 
 const DEPTH_IMAGE_GOLDEN_SHA256 =
-  '4fddd4d294aac1a9cd0bda40d1e5ef70f69793ccbe589360b67e1b41f0298f80';
+  '696e476ba59f59a69fd00e4451a02d2bb542170f22a3f95d067c0ce75b221402';
 
 describe('floodFromSeed golden bitsets on the committed mask', () => {
   it.each(FLOOD_GOLDEN_SHA256)(

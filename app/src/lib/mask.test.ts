@@ -342,8 +342,9 @@ describe('NavMask.depthInfoM', () => {
 
 // #493: cautiousDepthLowerBoundM is a SOUND LOWER BOUND on the mask's more
 // cautious (Resampling.max) reading for a cell whose SHIPPED (blended) depth
-// is `shippedDepthM` — derived directly from pipeline/build_mask.py's blend
-// rule (depth_blend <= depth_max + MASK_TOLERANCE_M, so depth_max >=
+// is `shippedDepthM` (except the ADR-0003 charted cells) — derived directly
+// from pipeline/build_mask.py's blend rule (depth_blend <= depth_max +
+// MASK_TOLERANCE_M, so depth_max >=
 // depth_blend - MASK_TOLERANCE_M). Never the true cautious value itself, only
 // a floor it cannot be below. See app/src/test/maskTolerance.test.ts for the
 // cross-artifact guard pinning MASK_TOLERANCE_M against the Python constant

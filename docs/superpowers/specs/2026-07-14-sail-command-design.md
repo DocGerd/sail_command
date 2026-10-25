@@ -46,7 +46,13 @@ app runtime.
   stores quantized depth (or LAND). The router tests navigability as
   `depth >= safety depth` at query time, so safety depth stays user-tunable
   without regenerating data. Estimated size: ~1100 × 1200 cells ≈ 1.3 M cells
-  ≈ 1.3 MB at 1 byte/cell (gzip smaller).
+  ≈ 1.3 MB at 1 byte/cell (gzip smaller). Amendment (#1875, ADR-0003): along
+  the Alssund fairway at Sønderborg, which `build_mask.py`'s depth blend
+  closes, a hand-authored `pipeline/charted-channels.json` raises, never
+  lowers, the depth of the fairway's centreline cells to a depth from a cited
+  nautical source, only on cells whose centre lies inside that source's
+  extent; a centreline cell on OSM land fails the build. A second entry
+  reopens ADR-0003.
 - **Harbor list** — curated JSON, ~30 harbors (Flensburg, Glücksburg,
   Langballigau, Kappeln, Maasholm, Schleimünde, Gelting, Sønderborg, Aabenraa,
   Dyvig, Augustenborg, Høruphav, Ærøskøbing, Marstal, Søby, Faaborg,
