@@ -99,6 +99,10 @@ commit`, because a lightweight tag is a bare ref that cannot carry a
 signature at all. Both outcomes are expected for those versions, not a sign
 of tampering.
 
+`v0.59.0` was released from `main` before its signed tag was pushed, so
+until that tag exists there is nothing to verify for it
+([#1848](https://github.com/DocGerd/sail_command/issues/1848)).
+
 The Silver `signed_releases` criterion requires **both** cryptographic
 signing **and** a documented process for obtaining the public keys and
 verifying signatures — they are conjuncts, not alternatives. The second

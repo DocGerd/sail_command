@@ -229,9 +229,9 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.60.0` — the milestone now being filled; it closes when the release PR
+- `v0.61.0` — the milestone now being filled; it closes when the release PR
   merges and the tag is pushed.
-- `v0.61.0` — the next MINOR release, opened fresh at the `v0.59.0` cut per
+- `v0.62.0` — the next MINOR release, opened fresh at the `v0.60.0` cut per
   the roll-forward convention below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
@@ -242,7 +242,9 @@ exception, and normally reads the same way: its issues are closed while
 its milestone object is not, because that closes only at tag push (first
 bullet above) — so throughout the docs sweep that precedes the tag it shows
 zero open issues while still reading open, which is the normal mid-cut state
-rather than an oversight. `gh api
+rather than an oversight. `v0.59.0` is a second exception: it shipped, but
+its milestone stays open with one open issue until its signed tag is pushed
+([#1848](https://github.com/DocGerd/sail_command/issues/1848)). `gh api
 repos/DocGerd/sail_command/milestones` is the fact, not this sentence.
 The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of

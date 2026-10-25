@@ -13,47 +13,47 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.59.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.60.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.59.0
+## Now — v0.60.0
 
-The `v0.59.0` cut (2026-10-23) shipped a first sea-state map overlay and, from the [`v0.59.0` milestone](https://github.com/DocGerd/sail_command/milestones), Live work ahead of the first sail.
-The Live card got larger, full-contrast readouts and reroute progress, cancel and
-in-card errors ([#1806](https://github.com/DocGerd/sail_command/issues/1806)), and a pre-sail check of offline map, labels, location,
-forecast, screen keep-awake and AIS key before tracking starts ([#1807](https://github.com/DocGerd/sail_command/issues/1807)). It keeps
-priority over the bottom sheet with a long AIS list ([#1822](https://github.com/DocGerd/sail_command/issues/1822)), AIS targets take
-their ship type from Extended Class B reports ([#1823](https://github.com/DocGerd/sail_command/issues/1823)), and plans stored before
-`v0.58.0` lose their AIS key at the next app start ([#1813](https://github.com/DocGerd/sail_command/issues/1813)). Planning start-up and
-plan saving are time-limited and Cancel takes effect while the planner starts
-([#1776](https://github.com/DocGerd/sail_command/issues/1776)); the planner shows elapsed time, a start-up status and a long-route
-notice, the first part of [#1775](https://github.com/DocGerd/sail_command/issues/1775). The parallel-rig residuals ([#1794](https://github.com/DocGerd/sail_command/issues/1794)), the
-order of other-safety-depth checks ([#1749](https://github.com/DocGerd/sail_command/issues/1749)) and duplicated chips on the Routes tab
-([#1833](https://github.com/DocGerd/sail_command/issues/1833)) were fixed. The map shows a plan's forecast sea state, display only, as
-the first slice of [#1699](https://github.com/DocGerd/sail_command/issues/1699), which stays open in `Backlog`. Backtrack's leg merge now
-applies the depth-comfort check ([#1754](https://github.com/DocGerd/sail_command/issues/1754)); the
-remaining postprocess gap is [#1842](https://github.com/DocGerd/sail_command/issues/1842). The test and CI items ([#1753](https://github.com/DocGerd/sail_command/issues/1753), [#1758](https://github.com/DocGerd/sail_command/issues/1758),
-[#1773](https://github.com/DocGerd/sail_command/issues/1773), [#1820](https://github.com/DocGerd/sail_command/issues/1820), [#1832](https://github.com/DocGerd/sail_command/issues/1832)) changed no user-visible behaviour, and [#1350](https://github.com/DocGerd/sail_command/issues/1350) was
-closed as already delivered at `v0.57.0`. The remainder of [#1775](https://github.com/DocGerd/sail_command/issues/1775) ("leg N of M"),
-the GPS re-render measurement ([#1821](https://github.com/DocGerd/sail_command/issues/1821)) and the on-water test protocol
-([#1808](https://github.com/DocGerd/sail_command/issues/1808)) moved on to `v0.60.0`, as did
-[#1708](https://github.com/DocGerd/sail_command/issues/1708) and [#1713](https://github.com/DocGerd/sail_command/issues/1713) at triage.
+The `v0.60.0` cut (2026-10-25) shipped six user-visible changes from the [`v0.60.0` milestone](https://github.com/DocGerd/sail_command/milestones).
+Marina Minde at Egernsund joined the harbour list ([#1874](https://github.com/DocGerd/sail_command/issues/1874)), and plans from Als Fjord
+into Sønderborg can now go through Alssund instead of around Als: a
+charted-channel override from the Sønderborg harbour plan opens the sound,
+which the depth data had closed ([#1875](https://github.com/DocGerd/sail_command/issues/1875)). Sønderborg's approach note names the
+Kong Christian X bridge's announced closure from 2 November to 18 December
+2026; the app does not model the bridge's openings or closures. Planning now
+writes a short `[SailCommand]` log to the browser console ([#1777](https://github.com/DocGerd/sail_command/issues/1777)). The
+departure field follows a plan you just ran, recalculated or confirmed from the
+departure comparison, even when that time has passed ([#1761](https://github.com/DocGerd/sail_command/issues/1761)), postprocess's merge no longer lowers the
+comfort bar after a shallow stretch ([#1842](https://github.com/DocGerd/sail_command/issues/1842)), and the docked Live card leads
+with reroute and is capped like the bottom sheet ([#1843](https://github.com/DocGerd/sail_command/issues/1843)). The test map fake
+([#1840](https://github.com/DocGerd/sail_command/issues/1840)), the `MAX_HEADSAILS` worker-fatal pin ([#1669](https://github.com/DocGerd/sail_command/issues/1669)), the currents
+spike's prose ([#1657](https://github.com/DocGerd/sail_command/issues/1657)) and the README hero's sea-state overlay ([#1846](https://github.com/DocGerd/sail_command/issues/1846))
+changed no user-visible behaviour. On 2026-10-23, after the `v0.59.0` cut,
+multi-day trip records ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) moved on to `v0.61.0` and "leg N of M"
+planning progress ([#1775](https://github.com/DocGerd/sail_command/issues/1775)) and the MET Norway fallback ([#1713](https://github.com/DocGerd/sail_command/issues/1713)) went to
+`Backlog`; the GPS re-render measurement ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the on-water test protocol
+([#1808](https://github.com/DocGerd/sail_command/issues/1808)), the `v0.59.0` walkthrough ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the `certifi` bump ([#1852](https://github.com/DocGerd/sail_command/issues/1852))
+rolled to `v0.61.0` at this cut.
 
-## Next — v0.60.0
+## Next — v0.61.0
 
-The [`v0.60.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds ten open issues as of this cut. Five came from earlier milestones: the
-"leg N of M" part of planning progress ([#1775](https://github.com/DocGerd/sail_command/issues/1775)), the CPU measurement of the
-per-second GPS re-render and GNSS-time timestamps ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the on-water Live test protocol for the
-first trip ([#1808](https://github.com/DocGerd/sail_command/issues/1808)), multi-day trip
-records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)) and a labelled MET Norway wind
-fallback provider ([#1713](https://github.com/DocGerd/sail_command/issues/1713)). Five were filed during `v0.59.0`: map chrome that
-can cover the docked Live card's top below 1024 px with a long AIS list
-([#1843](https://github.com/DocGerd/sail_command/issues/1843)), postprocess's merge lowering the comfort bar after a shallow leg
-([#1842](https://github.com/DocGerd/sail_command/issues/1842)), the test map fake not matching MapLibre's `styledata` and
-duplicate-source behaviour ([#1840](https://github.com/DocGerd/sail_command/issues/1840)), the hands-on check of `v0.59.0`,
-postponed from its cut ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the docs hero screenshot not showing
-the sea-state overlay ([#1846](https://github.com/DocGerd/sail_command/issues/1846)). The milestone page is the only
+The [`v0.61.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds ten open issues as of this cut. Five moved here from `v0.60.0`: multi-day trip
+records with undo for the next passage ([#1708](https://github.com/DocGerd/sail_command/issues/1708)), the on-water Live test
+protocol for the first trip ([#1808](https://github.com/DocGerd/sail_command/issues/1808)), the CPU measurement of the per-second
+GPS re-render and GNSS-time timestamps ([#1821](https://github.com/DocGerd/sail_command/issues/1821)), the hands-on check of
+`v0.59.0` postponed from its cut ([#1845](https://github.com/DocGerd/sail_command/issues/1845)) and the `certifi` bump for
+Dependabot alert 15 ([#1852](https://github.com/DocGerd/sail_command/issues/1852)). Two are features filed after the `v0.59.0` cut: a
+forecast view of wind and sea state before choosing a destination ([#1854](https://github.com/DocGerd/sail_command/issues/1854))
+and the area reachable from an origin within a trip duration ([#1855](https://github.com/DocGerd/sail_command/issues/1855)). Three
+are follow-ups: four prose fixes left in the forecast-view spike ([#1873](https://github.com/DocGerd/sail_command/issues/1873)),
+plans leaving Sønderborg northward still going around Als ([#1879](https://github.com/DocGerd/sail_command/issues/1879)), and
+removing the dated bridge closure from Sønderborg's approach note after
+18 December 2026 ([#1880](https://github.com/DocGerd/sail_command/issues/1880)). The milestone page is the only
 authoritative view, check it directly rather than this file.
 
 ## Themes for the next year
@@ -157,7 +157,7 @@ from routing in the shipped app (the map has shown sea state, display only,
 since `v0.59.0`). Their presence here marks them as open questions, not
 commitments: the v1 exclusion still holds and none of them is scheduled,
 except [#1708](https://github.com/DocGerd/sail_command/issues/1708), a
-multi-day follow-up to #19 in `v0.60.0`.
+multi-day follow-up to #19 in `v0.61.0`.
 
 ### Live view and on-board use
 
