@@ -2333,10 +2333,11 @@ making design-level decisions; do not silently deviate.
   #956/#958/#959 -- #957 is an issue, not a PR) went onto one integration
   branch as PR #962, and merged as 21 commits over 27 files in ONE CI cycle
   instead of six.
-- **Split a PR without a force-push** by opening a second PR from a new branch
-  at an earlier commit of the same branch; after it merges, the first PR's
-  diff shrinks to the rest once `develop` is merged into it (#1885 out of
-  #1878, 2026-10-25).
+- **Split a PR without a force-push** by opening a second PR from a new
+  branch at an earlier commit of the same branch. Once the second PR merges
+  as a merge commit, the merge base moves and the first PR's diff is only its
+  remaining commits; it still needs `develop` merged in for the strict
+  up-to-date rule (#1885 out of #1878, 2026-10-25).
 - **Merging a PR whose branch is another open PR's BASE closed that stacked PR
   instead of retargeting it** — the repo has `delete_branch_on_merge` on, so
   the base branch goes with or without `--delete-branch` (#1567/#1568,
@@ -2469,10 +2470,10 @@ making design-level decisions; do not silently deviate.
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them from the DTM
   requires fabricating depth; don't attempt without hi-res bathymetry or a
-  cited chart depth under ADR-0003, whose second entry reopens that ADR first.
-  A finer grid
-  is NOT that hi-res bathymetry and has been measured to make things worse
-  — see the #245 rule under Domain rules.
+  cited chart depth in `pipeline/charted-channels.json`, whose second entry
+  means revisiting ADR-0003 first. A finer grid is NOT that hi-res bathymetry
+  and has been measured to make things worse — see the #245 rule under
+  Domain rules.
 - Issue texts are not ground truth for states they don't describe: #31's
   correct wide-float description got misapplied to the narrow layout and
   spread into 5 code sites — verify wording against code before reusing it in
@@ -4014,10 +4015,12 @@ making design-level decisions; do not silently deviate.
 - **Charted-channel override (ADR-0003, #1875).** `pipeline/charted-channels.json`
   raises, never lowers, a fairway's centreline cells to a cited chart depth,
   only inside the source's extent; a centreline cell on OSM land fails the
-  build. Its one entry raises 29 Alssund cells at Sønderborg to 6.0 m; a
-  second entry reopens ADR-0003. Every `TOLERANCE_M` and cautious-floor
-  statement below (#455, #493, #539) describes DTM-derived cells and does not
-  hold on those 29; code comments still stating it unscoped are #1883.
+  build. At #1875 its one entry raised 29 Alssund cells at Sønderborg to
+  6.0 m; a second entry means revisiting ADR-0003 first. `depth_blend <=
+  depth_max + T` still holds there, but those cells ship the chart's depth,
+  so the floors below that rest on the shipped depth (#455's navigable-at-G
+  floor, #493's cautious floor, #539's per-boat floors) do not hold on them.
+  #1883 (filed 2026-10-25) lists code comments that stated them unscoped.
 - **`TOLERANCE_M` = 0.9 is a STRUCTURAL bound, not a tuning knob** (#455, PR
   #476, `docs/spikes/455-depth-mask-optimism.md`). `build_mask.py` takes
   bilinear over the conservative `Resampling.max` only where they agree within
@@ -4856,7 +4859,8 @@ making design-level decisions; do not silently deviate.
   first match wins for all. Measured: six of eight threads were
   `(ROADMAP.md, null)`. Either use a single default reply via `-m`, or drive
   the reply+resolve loop directly off the GraphQL thread IDs (keying
-  per-thread text on `originalLine`, which stays unique).
+  per-thread text on `originalLine`, which stays unique). In a cloud session
+  neither works; see the GraphQL bullet.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
@@ -4907,18 +4911,21 @@ making design-level decisions; do not silently deviate.
   change). Commit and push in small steps, re-run only a sweep's unfinished
   arms with `app/sweep/README.md`'s positional arm filter, and arm a
   `send_later` check-in before any long wait. In the v0.60.0 cycle (Claude Code
-  2.1.309–2.1.310) the container booted fresh six times, killing every detached
-  `setsid` process each time. Both timed deaths came ~4.5 min after the last
-  turn ended, one with 3 GB of 16 GB in use; the cause is not established. A
+  2.1.309–2.1.310) the container booted fresh six times by 2026-10-24 18:19Z,
+  killing every detached `setsid` process each time. Both timed deaths came
+  ~4.5 min after the last turn ended, one with 3 GB of 16 GB in use; the
+  cause is not established. A
   pending `send_later` did not prevent one, a subagent's live
   `run_in_background` task did not prevent the other, and the container once
   survived 60 idle minutes while a main-session `run_in_background` waiter ran.
-  Files under `/tmp/claude-0` survived the 2026-10-25 09:37Z boot, earlier
-  sessions' scratchpads included. A stored run's merged arm JSONs that
-  hash-match a ledger entry can serve as the sweep BASE; `--harbour-superset`
-  needs those rows, and `closure.mjs reuse` gives only hashes. A driver making
-  one vitest call per (shard, arm) and skipping finished part files should lose
-  only in-flight slices to a restart; its resume path is untested.
+  The root disk, which holds both `/tmp/claude-0` and the checkout, survived
+  the 2026-10-25 09:37Z boot, scratchpads from 2026-10-22 included; how the
+  v0.59.0 restarts lost worktree work was not re-checked. When `closure.mjs
+  reuse <recorded> <base>` answers REUSE, that run's stored merged arm JSONs,
+  once they hash-match its ledger entry, can serve as the BASE rows
+  `--harbour-superset` needs; `reuse` prints only hashes, and no ledger entry
+  recorded a `path` on 2026-10-25. `run-sharded.mjs` refuses a non-empty
+  `--out` (stale part files), so it cannot resume a killed run.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
@@ -5212,24 +5219,30 @@ making design-level decisions; do not silently deviate.
   re-check after a harness change). The session runs as uid 0, so
   `changelogFragmentsFs.test.ts`'s mode-000 permission row fails here and is
   not a regression. `ss` and `netstat` are absent. The proxy refuses hosts
-  outside the environment's Allowed domains. After the maintainer added
+  outside the environment's Allowed domains, which the maintainer edits, so
+  re-probe a host rather than trust this list. After the maintainer added
   EMODnet, osmdata.openstreetmap.de, Nominatim and www.danskehavnelods.dk on
   2026-10-24 they answered in the running session and `build_mask.py` ran;
-  Overpass and openstreetmap.org stayed refused. Node 22.22.0's bare
+  `overpass-api.de` (the `seamarks` generator's host) and
+  `www.openstreetmap.org` got a CONNECT 403 on 2026-10-25. Node 22.22.0's bare
   `fetch` ignores `HTTPS_PROXY` unless `NODE_USE_ENV_PROXY=1`; curl reaches
   Open-Meteo. The full vitest suite does not finish in one 600 s Bash call: run
   explicit file-list chunks and diff their union against `find app/src -name
   '*.test.ts*'`; slow `src/routing` chunks still overrun and get backgrounded.
 - **In a cloud session every GraphQL call 403s** ("GitHub GraphQL is not
-  available from Claude Code sessions", measured 2026-10-25), so `gh auth
+  available from Claude Code sessions"; seen 2026-10-22 and 2026-10-25, a
+  harness property, re-check after a harness change), so `gh auth
   status`, `gh pr view`/`checks`, `gh issue view`, `gh label list`, `gh
   release list`, `gh repo view` and `resolve-threads.sh` fail while REST `gh
   api` works. Use the routes the error names: `GET pulls/N/ccr/review_threads`
   (rows carry `comment_ids`, no node id), `POST
-  pulls/N/ccr/comments/{id}/resolve` and `POST pulls/N/ccr/ready_for_review`;
-  merge with `PUT pulls/N/merge` pinning `sha` (all used on PRs #1878 and
-  #1885). `premerge-verify.sh` then asks on every merge: its `gh repo view`
-  403s.
+  pulls/N/ccr/comments/{id}/resolve` with a row's first `comment_ids` entry,
+  and `POST pulls/N/ccr/ready_for_review`; merge with `PUT pulls/N/merge`
+  pinning `sha` to the SHA you pushed, after reading that SHA's check-runs by
+  hand (all used on PRs #1878 and #1885). `premerge-verify.sh` fires only on a
+  command starting `gh pr merge`, so that `PUT` skips its head.sha and
+  check-runs checks. On `gh pr merge` it asks every time, since its `gh repo
+  view` 403s.
 - **`gh api` rejects `--repo`/`-R`** — `unknown flag: --repo`, unlike `gh pr`
   and `gh issue`, which both take it. The repo belongs in the endpoint path.
   Measured 2026-09-04 with a control: the same call minus the flag returned the
@@ -5333,8 +5346,10 @@ making design-level decisions; do not silently deviate.
   commit. Gate on `merged=true`.
 - UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
   draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error). Use
-  `markPullRequestReadyForReview` with the PR's node id. It also triggers **no
-  new CI run**: `ci.yml`'s trigger is a bare `on: pull_request:` with no
+  `markPullRequestReadyForReview` with the PR's node id; in a cloud session
+  use `POST pulls/N/ccr/ready_for_review` (see the GraphQL bullet). It also
+  triggers **no new CI run**: `ci.yml`'s trigger is a bare
+  `on: pull_request:` with no
   `types:` key, and GitHub's default activity types are
   `opened`/`synchronize`/`reopened` only — `ready_for_review` is not among
   them (read off `ci.yml` and GitHub's events documentation, 2026-08-25). So a
@@ -5395,7 +5410,8 @@ making design-level decisions; do not silently deviate.
   eroding the #119 protection it exists to provide. `cd` back to the repo before
   merging; the durable fix is to have the hook parse `--repo`/`-R` or run
   `gh repo view` against `$CLAUDE_PROJECT_DIR`, which it already uses for its
-  branch lookup.
+  branch lookup (only the `--repo` parse helps in a cloud session, where
+  `gh repo view` 403s).
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
   merge commit created) yet leave the PR marked `open` and skip branch-delete /
   `Closes #` auto-close. VERIFY via the develop tip / merge-commit parents before
