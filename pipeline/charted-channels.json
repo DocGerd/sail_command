@@ -14,7 +14,7 @@
     "textDate": "05-10-2026",
     "planDate": "05-10-2026",
     "plan": "LFTSONBG.jpg, 1:12500, WGS-84 (https://www.danskehavnelods.dk/Planer/jpg_200/LFTSONBG.jpg)",
-    "quote": "Dybder: Se plan.",
+    "quote": "Se plan.",
     "bridge": {
      "title": "Kong Christian X's Bro",
      "url": "https://www.danskehavnelods.dk/Havnelodsen/bridges/aa6d840b-7664-4b3f-8b01-deec8d7c6e02.html",
@@ -32,15 +32,15 @@
    },
    "caveats": [
     "The plan prints a horizontal datum (WGS-84) and no vertical one; the mask is LAT (EMODnet).",
-    "The page states no tidal range; wind can raise or lower the water by up to 1.2 m.",
+    "The page says there is no tidal range ('Der er ingen tidevandsforskel.'); wind can raise or lower the water by up to 1.2 m.",
     "The passage span is 30 m wide (bridge page), narrower than one ~46 m mask cell, so the 6.0 m applies to the cell run along the fairway axis, not to each cell's whole area.",
-    "The bridge opens at listed times, and the bridge page announces the passage span closed 2 November to 18 December 2026; the mask models neither."
+    "The bridge opens at listed times, and the bridge page (text 14-09-2026) announced the passage span closed to all passage 2 November to 18 December 2026; the mask models neither."
    ],
    "centreline": [
     {
      "lat": 54.900303,
      "lon": 9.7850919,
-     "note": "Single mark: the port-hand buoy south of the entrance. It lies outside sourceExtent, so it only orients the first segment.",
+     "note": "Single mark: the port-hand buoy south of the entrance. It lies outside sourceExtent, so its cells are land-checked but not raised.",
      "marks": [
       {
        "seamarkIndex": 344,

@@ -115,7 +115,7 @@ def channel_cells(
         d_x = abs(1 / (u1 - u0)) if u1 != u0 else math.inf
         d_y = abs(1 / (v1 - v0)) if v1 != v0 else math.inf
         run = [(y, x)]
-        while (y, x) != (y_end, x_end):
+        for _ in range(abs(x_end - x) + abs(y_end - y)):
             if t_x <= t_y:
                 x += step_x
                 t_x += d_x
@@ -123,6 +123,8 @@ def channel_cells(
                 y += step_y
                 t_y += d_y
             run.append((y, x))
+        if (y, x) != (y_end, x_end):
+            raise ValueError(f"centreline traversal missed its end cell {(y_end, x_end)}")
         for cell in run:
             if not cells or cells[-1] != cell:
                 cells.append(cell)
@@ -169,8 +171,8 @@ def raise_charted_channels(
     `code` and `land` (the OSM land raster) are both row 0 = south. Raise-only:
     a cell at or above the charted depth is untouched, and so is every cell off
     the centreline or outside the source's extent. A centreline cell on OSM land
-    means the centreline is wrong, so it raises instead of turning land into
-    water. Returns (row, col, before, after) for every raised cell.
+    means the centreline is wrong, so it raises ValueError instead of turning
+    land into water. Returns (row, col, before, after) for every raised cell.
     """
     if code.shape != land.shape:
         raise ValueError(f"code {code.shape} and land {land.shape} differ in shape")
@@ -272,13 +274,18 @@ def main() -> None:
     # The blend substitutes bilinear for max only where the two agree within
     # TOLERANCE_M, so by construction every cell satisfies
     #     depth_blend <= depth_max + TOLERANCE_M
-    # Read that contrapositively, which is the property that matters: a cell
-    # the app calls navigable at safety depth G has a CONSERVATIVE
-    # (max-resampled) depth of at least G - TOLERANCE_M. At the default gate
-    # G = 3.0 m, TOLERANCE_M = 0.9 puts that floor at exactly 2.1 m -
-    # BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). So no cell the router
-    # may plan through at default settings is shallower than the hull, however
-    # far bilinear wanted to stray. This value is derived from the blend rule
+    # This holds for every cell the blend writes. raise_charted_channels() then
+    # overwrites charted fairway cells with a cited chart depth (#1875,
+    # docs/adr/0003-charted-channel-override.md); there the chart, not this
+    # bound, supports the depth.
+    # Read the inequality contrapositively, which is the property that
+    # matters: a cell the app calls navigable at safety depth G has a
+    # CONSERVATIVE (max-resampled) depth of at least G - TOLERANCE_M (except
+    # the ADR-0003 charted cells). At the default gate G = 3.0 m,
+    # TOLERANCE_M = 0.9 puts that floor at exactly 2.1 m - BOAT_DRAFT_M
+    # (app/src/routing/relaxedDepth.ts). So no cell the router may plan
+    # through at default settings (except the ADR-0003 charted cells) is
+    # shallower than the hull, however far bilinear wanted to stray. This value is derived from the blend rule
     # and the draft; it is not fitted to an outcome.
     #
     # THE GUARANTEE IS GATE-CONDITIONAL - never restate it as unconditional.
@@ -459,6 +466,7 @@ def main() -> None:
             "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",  # noqa: E501 -- DOI citation, not code; unwrappable
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
             "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",  # noqa: E501 -- attribution string, not code; unwrappable
+            "Charted fairway depth, Alssund at Sønderborg: Geodatastyrelsen, Den danske Havnelods (Sønderborg Havn plan, 05-10-2026)",  # noqa: E501 -- attribution string, not code; unwrappable
             # The About dialog renders mask.meta.json's `sources` dynamically,
             # so this string reaches the UI from here. It used to ALSO exist as
             # a static i18n item (about.sources.osmMask) because the committed

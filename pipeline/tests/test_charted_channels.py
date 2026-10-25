@@ -6,6 +6,7 @@ source's extent only, and refuses a centreline that crosses OSM land.
 """
 
 import json
+import math
 import pathlib
 
 import numpy as np
@@ -168,7 +169,7 @@ def test_centreline_points_are_mark_midpoints_or_state_a_basis():
 def test_committed_mask_carries_every_charted_channel():
     mask = np.fromfile(DATA / "mask.bin", dtype=np.uint8).reshape(ROWS, COLS)
     for ch in load_channels():
-        want = int(round(ch["depthM"] * 10))
+        want = int(math.floor(ch["depthM"] * 10 + 1e-9))
         run, inside = charted_cells(ch)
         assert inside
         assert_four_connected(run)
