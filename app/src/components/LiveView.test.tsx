@@ -1462,6 +1462,26 @@ describe('LiveView', () => {
       expect(onReroute).toHaveBeenCalledWith(FIX_POINT);
     });
 
+    it('#1843: the reroute action precedes the readout data, reason included, in reading order', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      renderWithReroute(wp, rerouteControls());
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      const action = screen.getByRole('button', { name: REROUTE_NAME });
+      const data = document.querySelector('.live-view-data');
+      expect(data).not.toBeNull();
+      // PRECEDING: the readouts follow the action in the document.
+      expect(action.compareDocumentPosition(data!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const reroute = document.querySelector('.live-view-reroute')!;
+      expect(reroute.contains(action)).toBe(true);
+      expect(
+        reroute.compareDocumentPosition(data!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(action).toHaveAccessibleDescription(/planning aid, not navigation guidance/i);
+    });
+
     it('a stale fix cannot fire a reroute: toggling tracking off clears the fix and disables the action again', async () => {
       const { wp, emitFix } = fakeWatchPosition();
       const onReroute = vi.fn();

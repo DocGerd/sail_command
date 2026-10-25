@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-25
+
+### Added
+
+- Route planning now writes a short `[SailCommand]` log to the browser console: plan start, stage changes, per-sail solve results, a warning past half the planning budget, and the typed cause of a failure; it never logs coordinates (#1777).
+- Added Marina Minde (Egernsund, Flensburg Fjord) to the harbour list (#1874).
+
+### Fixed
+
+- The departure field now follows a plan you just ran, recalculated or confirmed from the departure comparison, even when that time has already passed, so that route no longer reads as outdated (#1761).
+- With a depth comfort margin set, straightening a route no longer lets one shallow stretch, such as a harbour approach, excuse cutting through shallower water elsewhere on the same leg, unless that water still meets the margin (#1842).
+- The docked Live card now shows the reroute control above the readouts and is capped like the bottom sheet, so on a tablet in portrait its top stays clear of the map controls and reroute stays on screen with a long AIS list; the readouts below it may need scrolling (#1843).
+- Plans from Als Fjord to Sønderborg can now go through Alssund, under the Kong Christian X bascule bridge, instead of around Als; the depth data had closed the sound at Sønderborg. Plans leaving Sønderborg northwards can still go around Als. The app does not model the bridge's opening times or its announced closure from 2 November to 18 December 2026 (#1875).
+
 ## [0.59.0] - 2026-10-23
 
 ### Added
@@ -1371,7 +1385,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.59.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.60.0...HEAD
+[0.60.0]: https://github.com/DocGerd/sail_command/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/DocGerd/sail_command/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/DocGerd/sail_command/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/DocGerd/sail_command/compare/v0.56.0...v0.57.0

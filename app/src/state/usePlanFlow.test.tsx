@@ -366,8 +366,8 @@ describe('usePlanFlow', () => {
 
   // #54 review: the "throw instead of fabricate" invariant on the progress
   // callback throws inside workerClient's `worker.onmessage`, where nothing
-  // catches it — no error boundary, no window.onerror, and routing/ +
-  // usePlanFlow.ts carry no console.* by design. This row pins BOTH measured
+  // catches it — no error boundary and no window.onerror; it surfaces only as
+  // the browser's uncaught-error report. This row pins BOTH measured
   // halves, because either alone is misleading: the throw aborts that ONE
   // progress delivery (the phase readout does not advance and run() is still
   // pending), and the plan's own `result` message — delivered on the NEXT

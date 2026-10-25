@@ -25,11 +25,16 @@ import type { Map as MaplibreMap } from 'maplibre-gl';
  * component-added source/layer/image. 'styledata' fires once the replacement
  * style is in place (parsed — addSource/addLayer are safe), so `setup` also
  * re-runs on every 'styledata'. That event ALSO fires on the INITIAL style
- * parse and on routine style mutations map-wide (any addLayer/
- * setPaintProperty, including setup's own adds), so `setup` MUST be
+ * parse and on routine style mutations map-wide, so `setup` MUST be
  * idempotent: guard on the presence of its own sources and no-op while they
- * exist. Idempotence also absorbs the deferral's double one-shot ('load'
- * then 'idle' both firing on an initial load).
+ * exist. addLayer/setPaintProperty fire it later, from `Style#update`, but
+ * addImage fires it SYNCHRONOUSLY, re-entering `setup` mid-call, and addSource
+ * throws on a duplicate id. A guard evaluated BEFORE an image call therefore
+ * does not protect the adds after it: evaluate it after the images (WaveLayer;
+ * AisLayer's `setupLayers`) or gate `setup` on a source added before them
+ * (RouteLayer's `missing` check on ROUTE_SOURCE).
+ * Idempotence also absorbs the deferral's double one-shot ('load' then 'idle'
+ * both firing on an initial load).
  *
  * Install once per map instance per mount ([map] effect); on later
  * dependencies (data refreshes, asset arrivals, layout toggles) invoke the

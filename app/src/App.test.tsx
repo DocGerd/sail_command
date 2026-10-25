@@ -4030,6 +4030,201 @@ describe('plan-form sync (#301)', () => {
     expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
   });
 
+  // #1761: the form's default departure is set once at mount, so a plan run
+  // from the form can arrive with a departure that is already past. The sync
+  // must leave the form on the departure the plan was computed for, else the
+  // fresh result reads stale.
+  describe('#1761: a just-run departure survives the plan sync', () => {
+    const MOUNT_MS = new Date(2026, 9, 20, 10, 30, 0).getTime();
+    const RUN_DEPARTURE_MS = new Date(2026, 9, 20, 11, 0, 0).getTime();
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function runAt(pressAtMs: number, resolveAtMs: number): Promise<HTMLInputElement> {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(MOUNT_MS);
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      pickOriginAndDestination();
+      const departureInput = screen.getByLabelText(
+        de['planner.departure.label'],
+      ) as HTMLInputElement;
+      expect(departureInput.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+
+      vi.setSystemTime(pressAtMs);
+      fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+      await waitFor(() => expect(routingMock.calls.length).toBe(1));
+      expect(routingMock.calls[0].request.departureMs).toBe(RUN_DEPARTURE_MS);
+
+      vi.setSystemTime(resolveAtMs);
+      routingMock.calls[0].resolve(okPlanResult(10));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+      );
+      await flushPlanFormSync();
+      return departureInput;
+    }
+
+    it('keeps the departure and shows no stale chip when the hour turns while the plan computes', async () => {
+      const departureInput = await runAt(
+        new Date(2026, 9, 20, 10, 59, 58).getTime(),
+        new Date(2026, 9, 20, 11, 0, 3).getTime(),
+      );
+      expect(departureInput.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+      expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+    });
+
+    it('keeps the departure and shows no stale chip when the plan was run with a departure already past', async () => {
+      const departureInput = await runAt(
+        new Date(2026, 9, 20, 11, 20, 0).getTime(),
+        new Date(2026, 9, 20, 11, 20, 5).getTime(),
+      );
+      expect(departureInput.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+      expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+    });
+
+    it('still re-seeds the next full hour when an old saved plan with a past departure is loaded', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(MOUNT_MS);
+      const plan = prefillPlan('prefill-past-departure', {
+        departureMs: MOUNT_MS - 2 * 3_600_000,
+      });
+      await db.savePlan(plan);
+
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      // The mount default (11:00) is now past; a re-seed must differ from it.
+      const loadAtMs = new Date(2026, 9, 20, 12, 30, 0).getTime();
+      vi.setSystemTime(loadAtMs);
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+      await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      const departureInput = screen.getByLabelText(
+        de['planner.departure.label'],
+      ) as HTMLInputElement;
+      await waitFor(() =>
+        expect(departureInput.value).toBe(
+          toLocalInputValue(new Date(2026, 9, 20, 13, 0).getTime()),
+        ),
+      );
+    });
+
+    it('re-seeds a loaded saved plan even when its past departure equals the form departure', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(MOUNT_MS);
+      const plan = prefillPlan('prefill-equal-past-departure', { departureMs: RUN_DEPARTURE_MS });
+      await db.savePlan(plan);
+
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      const departureInput = screen.getByLabelText(
+        de['planner.departure.label'],
+      ) as HTMLInputElement;
+      expect(departureInput.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+      vi.setSystemTime(new Date(2026, 9, 20, 12, 30, 0).getTime());
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+      await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      const loadedInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+      await waitFor(() =>
+        expect(loadedInput.value).toBe(toLocalInputValue(new Date(2026, 9, 20, 13, 0).getTime())),
+      );
+    });
+
+    it('a recalculate-replace of the active plan moves the form to the fresh departure', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(MOUNT_MS);
+      const plan = prefillPlan('prefill-recalc-replace', {
+        departureMs: MOUNT_MS - 2 * 3_600_000,
+      });
+      await db.savePlan(plan);
+
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+      await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      const beforeInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+      await waitFor(() => expect(beforeInput.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS)));
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+
+      // The form holds 11:00; the recalculate editor seeds 12:00.
+      vi.setSystemTime(new Date(2026, 9, 20, 11, 20, 0).getTime());
+      fireEvent.click(await screen.findByRole('button', { name: de['plansList.recalc'] }));
+      fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.replace'] }));
+      fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.confirmReplace'] }));
+      await waitFor(() => expect(routingMock.calls.length).toBe(1));
+      const recalcDepartureMs = new Date(2026, 9, 20, 12, 0, 0).getTime();
+      expect(routingMock.calls[0].request.departureMs).toBe(recalcDepartureMs);
+      routingMock.calls[0].resolve(okPlanResult(55));
+      await waitFor(() => expect(screen.getByText(formatNm(55, 'de'))).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      await flushPlanFormSync();
+      const departureInput = screen.getByLabelText(
+        de['planner.departure.label'],
+      ) as HTMLInputElement;
+      expect(departureInput.value).toBe(toLocalInputValue(recalcDepartureMs));
+      expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+    });
+
+    it('a confirmed departure window moves the form to the confirmed departure', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(MOUNT_MS);
+      const plan = prefillPlan('prefill-confirm-window');
+      await db.savePlan(plan);
+
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+      await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+      const departureInput = screen.getByLabelText(
+        de['planner.departure.label'],
+      ) as HTMLInputElement;
+      await waitFor(() =>
+        expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs)),
+      );
+
+      fireEvent.change(screen.getByLabelText(de['departureScan.count.label']), {
+        target: { value: '4' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: de['departureScan.action'] }));
+      // One scan solve per candidate, each awaiting the previous.
+      for (let i = 0; i < 4; i++) {
+        await waitFor(() => expect(routingMock.calls.length).toBe(i + 1));
+        routingMock.calls[i].resolve(okPlanResult(10));
+      }
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole('button', { name: de['departureScan.confirm.action'] }),
+        ).toHaveLength(4),
+      );
+      fireEvent.click(
+        screen.getAllByRole('button', { name: de['departureScan.confirm.action'] })[1],
+      );
+      await waitFor(() => expect(routingMock.calls.length).toBe(5));
+      const confirmedDepartureMs = routingMock.calls[1].request.departureMs;
+      expect(confirmedDepartureMs).not.toBe(plan.request.departureMs);
+      expect(routingMock.calls[4].request.departureMs).toBe(confirmedDepartureMs);
+      routingMock.calls[4].resolve(okPlanResult(10));
+      await screen.findByText(de['departureScan.confirm.done']);
+      await flushPlanFormSync();
+
+      expect(departureInput.value).toBe(toLocalInputValue(confirmedDepartureMs));
+      expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+    });
+  });
+
   // #571 redesign: this used to trigger a via-replan (same plan id, new
   // plan object) to prove the plan-id-keyed sync effect doesn't re-fire and
   // clobber a manually-edited departure. That trigger no longer exists — a

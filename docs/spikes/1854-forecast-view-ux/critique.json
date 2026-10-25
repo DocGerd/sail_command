@@ -1,0 +1,260 @@
+[
+ {
+  "severity": "blocker",
+  "section": "§8 Copy (conditions.atStart.noSea, conditions.sea.noHour); §7 Partial",
+  "problem": "\"kein Seegang\" reads as flat calm in German. The noSea line also blames the hour (\"zu dieser Stunde\") when the usual cause is spatial. Flensburg, the catalogue's home harbour, has no wave cell: in the grounding screenshot b-plan-seastate-region-zoom7.6-1180x820-light.png the inner Förde has no fill. So the default Start line for the home water would say \"Flensburg: … · kein Seegang zu dieser Stunde\". That contradicts the design's own rule that no data is never counted as calm (§14), and it does so in the card's primary line.",
+  "fix": "Follow the existing safe pattern (`route.waves.outOfRange: 'Keine Seegangsdaten für die gewählte Stunde.'`) and split the two causes. Spatial: \"Seegang: keine Daten an diesem Ort (nächster Modellpunkt {dist} sm {dir}: {height} m)\". Temporal: \"Keine Seegangsdaten für diese Stunde – Daten bis {datetime}\". Never use the bare noun \"kein Seegang\" in de or en. Add a unit test that the Start line for a harbour with no in-mask wave cell never renders a calm band or the word \"kein Seegang\"."
+ },
+ {
+  "severity": "blocker",
+  "section": "§4 Hours/Label, §7 Ready/Stale/Refetch",
+  "problem": "`nowAtEntry` is snapshotted on tab entry (the same accepted limitation as RouteLayer's `nowMs`, ~:1188), and §7 says \"There are no timers\". The age, the \"jetzt\" label, \"(in N h)\" and the past-hour gating therefore freeze while the skipper keeps the tablet on Wetter, which is the on-deck use. \"Stand 13:05 (vor 5 min)\" can stay on screen for hours. The >12 h Stale warning and the ≥TTL update button have no re-render trigger, so they are unreachable while sitting on the tab. A past hour stays labelled \"jetzt\" and stays hand-over-able.",
+  "fix": "Add a 60 s tick that runs only while Wetter is the active tab and `document.visibilityState === 'visible'`, plus an immediate recompute on `visibilitychange`. It recomputes now, the age, the \"jetzt\"/relative labels, the past-hour set, the Stale/update-button state and drops newly-past hours. Keep the age text OUT of the `role=\"status\"` region, so the tick does not announce every minute; announce only state transitions (fresh→stale). The handoff re-checks `Date.now()` at press time. Add an AC: with a fake clock advanced 13 h on the tab, the Stale copy shows and the old current hour is no longer selectable."
+ },
+ {
+  "severity": "major",
+  "section": "§11 Handoff, §7 Offline held",
+  "problem": "Offline, Wetter shows \"zeigt die Vorhersage von 13:05\", but planning cannot use that grid. `usePlanFlow.run()` (~:363-370, :418-433) plans offline only from `opts.storedWindGrid`, which comes from a loaded plan (`storedForecast.ts`). The session grid is never passed. So Als Abfahrt übernehmen → Route planen ends in `error.offline`. With a plan loaded, it silently plans on the plan's older grid instead of the one the skipper just judged. That breaks §11's \"same grid\" promise in exactly the intermittent-network case.",
+  "fix": "Keep it in memory only. Route planen passes the newest held grid (Wetter session grid vs plan grid, by `fetchedAtMs`, waves from the same source) as `storedWindGrid`/`storedWaveGrid`, so the existing #1707 fallback path plans on what was shown. If that is out of scope, then offline the handoff button carries a visible note (\"Planen braucht eine Verbindung\" or \"plant mit der Vorhersage der geladenen Route, Stand …\"). Add an e2e: offline with a held Wetter grid, handoff, plan; the result must not be `error.offline` (or the note must show)."
+ },
+ {
+  "severity": "major",
+  "section": "§2 step 4, §6 Interplay, §3 Start/Ziel lines",
+  "problem": "On an exploratory tab, a harbour tap silently edits the planner. `handleHarborPick` → `resolveHarborPickTarget` has no tab gate, and `handlePickDestination` is a bare setter. After the first tap, every harbour tap overwrites Ziel, including the Ziel of a loaded plan's form. The card then shows only \"Ziel: {name}\", never that harbour's conditions. A skipper checking Marstal, then Ærøskøbing, never sees their conditions and leaves a dirty planner form. Near-harbour taps (the places of most interest) also hit the harbour dots instead of the water popup.",
+  "fix": "On Wetter, a harbour tap opens the \"Vorhersage hier\" popup for that harbour, with honest nearest-model-point wording and explicit [Als Start] / [Als Ziel] buttons (≥44 px). A bare tap never mutates origin/destination. Once Ziel is set, the Ziel line shows its conditions at the card hour, not just its name. Update §13 AC-9 accordingly. Remove the Start-line hint \"wird Start, dann Ziel\"."
+ },
+ {
+  "severity": "major",
+  "section": "§6 Interplay (Wetter + plan, leaving Wetter), §4",
+  "problem": "There are three clocks, and the map labels none of them on Wetter. With a plan loaded, the route's ETA labels (the plan's times) stay next to barbs and sea state for the card's hour, which invites reading the barbs as what the boat will meet. Leaving Wetter silently swaps the barbs to the plan slider's hour. On narrow the card's hour row scrolls away with the sheet. The route line was also optimised on a different (often older) forecast than the one drawn under it.",
+  "fix": "On Wetter, hide the time-bearing route labels (ETA, maneuver) and draw the route in the existing alt-rig style (dashed, 0.45). Make the card's hour row sticky at the top of the card, keeping CLAUDE.md's −12 px sticky/padding-box offset in mind. If an on-map time is wanted, put it inside the existing `.route-layer-controls` cluster in both modes, never as new chrome or a new z-index. Add one card line on Wetter with a plan: \"Route berechnet mit Vorhersage von {time}\"."
+ },
+ {
+  "severity": "major",
+  "section": "§6 Depth, hatch; §5 Sea state",
+  "problem": "Two colour ramps tint the same water. Depth shading is ON by default (`sc-depth-visible` true) and on Wetter it renders in its planless form. Its 7–12 m stops are sky blue/blue (`depthColor.ts` STOPS ~:137-138), while sea state calm/smooth is `#EDF8FB`/`#B3CDE3` at 0.45. In the grounding 1180x820 shot, the pale sea-state cells around Sonderburg cannot be told apart from depth shading, and the orange/black hatch along every coast dominates. The legend swatches will not match the composited colours. The design rejects a wind colour field for exactly this collision, but keeps one.",
+  "fix": "On Wetter, while sea state is visible, suppress the depth fill and hatch in a tab-scoped way (do not write the persisted toggles). Say so in a visible card line: \"Wassertiefen ausgeblendet, solange Seegang angezeigt wird [Tiefen zeigen]\". Depth returns on leaving the tab. Add a real-browser check that a sampled smooth-band cell renders the legend swatch colour composited only over the basemap."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Card anatomy item 9, §8 disclaimer/key, §1 tab name",
+  "problem": "At the design floor (narrow, Disclosure closed by default), three things are hidden: the planning-aid disclaimer, the barb key, and the only explanation that wave arrows point TO while barbs point FROM (the existing `route.legend.seaStateArrow` exists for this). A first-time user sees two direction glyph families with opposite conventions and no key. The Start line's \"Wind 225°\" and the strip's bare \"225°\" carry no \"aus\", so they read equally well as a heading. The tab name \"Wetter\" also promises more than wind and sea state (no thunderstorm, fog, visibility or rain).",
+  "fix": "Add one always-visible line outside the Disclosure: \"Planungshilfe · nur Wind und Seegang (keine Gewitter, Sicht, Niederschlag) · Windpfeil: woher · Wellenpfeil: wohin\". Write directions as \"aus SW (225°)\" in the Start line, area line and strip (cardinal first). Keep the full key in the Disclosure."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Narrow 820–1023 height budget, §13 AC-11",
+  "problem": "The 615 px estimate omits rows the design itself requires. `conditions.horizon.end` is always shown (~22 px estimated), and [Vorhersage aktualisieren] appears once the forecast is ≥10 min old (≈ +24 px if it shares the status row). A strip column holds 5 lines at ≥1 rem (§9), estimated ≈110 px, not 76. That puts the card over the measured 649 px sheet cap. The age, stale warning and errors sit below the primary action, so at 820 they are likely below the fold. Meanwhile the map, the view's payload, gets only the 470 px band above the sheet (measured: sheet y=531) minus the top-left cluster. AC-11 tests only the fresh state, so it passes while the common state fails.",
+  "fix": "Move status, age, stale, offline and errors to the top of the card (e.g. a Chip beside the title, \"Stand 13:05 · vor 2 h\", with the alert directly under it). On narrow, default the card to a compact form: hour row, Start line, strip, actions. Put the area line, sparkline/slider and day buttons behind a \"Mehr\" Disclosure, which also returns map height. Re-state AC-11 at forecast age ≥10 min (update button visible): the status Chip and the actions row are inside the viewport at scrollTop 0."
+ },
+ {
+  "severity": "major",
+  "section": "§4 Departure, §7 Current hour selected, §11",
+  "problem": "\"Can I leave now?\" is the primary on-deck question, and the design disables handoff for the current hour. That is unnecessary: PlannerPanel's departure `bounds.min` is the mount time (`useState(() => Date.now())`, ~:775), so a `Date.now()`-based departure is valid. On touch, a disabled button gives no feedback when tapped.",
+  "fix": "For the current hour, label the button \"Jetzt als Abfahrt\" / \"Leave now\" and set `departureMs` to `Date.now()` rounded up to the next 5 min, re-read at press time. Announce the exact time set. Never render a disabled primary action on touch; if any hour is genuinely unusable, show the reason as visible text next to it."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Card items 3–6, §15 auto-fit, \"Ganzes Revier\"",
+  "problem": "The summaries' scope cannot be the whole area at the design floor. measure.json at 820x1180 gives a whole-area fit at z8.03 on the full 1119 px canvas, but only the 470 px band above the sheet is visible and the maxBounds floor is z7.97. So \"Ganzes Revier\" cannot deliver its name, and \"Im Kartenausschnitt\" is never the whole Revier. The area line, the strip ranges and the sparkline (scope unspecified) change with every pan and zoom. Zoomed into a harbour, they switch silently to a nearest-point value. A forecast summary that moves under a finger on a rolling deck is a mode error.",
+  "fix": "Compute the sparkline and strip over a fixed scope: the Start harbour when set, else the whole Revier. Label it in the row header (\"Revier\" / \"Flensburg\"). Keep the viewport range only as the optional area line, explicitly labelled. Rename \"Ganzes Revier\" to \"Herauszoomen\", or define its 820 behaviour (zoom to the floor, centred on the area) and say that the view is partial."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Phone <820 tab padding, §13 AC-12",
+  "problem": "The five-tab overflow fix is a viewport media query (<400 px), but in the wide branch the side panel resizes down to `PANEL_MIN_WIDTH_PX` (320 px) at any wide viewport. That gives about 64 px per tab against the design's own ≈70 px estimate for \"Planen\". `.app-tabs button { flex: 1; padding: 0.6rem }` with flex's `min-width: auto` is the #299 overflow mechanism. Even the default 390 px panel at 1180x820 gives 78 px per tab, which is tight for EN \"Weather\" (estimated, unmeasured).",
+  "fix": "Use a container query on `.app-tabs` (`container-type: inline-size`) instead of the viewport query for the compact padding/font. Extend AC-12 to the wide branch at 1180x820 with the panel at 320 px and the default width, in DE and EN, asserting `scrollWidth <= clientWidth`."
+ },
+ {
+  "severity": "minor",
+  "section": "§5 Popup (PR A), §2 step 4",
+  "problem": "Moving the wave popup to a map-level click \"in both modes\" means every unarmed open-water tap on the default Planen tab now opens a popup; today only a wave cell does. On Wetter, popups become the main interaction, yet the close button is the library default (maplibre-gl.css ~:738; app.css has no `.maplibregl-popup-close-button` rule), which is undersized for gloves.",
+  "fix": "Keep the plan-mode popup gated to shaded cells (the same behaviour as today). Use the map-level water popup only on Wetter. Size the popup close button to ≥44×44 px via a scoped `--sc-*` rule."
+ },
+ {
+  "severity": "minor",
+  "section": "§4 Controls, §3 Scrubber",
+  "problem": "A full-width 44 px `<input type=range>` sits inside a bottom sheet that will scroll at 820 once the omitted rows are counted, and always scrolls on phone. A vertical swipe that lands on the track can set the hour silently. At about 5 px/hour (narrow) or 2.4 px/hour (390 px panel), both estimated, a gloved drag cannot target an hour anyway.",
+  "fix": "Keep the slider out of the scroll path: place it in the sticky hour header, or on narrow drop it in favour of day buttons + strip + ◀▶ (the sparkline can stay as a non-interactive overview). Where the slider stays, `touch-action: pan-y` on its container plus a thumb-only drag affordance."
+ },
+ {
+  "severity": "minor",
+  "section": "§7 Partial",
+  "problem": "\"If wind failed, the typed wind error is shown plus conditions.error.seaOnly\" is unreachable. AC-2 and §10 start waves only after wind resolves, mirroring usePlanFlow, which returns on a wind error (~:430) before the wave fetch (~:448-454).",
+  "fix": "Either drop `conditions.error.seaOnly`, or define that waves are still fetched after a non-429 wind failure (never after a 429) and add that to AC-2."
+ },
+ {
+  "severity": "minor",
+  "section": "§7 Idle/Loading",
+  "problem": "The 600 ms dwell leaves the card's content unspecified between the tap and the first fetch, so a tap appears to do nothing for 0.6 s on top of a slow marine link.",
+  "fix": "Render the loading skeleton and \"Vorhersage wird geladen …\" immediately on entry when online; only the network request waits for the dwell."
+ },
+ {
+  "severity": "minor",
+  "section": "§7 Fetch failure / Refresh",
+  "problem": "[Vorhersage aktualisieren] is offered immediately after `error.rateLimited`, inviting repeated taps against Open-Meteo's 429 history. A failed background refresh while a usable grid is held raises `role=\"alert\"` on every re-entry or `online` flap.",
+  "fix": "After a 429, disable the button for a cooldown (e.g. 60 s, with a visible countdown). With a held grid, report a failed refresh quietly in the status Chip (\"Aktualisierung fehlgeschlagen – zeigt Stand …\"); use `alert` only when nothing is shown."
+ },
+ {
+  "severity": "minor",
+  "section": "§3 Strip, §4 Controls",
+  "problem": "The strip is 3-hourly, but the hour can be any hour. When the chosen hour is 14:00, no column matches; the mock highlights 15:00 while the hour row reads 14:00. On the 390 px wide panel the 4×2 wrap also breaks left-to-right timeline reading, and the units drawn at the row end are lost.",
+  "fix": "Highlight the column whose 3 h window contains the hour, with a marker for \"14:00 innerhalb 12–15\", or snap strip taps only. Put units inside each cell (\"12 kn\", \"0,6 m\"). On panels <480 px, show the strip as a vertical list (time | wind | gust | sea) instead of a 4×2 grid."
+ },
+ {
+  "severity": "minor",
+  "section": "§11 Handoff focus",
+  "problem": "With no Ziel, the handoff focuses the Ziel combobox text input. On Android tablets a programmatic focus inside the activation window opens the soft keyboard over the sheet, while the likely next step is tapping a harbour on the map.",
+  "fix": "On coarse pointers, focus the Ziel section heading (`tabindex=-1`) and announce \"Ziel suchen oder Hafen auf der Karte antippen\". Focus the input only for fine pointers or a keyboard-initiated press."
+ },
+ {
+  "severity": "minor",
+  "section": "§5 Wind encoding (daylight legibility)",
+  "problem": "Speed on the map is readable only by counting 1.5 px feathers on a moving deck in glare, and gusts are absent from the map. The low sea bands (calm/smooth) at 0.45 opacity nearly vanish on the light basemap.",
+  "fix": "On Wetter, add a collision-thinned numeric kn label beside the barbs (`text-allow-overlap: false`, its own layer, not the #378 annotation layers), optionally showing \"12 (18)\" for gusts. Check band legibility in the daylight real-browser pass at the planned opacity, and raise the Wetter-only fill opacity if calm and smooth cannot be told apart."
+ },
+ {
+  "severity": "minor",
+  "section": "§3 Disclosure item 9, §6 toggles",
+  "problem": "The Wetter layer toggles are split: depth, hatch and seamarks are in the map's Anzeigeoptionen, while barbs and sea state are in the card's Disclosure, which is closed by default on narrow. The natural first move against clutter is to switch layers off, and half the switches are hidden.",
+  "fix": "Show the two Wetter toggles as always-visible compact toggle chips (≥44 px) in the card header row, or add them to Anzeigeoptionen while Wetter is active, so all layers are switched from one place."
+ },
+ {
+  "severity": "minor",
+  "section": "§3 Start line, §12",
+  "problem": "Underway (GPS fix present on the Live source), the relevant point is the boat's position, but the Start line always uses the planner Start, which may be the harbour left hours ago.",
+  "fix": "When a fresh GPS fix exists, add a line \"Hier (GPS): Wind aus … · Seegang …\" above the Start line, using the same nearest-cell wording rules as the Start line."
+ },
+ {
+  "severity": "minor",
+  "section": "§8 conditions.status.fetched",
+  "problem": "\"Open-Meteo icon_seamless / ewam\" puts model IDs (jargon) in the always-visible status line, where it costs width that the age and update button need at 820.",
+  "fix": "Show only \"Stand 13:05 · vor 2 h\" in the status. Move the model IDs into the Disclosure next to the disclaimer."
+ },
+ {
+  "severity": "blocker",
+  "section": "§3 Card anatomy (Start line), §7 Horizon, §8 Copy (conditions.atStart.noSea, conditions.sea.noHour)",
+  "problem": "The Start-harbour line, which the design makes the primary readout, will show no sea state for most harbours at every hour. Sea state is taken from the harbour's nearest lattice point, and §5 keeps the centre cull. I measured against the committed mask.meta.json and mask.bin: nearest lattice point per axis, cell byte at floor((v-origin)*cpd) with cpd 2400/1375, and the >=end exclusion of GridAxis.index. Only 134 of the 322 lattice points are water (36 fall outside the mask through that exclusion). For 28 of the 46 harbours the nearest point is land or outside the mask: Flensburg (54.8, 9.4), Sønderborg, Maasholm, Svendborg, Faaborg, Aabenraa and more (fredericia falls outside the mask). So the mockup line 'Flensburg: … Seegang 0,4 m' cannot happen. The fallback copy makes it worse. 'kein Seegang zu dieser Stunde' and 'Kein Seegang zu dieser Stunde – Daten bis …' read in German as calm water, which breaks waves spec §0 'No data is not calm'. They also blame the hour when the real cause is the location. The dict already words this as 'Keine Seegangsdaten …' (route.waves.outOfRange).",
+  "fix": "Take the Start line's sea state from the nearest WATER lattice point, the same cell index the raster shades. Label it with distance and bearing, reusing conditions.scope.nearest: 'Seegang 0,6 m am nächsten Modellpunkt, 5 km SO'. If no water point lies within a stated radius, say 'Seegang: keine Modelldaten in Hafennähe'. Never write 'kein Seegang': use 'keine Seegangsdaten …' in both keys and give location and hour their own messages. A labelled model point is not the neighbour borrowing §15 rejects, because no water gets shaded. Add a unit test over every harbors.json entry that pins which readout form each harbour gets, and replace the Flensburg mockup line."
+ },
+ {
+  "severity": "major",
+  "section": "§2 step 4, §6, §13 AC-9/AC-10",
+  "problem": "On Wetter, tapping a harbour sets the planner's Start, and every later tap overwrites Ziel (resolveHarborPickTarget returns 'destination' once an origin exists). AC-10 also lets a harbour hit win over the 'Vorhersage hier' popup. The only way to read conditions at a harbour is therefore to make it the planner's Start, which rewrites a routing input. With a plan loaded it also leaves the plan's draft dirty, so the Plan tab shows its staleness state. That is the same reason the design gives for rejecting D2 and the hour carry-over ('Browsing rewrites a routing input and dirties a loaded plan'). A skipper comparing harbours by tapping them silently loses their planned destination.",
+  "fix": "On Wetter, a harbour tap opens the forecast popup for that harbour, titled with its name, plus explicit 'Als Start' and 'Als Ziel' buttons. handleHarborPick acts only through those buttons while tab === 'conditions'. Keep today's pick behaviour on the other tabs. Change AC-9 to: a harbour tap opens that harbour's forecast and leaves origin and destination unchanged until a button is pressed."
+ },
+ {
+  "severity": "major",
+  "section": "§9 Focus",
+  "problem": "'Focus moves to the slider when the skeleton is replaced' moves focus when data arrives, not on a user action. A keyboard user arrowing through the tablist (automatic activation) who pauses for more than 600 ms on Wetter has focus pulled out of the tab strip when the fetch resolves 1–2 s later. CLAUDE.md (#695): 'Stealing focus is worse than dropping it … drive focus restoration from the callbacks, which know the user acted; a prop-diff can only guess.'",
+  "fix": "Do not move focus when the forecast loads. Report the change through the existing polite status region. Keep programmatic focus moves for user actions only: the handoff in §11, and day or strip selection staying on the pressed button."
+ },
+ {
+  "severity": "major",
+  "section": "§10 Data flow, §3 Area line, §7 Empty scope, lib/useSheetTop.ts",
+  "problem": "ConditionsPanel is placed in the tabpanel (`<main className=\"app-panel\">` inside `.app-bottom-sheet`), which App.tsx renders outside `<MapView>` (map-area ~:1697–1825, sheet ~:2070). useMapInstance() is therefore null there. The panel still needs the live viewport for the area line, the strip's scope, the nearest-point fallback and the sheet-band exclusion, plus a NavMask for land-culling scope points. The data-flow diagram feeds the panel only from App and names no source for the viewport.",
+  "fix": "Use the existing pattern: mount ConditionsPanel, or a small ConditionsViewport child, inside MapView and portal it into a Wetter `.app-panel` slot, as SeamarksInView and LiveView already do. Alternatively, have RouteLayer publish {bounds, sheetTop} on its debounced moveend into a store next to conditionsHour. Get the mask from loadRoutingAssets()' cached promise rather than adding a second load path. Draw both on the diagram."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Tablet narrow height budget, §13 AC-11",
+  "problem": "The 615 px estimate behind AC-11 leaves out content the design itself specifies (unmeasured; my figures are estimates too). (1) A strip column holds 5 text rows (time, range, gust, direction, Hs), and §9 sets text at >=1rem. That needs about 5×19+8 ≈ 100 px, which is more than the 72 px minimum and the 76 px budgeted. (2) conditions.horizon.end is 'always shown' (§7) but appears in neither the card anatomy nor the budget, which is about 22 px more. (3) The status row grows from 20 px to 44 px when the update button appears. (4) At narrow, the cap is calc(55vh - var(--sc-toast-height)) (app.css ~:5361), so a toast shrinks it below 649. Together that is about 685 px against 649, so the actions row likely falls below the fold at the design floor.",
+  "fix": "Move the action row directly under the Start and area lines, above the scrubber, so it never depends on the strip's height. Cut strip columns to 3 rows: time, 'wind range (gust)', Hs, with direction as a small rotated glyph or only in the accessible name. Fold horizon.end into the status line. Make AC-11 a measured e2e check at 820x1180 in DE, with and without a toast and a banner."
+ },
+ {
+  "severity": "major",
+  "section": "§13 AC-3, §14 e2e land/water probe",
+  "problem": "The positive control does not discriminate. Depth shading is on by default and shades coastal shallows (STOPS alpha 191/166/128 at 0.1–4 m), which is exactly where a coastal sample pixel sits. The 'water pixel is tinted' half therefore passes even if no sea state is drawn. The 'land untinted' half also passes with sea state absent, so the whole AC is green with the feature deleted.",
+  "fix": "Make the probe an A/B of the same pixel with only sea-state visibility toggled, at a settled camera (two consecutive byte-equal screenshots per state). Require the water pixel to change between states and the land pixel not to. Alternatively, turn the depth, hatch and contour layers off for the probe. Mutation-check it by drawing the old rectangles."
+ },
+ {
+  "severity": "major",
+  "section": "§6 Interplay (depth, hatch), §5 Legends",
+  "problem": "The issue asks for interplay with depth shading, and the design answers only with stack order (depth < sea-state raster). Both are translucent area colour ramps that are on by default. A 0.45-alpha purple or blue sea-state band over the vermillion, orange or yellow depth ramp, plus the black hatch, produces hues that appear in neither legend, and that happens along every coast, where both overlays matter most. The sea-state legend swatches are pure colours on the card background, so reading a band off the map becomes unreliable.",
+  "fix": "Decide this explicitly. One option: while Wetter is active and sea state is visible, hide the depth ramp and hatch at the layout-visibility level without touching the persisted toggles, and add a key line ('Tiefenfärbung ausgeblendet, solange Seegang angezeigt wird'). Another: keep both and draw the legend swatches over a representative depth colour. Add a real-browser check at a coastal shallow in both themes."
+ },
+ {
+  "severity": "major",
+  "section": "§5 Visual encoding, §14 Real browser legibility",
+  "problem": "Wind barbs and wave markers anchor on the same points. The wind and wave lattices are identical (openMeteo.ts latLonParams), and adaptiveBarbFeatures anchors its lattice at index 0 with step 2^n. Every barb at overview zoom (n>=0), and every lattice barb at n<0, therefore sits exactly on a wave arrow or the new dot. waveMap.ts already concedes that the arrows share the barbs' lattice and tells them apart only by colour. In an area-wide view this overlap is the main visual, and the brief requires daylight legibility on a tablet on deck.",
+  "fix": "Offset the wave marker from the barb anchor, for example with a fixed screen-px icon-offset toward the cell's lower-right. Or draw the wave arrow small inside the barb's station circle. Or show the markers only when barbs are hidden. Make this an explicit item in the daylight-legibility browser check."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Phone <820 tab padding, §13 AC-12",
+  "problem": "The five-tab overflow is handled only by a 'below 400 px' rule, which is presumably a viewport media query and cannot fire on the wide layout. There the strip lives in the side panel: 390 px at 1180x820 (measured), about 338 px by default at 1024 wide, and resizable down to PANEL_MIN_WIDTH_PX 320. That gives 78/68/64 px per tab, or about 58.8/48.4/44.8 px of content after 0.6rem padding. Rough text widths say 'Weather', 'Routen' and 'Planen' (bold when selected) may not fit, but this is unmeasured. app.css has no wide override for `.app-tabs`, and AC-12 tests only 280 and 320 px viewports, so the ≥820 wide branch, a required target, is unguarded.",
+  "fix": "Key the reduced padding on the strip's own width (`container-type: inline-size` on the sheet with a container query), or drop horizontal padding on `.app-tabs button` everywhere (flex:1 sets the width, so padding adds nothing to the touch target). Extend #299's scrollWidth <= clientWidth guard to tabletLandscape, 1024 wide, and the panel dragged to 320 px, in DE and EN, with the selected (bold) tab included."
+ },
+ {
+  "severity": "major",
+  "section": "§3 Card anatomy item 7 ('Ganzes Revier'), §1 Goal, §15 auto-fit rejection",
+  "problem": "At the design floor, the whole area cannot be seen in the unoccluded map, yet the card offers a 'Ganzes Revier' button. Measured: zoomToFitWholeArea 8.03 and floor 7.97 were computed over the full 820x1119 canvas, but the sheet starts at y=531 (h 649), leaving 470 px. By estimate, fitting 54.3–55.6°N into 470 px needs about z7.2, below the maxBounds floor (MapView MAX_BOUNDS). §15 uses exactly this fact to reject auto-fit, so the button's name promises what the design says is impossible. The goal's 'sees … the whole area' is likewise unmet at 820 narrow without panning, and that gap is stated only for phones.",
+  "fix": "Drop 'Ganzes Revier', or rename it (e.g. 'Revier zeigen') and fit with occluder padding using RouteLayer's existing #1626 occluder measurement (MAP_CHROME_SELECTOR), accepting a clamped partial fit. Also consider a compact narrow card state (hour row + Start line + actions, about 180 px) behind a summary toggle, so the map gets most of the height while scanning. At minimum, state in §1 and §3 that at 820 the area is reached by panning."
+ },
+ {
+  "severity": "minor",
+  "section": "§5 Raster geometry, §15 'Linear raster resampling' rejection",
+  "problem": "`raster-resampling: 'nearest'` governs magnification only. DataLayers' own comment (re-derived against maplibre-gl 6.7.0) records that minification is bound to a hardcoded LINEAR_MIPMAP_NEAREST filter. At the overview zoom of an area-wide view (z7.5–8.4, where the 1513-px half-resolution raster is minified), band edges and coastlines still blend into colours not in the legend.",
+  "fix": "Narrow the claim to 'no in-between colours when magnified'. If crisp edges at overview matter, size the raster near on-screen resolution at overview, or accept the blend and drop it as a reason in §15."
+ },
+ {
+  "severity": "minor",
+  "section": "§3 Entry (sessionSnapshot), §10 Changed lib/sessionSnapshot.ts",
+  "problem": "localStorage is shared by production and /uat/ on one origin, and the sc-session key is unscoped (lib/storage.ts). Once UAT persists tab:'conditions', the older production build's parseSessionSnapshot sees an unknown tab (isTab fails) and returns null for the whole snapshot. Production then loses its restored plan and rig until the release reaches main. This is the same cross-deployment class as the DB_VERSION rule.",
+  "fix": "Never persist 'conditions': map it to 'plan' on the write side (writeSessionSnapshot), and keep the persisted Tab union unchanged. The read-side restore rule then needs no change, and older builds keep parsing the snapshot."
+ },
+ {
+  "severity": "minor",
+  "section": "§7 Ready/Offline, §8 conditions.status.fetched / .fromPlan / .offline.held",
+  "problem": "'Stand {time}' / 'Forecast from {time}' and the age are computed from fetchedAtMs, which is Date.now() at fetch (openMeteo.ts loadWindGrid), not the model run time. The English wording claims an issue time the app does not know, and a freshly fetched forecast can come from a model run several hours old. Existing copy says 'abgerufen {fetched}' (dict.de ~:1342).",
+  "fix": "Use 'abgerufen {time} (vor {age})' / 'fetched {time} ({age} ago)' in the status, fromPlan and offline keys."
+ },
+ {
+  "severity": "minor",
+  "section": "§0 Status (owed spec edits)",
+  "problem": "The list of ask-gated spec edits is incomplete. (1) The source spec's Offline-scope row (2026-07-14 design, line 26: 'Planning requires internet; following/viewing planned routes fully offline') does not cover a browse view that needs the network and shows only an in-memory forecast offline. (2) Waves §0 'one direction arrow per grid point' does not allow the new NaN-direction dot or the removal of the edge layer, unless (b) is worded to cover both.",
+  "fix": "Add an amendment to the source spec's Offline-scope row. Word edit (b) to cover water-clipped raster cells, the arrow-or-dot marker and the removal of sc-waves-edge."
+ },
+ {
+  "severity": "minor",
+  "section": "§5 Halo (PR A), §10 PR A test list",
+  "problem": "The 3.5 px halo will clip the calm barb: barbSegments draws the calm circle at cy 28 with r 4 in a 32 px image, so the ink already reaches the bottom edge. In addition, windBarbs.test.ts replays registerBarbImages through a recording 2D context and pins the canvas-op stream, so it will go red, but it is missing from PR A's test list.",
+  "fix": "Move the calm circle up (or grow the image with a matching pixelRatio and anchor) so the halo fits. Add windBarbs.test.ts to PR A's list, with the halo pass pinned as its own op sequence."
+ },
+ {
+  "severity": "minor",
+  "section": "§6 'Wetter tab, plan loaded' / §13 AC-7",
+  "problem": "Removing only the route cluster's Disclosure leaves `.route-layer-controls` in place. It keeps padding 0.5rem and a background (app.css ~:986), and ViaMarkers usually renders nothing, so an empty Tier-2 box stays in the top-right corner of the map.",
+  "fix": "Do not render the `.route-layer-controls` container on Wetter unless the ViaMarkers status chip has content. Assert in AC-7 that the container is absent, not just the Disclosure."
+ },
+ {
+  "severity": "minor",
+  "section": "§13 AC-7, §14 Unit PR A/B",
+  "problem": "test/setup.ts stubs getContext to null, so in jsdom the sea-state canvas source is never created. AC-7's 'exactly one addSource for the sea-state canvas source' would then record zero in RouteLayer and App tests, and a <=1 or 'no second owner' form passes vacuously. This is the trap CLAUDE.md records for DataLayers guards.",
+  "fix": "Say that AC-7 and every WaveLayer, RouteLayer or App test asserting sea-state sources or layers installs layerOrder.test.tsx's size-discriminated getContext fake, imported per file rather than registered in setup.ts (registering it in setup.ts would make the #282 sweep owed). Include a positive control that the source is added once."
+ },
+ {
+  "severity": "minor",
+  "section": "§10 PR A",
+  "problem": "PR A ships alone and visibly changes plan-mode rendering (land no longer tinted, edges removed, new markers, barb halo, new legend lines), but only PR B lists a changelog fragment.",
+  "fix": "Give PR A its own fragment, e.g. changelog.d/1854.changed.md, ending with '(#1854).'"
+ },
+ {
+  "severity": "minor",
+  "section": "§11 Handoff, §4 Departure",
+  "problem": "The handoff accepts any upcoming hour up to the forecast horizon. A departure in the last few forecast hours guarantees a beyond-horizon plan failure (the horizon is the fixed end of the grid). The card offers that hour as its primary action with no warning.",
+  "fix": "Next to the button, show a hint when the chosen hour leaves less forecast than a minimal passage needs (e.g. under 6 h): 'Danach bleiben nur {h} h Vorhersage.' Keep the button enabled, so the app only states remaining forecast and never advises a later departure."
+ },
+ {
+  "severity": "minor",
+  "section": "§4 Drag, §7 Refetch triggers",
+  "problem": "Two cost details. (1) RouteLayer's barb effect has tMs in its deps and calls rebuild() synchronously; only moveend and zoomend go through requestAnimationFrame. A store-driven tick therefore re-renders RouteLayer and rebuilds up to 500 barbs on every input event, while the design throttles only the sea-state repaint. (2) Re-entering Wetter refetches both 322-point grids whenever the held forecast is older than the 10-minute cache TTL. That is far more often than the model updates, and it draws on the same Open-Meteo allowance planning uses (the repo has a 429 history).",
+  "fix": "Coalesce hour-driven barb rebuilds into requestAnimationFrame, like the raster. For the browse view's automatic refetch on re-entry, use a longer threshold, for example 1 h; keep the explicit 'Vorhersage aktualisieren' button available after the TTL, and keep planning's 10-minute reuse unchanged."
+ },
+ {
+  "severity": "minor",
+  "section": "§9 Name-collision table, §8 route.legend.seaStateCells",
+  "problem": "Two factual slips. (1) 'Legende' has 1 non-exact getByText site (compass.spec.ts:1446, scoped to controls), not 3; the datalayers.spec.ts sites pass exact:true. (2) '11 × 6 km' reads as width × height, but a 0.1° cell at 55°N is about 6.4 km east–west and 11.1 km north–south.",
+  "fix": "Correct the count. Write the cell size as 'etwa 6 km breit und 11 km hoch' / 'about 6 km wide and 11 km tall'."
+ }
+]

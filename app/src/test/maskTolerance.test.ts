@@ -135,8 +135,9 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
     const toleranceM = readToleranceM();
     // build_mask.py's own derivation: depth_blend <= depth_max + TOLERANCE_M,
     // so a cell navigable at gate G has a conservative depth >= G -
-    // TOLERANCE_M. At the default 3.0 m safety depth that floor is exactly
-    // BOAT_DRAFT_M — why 0.9 was chosen, and the "2.1 m ... at the 3.0 m
+    // TOLERANCE_M (except the ADR-0003 charted cells). At the default 3.0 m
+    // safety depth that floor is exactly BOAT_DRAFT_M — why 0.9 was chosen,
+    // and the "2.1 m ... at the 3.0 m
     // default" clause in the disclosure copy below.
     expect(round1(DEFAULT_SETTINGS.safetyDepthM - toleranceM)).toBe(BOAT_DRAFT_M);
   });

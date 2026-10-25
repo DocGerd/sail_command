@@ -8,6 +8,7 @@ Row 0 = SOUTH edge (the app's convention; numpy arrays are north-first, so flip 
 """
 
 import json
+import math
 import pathlib
 import sys
 import urllib.request
@@ -53,6 +54,7 @@ DTM_PATH = SRC / f"emodnet_dtm_{WEST}_{SOUTH}_{EAST}_{NORTH}.tif"
 # excluding it from the land mask. Discovered while debugging verify_mask.py
 # probe failures at every Schlei-side harbor (Kappeln, Arnis, Maasholm).
 SCHLEI_RELATION_ID = 2340930
+CHARTED_CHANNELS_PATH = HERE / "charted-channels.json"
 SCHLEI_URL = f"https://nominatim.openstreetmap.org/lookup?osm_ids=R{SCHLEI_RELATION_ID}&format=jsonv2&polygon_geojson=1"
 
 
@@ -85,6 +87,113 @@ def check_dtm_covers(bounds, res: tuple[float, float]) -> None:
             f"{DTM_PATH.name}: raster extent {tuple(bounds)} does not cover the mask bbox "
             f"{(WEST, SOUTH, EAST, NORTH)}; delete the cached file and re-run"
         )
+
+
+def channel_cells(
+    points: list[tuple[float, float]],
+    west: float = WEST,
+    south: float = SOUTH,
+    east: float = EAST,
+    north: float = NORTH,
+    cols: int = COLS,
+    rows: int = ROWS,
+) -> list[tuple[int, int]]:
+    """4-connected (row, col) run through the (lat, lon) points; row 0 = south.
+
+    Grid traversal, so consecutive cells share an edge and a diagonal step
+    never skips a corner cell.
+    """
+    dx, dy = (east - west) / cols, (north - south) / rows
+    uv = [((lon - west) / dx, (lat - south) / dy) for lat, lon in points]
+    cells: list[tuple[int, int]] = []
+    for (u0, v0), (u1, v1) in zip(uv, uv[1:], strict=False):
+        x, y = math.floor(u0), math.floor(v0)
+        x_end, y_end = math.floor(u1), math.floor(v1)
+        step_x, step_y = (1 if u1 > u0 else -1), (1 if v1 > v0 else -1)
+        t_x = ((x + (step_x > 0)) - u0) / (u1 - u0) if u1 != u0 else math.inf
+        t_y = ((y + (step_y > 0)) - v0) / (v1 - v0) if v1 != v0 else math.inf
+        d_x = abs(1 / (u1 - u0)) if u1 != u0 else math.inf
+        d_y = abs(1 / (v1 - v0)) if v1 != v0 else math.inf
+        run = [(y, x)]
+        for _ in range(abs(x_end - x) + abs(y_end - y)):
+            if t_x <= t_y:
+                x += step_x
+                t_x += d_x
+            else:
+                y += step_y
+                t_y += d_y
+            run.append((y, x))
+        if (y, x) != (y_end, x_end):
+            raise ValueError(f"centreline traversal missed its end cell {(y_end, x_end)}")
+        for cell in run:
+            if not cells or cells[-1] != cell:
+                cells.append(cell)
+    return cells
+
+
+def charted_cells(
+    channel: dict,
+    west: float = WEST,
+    south: float = SOUTH,
+    east: float = EAST,
+    north: float = NORTH,
+    cols: int = COLS,
+    rows: int = ROWS,
+) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    """(every centreline cell, the cells whose centre lies inside the source's extent).
+
+    A charted depth applies only where the cited chart charts it, so only the
+    second list is raised; the first is what the land check covers.
+    """
+    run = channel_cells([(p["lat"], p["lon"]) for p in channel["centreline"]], west, south, east, north, cols, rows)
+    ext = channel["sourceExtent"]
+    dx, dy = (east - west) / cols, (north - south) / rows
+    inside = [
+        (r, c)
+        for r, c in run
+        if ext["south"] <= south + (r + 0.5) * dy <= ext["north"]
+        and ext["west"] <= west + (c + 0.5) * dx <= ext["east"]
+    ]
+    return run, inside
+
+
+def raise_charted_channels(
+    code: np.ndarray,
+    land: np.ndarray,
+    channels: list[dict],
+    west: float = WEST,
+    south: float = SOUTH,
+    east: float = EAST,
+    north: float = NORTH,
+) -> list[tuple[int, int, int, int]]:
+    """Raise `code` to each channel's charted depth along its centreline (#1875).
+
+    `code` and `land` (the OSM land raster) are both row 0 = south. Raise-only:
+    a cell at or above the charted depth is untouched, and so is every cell off
+    the centreline or outside the source's extent. A centreline cell on OSM land
+    means the centreline is wrong, so it raises ValueError instead of turning
+    land into water. Returns (row, col, before, after) for every raised cell.
+    """
+    if code.shape != land.shape:
+        raise ValueError(f"code {code.shape} and land {land.shape} differ in shape")
+    rows, cols = code.shape
+    changed: list[tuple[int, int, int, int]] = []
+    for ch in channels:
+        want = int(math.floor(ch["depthM"] * 10 + 1e-9))
+        if not 1 <= want <= 254:
+            raise ValueError(f"charted channel {ch['id']}: depthM {ch['depthM']} is outside the 0.1-25.4 m encoding")
+        run, inside = charted_cells(ch, west, south, east, north, cols, rows)
+        on_land = [cell for cell in run if land[cell]]
+        if on_land:
+            raise ValueError(f"charted channel {ch['id']}: centreline cells {on_land} are OSM land")
+        if not inside:
+            raise ValueError(f"charted channel {ch['id']}: no centreline cell lies inside its sourceExtent")
+        for row, col in inside:
+            before = int(code[row, col])
+            if before < want:
+                code[row, col] = want
+                changed.append((row, col, before, want))
+    return changed
 
 
 def main() -> None:
@@ -165,13 +274,18 @@ def main() -> None:
     # The blend substitutes bilinear for max only where the two agree within
     # TOLERANCE_M, so by construction every cell satisfies
     #     depth_blend <= depth_max + TOLERANCE_M
-    # Read that contrapositively, which is the property that matters: a cell
-    # the app calls navigable at safety depth G has a CONSERVATIVE
-    # (max-resampled) depth of at least G - TOLERANCE_M. At the default gate
-    # G = 3.0 m, TOLERANCE_M = 0.9 puts that floor at exactly 2.1 m -
-    # BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). So no cell the router
-    # may plan through at default settings is shallower than the hull, however
-    # far bilinear wanted to stray. This value is derived from the blend rule
+    # This holds for every cell the blend writes. raise_charted_channels() then
+    # overwrites charted fairway cells with a cited chart depth (#1875,
+    # docs/adr/0003-charted-channel-override.md); there the chart, not this
+    # bound, supports the depth.
+    # Read the inequality contrapositively, which is the property that
+    # matters: a cell the app calls navigable at safety depth G has a
+    # CONSERVATIVE (max-resampled) depth of at least G - TOLERANCE_M (except
+    # the ADR-0003 charted cells). At the default gate G = 3.0 m,
+    # TOLERANCE_M = 0.9 puts that floor at exactly 2.1 m - BOAT_DRAFT_M
+    # (app/src/routing/relaxedDepth.ts). So no cell the router may plan
+    # through at default settings (except the ADR-0003 charted cells) is
+    # shallower than the hull, however far bilinear wanted to stray. This value is derived from the blend rule
     # and the draft; it is not fitted to an outcome.
     #
     # THE GUARANTEE IS GATE-CONDITIONAL - never restate it as unconditional.
@@ -329,6 +443,14 @@ def main() -> None:
         raise AssertionError("implausible land/water split - inspect inputs")
 
     code_south_first = np.flipud(code)  # app convention: row 0 = south
+    channels = json.loads(CHARTED_CHANNELS_PATH.read_text())["channels"]
+    raised = raise_charted_channels(code_south_first, np.flipud(land), channels)
+    print(f"charted channels: raised {len(raised)} cells")
+    for row, col, before, after in raised:
+        print(
+            f"  row {row} col {col} lat {SOUTH + (row + 0.5) * (NORTH - SOUTH) / ROWS:.5f}"
+            f" lon {WEST + (col + 0.5) * (EAST - WEST) / COLS:.5f}: {before / 10:.1f} -> {after / 10:.1f} m"
+        )
     (OUT).mkdir(parents=True, exist_ok=True)
     (OUT / "mask.bin").write_bytes(code_south_first.tobytes())
     meta = {
@@ -344,6 +466,7 @@ def main() -> None:
             "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",  # noqa: E501 -- DOI citation, not code; unwrappable
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
             "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",  # noqa: E501 -- attribution string, not code; unwrappable
+            "Charted fairway depth, Alssund at Sønderborg: Geodatastyrelsen, Den danske Havnelods (Sønderborg Havn plan, 05-10-2026)",  # noqa: E501 -- attribution string, not code; unwrappable
             # The About dialog renders mask.meta.json's `sources` dynamically,
             # so this string reaches the UI from here. It used to ALSO exist as
             # a static i18n item (about.sources.osmMask) because the committed

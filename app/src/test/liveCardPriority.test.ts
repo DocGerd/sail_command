@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
 // #1822: the narrow Live card outranks the sheet's panel. Pins the card's
-// `12rem` floor, the budget that lets it outgrow the sheet's own 55vh cap,
-// and the panel cap that makes a long AIS list scroll inside the sheet.
+// `12rem` floor, the budget (#1843: the sheet's own `55vh` minus the toast, so the
+// card's top stays clear of the Tier 2 map chrome) and the panel cap that makes a
+// long AIS list scroll inside the sheet.
 // `readFileSync`, never a `?raw` glob: that returns "" for a stylesheet.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW_CSS = readFileSync(resolve(HERE, '../app.css'), 'utf8');
@@ -27,20 +28,20 @@ function declarationBlock(selectorRe: RegExp): string {
 const liveViewBlock = () => declarationBlock(/(?:^|\} )\.live-view \{([^}]*)\}/);
 
 const CAP_RE =
-  /max-height: max\((\d+(?:\.\d+)?)rem, calc\((\d+(?:\.\d+)?)vh - var\(--live-sheet-h, calc\(var\(--sc-tabbar-h\) \+ 6rem\)\)\)\);/;
+  /max-height: max\( (\d+(?:\.\d+)?)rem, calc\( \((\d+(?:\.\d+)?)vh - var\(--sc-toast-height, 0px\)\) - var\(--live-sheet-h, calc\(var\(--sc-tabbar-h\) \+ 6rem\)\) \) \);/;
 
 function parseCap(): { floorPx: number; budgetVh: number } {
   const m = CAP_RE.exec(liveViewBlock());
   if (!m)
     throw new Error(
-      '`.live-view` max-height no longer has the max(<floor>rem, calc(<N>vh - sheet)) shape',
+      '`.live-view` max-height no longer has the max(<floor>rem, calc(<N>vh - toast - sheet)) shape',
     );
   return { floorPx: Number(m[1]) * REM_PX, budgetVh: Number(m[2]) };
 }
 
-const cardCapPx = (vhPx: number, sheetPx: number) => {
+const cardCapPx = (vhPx: number, sheetPx: number, toastPx = 0) => {
   const { floorPx, budgetVh } = parseCap();
-  return Math.max(floorPx, (budgetVh / 100) * vhPx - sheetPx);
+  return Math.max(floorPx, (budgetVh / 100) * vhPx - toastPx - sheetPx);
 };
 
 const PANEL_CAP_RE = new RegExp(
@@ -61,10 +62,12 @@ describe('#1822: Live card priority over the bottom sheet', () => {
     expect(cardCapPx(1180, 0.55 * 1180)).toBe(12 * REM_PX);
   });
 
-  it('the card budget exceeds the sheet cap', () => {
-    // 70vh is a judgement call (app.css's #1822 comment), pinned so any change is
-    // deliberate. At or under the sheet's own 55vh cap the card cannot outrank it.
-    expect(parseCap().budgetVh).toBe(70);
+  it('the card budget is the sheet cap', () => {
+    // The Tier 2 map chrome is bounded by the sheet's 55vh cap (app.css's #1843
+    // comment); a larger card budget lets the card's top reach it. The sheet's own
+    // toast-compensated cap is pinned by toastCompensationTwin.test.ts.
+    expect(parseCap().budgetVh).toBe(55);
+    expect(cardCapPx(1180, 213, 60)).toBe(376);
   });
 
   it('bottom and max-height read the same sheet fallback', () => {
