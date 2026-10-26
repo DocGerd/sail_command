@@ -7,7 +7,6 @@ import { en } from '../i18n/dict.en';
 import AboutDialog from './AboutDialog';
 import { boatById } from '../data/boats';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
-import { PROJECT_NEW_ISSUE_URL, PROJECT_REPO_URL } from '../lib/projectLinks';
 
 // #539: the dialog's mask-tolerance caveat is now parameterised by the
 // SELECTED boat (spec J OQ-2), so every render site must supply one. The
@@ -137,8 +136,12 @@ describe('AboutDialog', () => {
       await screen.findByRole('dialog');
       const repo = screen.getByRole('link', { name: dict['about.project.repo'] });
       const report = screen.getByRole('link', { name: dict['about.project.report'] });
-      expect(repo).toHaveAttribute('href', PROJECT_REPO_URL);
-      expect(report).toHaveAttribute('href', PROJECT_NEW_ISSUE_URL);
+      // Literals, not the projectLinks.ts constants: a typo there must red this.
+      expect(repo).toHaveAttribute('href', 'https://github.com/DocGerd/sail_command');
+      expect(report).toHaveAttribute(
+        'href',
+        'https://github.com/DocGerd/sail_command/issues/new/choose',
+      );
       for (const link of [repo, report]) {
         expect(link).toHaveAttribute('target', '_blank');
         const rel = (link.getAttribute('rel') ?? '').split(/\s+/);
