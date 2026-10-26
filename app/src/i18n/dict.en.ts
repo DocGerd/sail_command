@@ -1317,6 +1317,8 @@ export const en = {
   // ambiguous.
   'about.closeDialog': 'Close dialog',
   'about.version': 'Version {version}',
+  'about.project.repo': 'SailCommand on GitHub',
+  'about.project.report': 'Report a problem or suggest a feature',
   'about.changelog.title': "What's new",
   'about.changelog.langNote': 'The changelog is maintained in English.',
   'about.caveats.heading': 'Important notes',
