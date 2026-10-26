@@ -148,7 +148,7 @@ describe('AboutDialog', () => {
     },
   );
 
-  it('#1895: the project links sit between the icon close and the bottom Close, which stays the last focusable', async () => {
+  it('#1895: the project links sit between the icon close and the bottom Close', async () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
