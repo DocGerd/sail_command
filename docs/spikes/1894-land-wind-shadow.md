@@ -102,6 +102,25 @@ cannot be told from model-wind bias or current. A new issue is filed only
 for a shape deviation > 15 % in the same direction in ≥ 3 trips
 individually. Polars are not edited.
 
+### 0.7 Amendment (2026-10-26, still before any track result)
+
+Prompted by Phase 2 research, not by data. The §0.5 verdict rules are
+unchanged; these views are report-only.
+
+1. The app omits `cell_selection`, so Open-Meteo answers in `land` mode
+   (server source, `ForecastapiController.swift`), which can return an
+   adjacent land cell for a water point. That would pair short-fetch samples
+   with lower TWS and inflate `R` there, biasing `Δ` toward zero. The §0.4
+   contrast is therefore also reported with wind fetched with
+   `cell_selection=sea` and `nearest`, on the §0.3 sample set.
+2. Model-only check, no tracks: on the app's full 0.1° lattice, the per-point
+   TWS difference between `land`, `sea` and `nearest`; and whether modelled
+   TWS at water lattice points rises with their own upwind fetch.
+3. `past_days` hours come from the newest runs' first hours, so the pairing
+   tests the model's spatial structure, not its multi-day forecast error.
+4. All trips fall in one month, so one stability regime; any result is
+   scoped to it.
+
 ## 1. Findings
 
 Pending.
