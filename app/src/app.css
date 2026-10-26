@@ -4965,6 +4965,28 @@ select {
   opacity: 0.6;
 }
 
+.about-project {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* No global `a` rule exists, so without these the UA blue/visited purple shows. */
+.about-dialog .about-project a {
+  color: var(--sc-accent);
+}
+
+.about-dialog .about-project a:hover {
+  color: var(--sc-accent-strong);
+}
+
+.about-dialog .about-project a:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
 .about-disclaimer {
   font-weight: 600;
   padding: 0.5rem;

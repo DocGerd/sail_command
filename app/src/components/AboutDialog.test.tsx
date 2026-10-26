@@ -7,6 +7,7 @@ import { en } from '../i18n/dict.en';
 import AboutDialog from './AboutDialog';
 import { boatById } from '../data/boats';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
+import { PROJECT_NEW_ISSUE_URL, PROJECT_REPO_URL } from '../lib/projectLinks';
 
 // #539: the dialog's mask-tolerance caveat is now parameterised by the
 // SELECTED boat (spec J OQ-2), so every render site must supply one. The
@@ -117,6 +118,57 @@ describe('AboutDialog', () => {
     // purpose: deriving it from the dict + define would be a tautology.
     expect(__SC_APP_VERSION__).toBe('dev');
     expect(screen.getByText('Version dev')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['de', de],
+    ['en', en],
+  ] as const)(
+    '#1895: links to the repo and the new-issue chooser, opening safely in a new tab (%s)',
+    async (lang, dict) => {
+      localStorage.setItem('sc-lang', lang);
+      vi.stubGlobal('fetch', fetchMock());
+      render(
+        <I18nProvider>
+          <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+        </I18nProvider>,
+      );
+
+      await screen.findByRole('dialog');
+      const repo = screen.getByRole('link', { name: dict['about.project.repo'] });
+      const report = screen.getByRole('link', { name: dict['about.project.report'] });
+      expect(repo).toHaveAttribute('href', PROJECT_REPO_URL);
+      expect(report).toHaveAttribute('href', PROJECT_NEW_ISSUE_URL);
+      for (const link of [repo, report]) {
+        expect(link).toHaveAttribute('target', '_blank');
+        const rel = (link.getAttribute('rel') ?? '').split(/\s+/);
+        expect(rel).toContain('noopener');
+        expect(rel).toContain('noreferrer');
+      }
+    },
+  );
+
+  it('#1895: the project links sit between the icon close and the bottom Close, which stays the last focusable', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    await screen.findByRole('dialog');
+    const iconClose = screen.getByRole('button', { name: de['about.closeDialog'] });
+    const bottomClose = screen.getByRole('button', { name: de['about.close'] });
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(
+        iconClose.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        link.compareDocumentPosition(bottomClose) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
   });
 
   it('shows the "What\'s new" disclosure with the baked-in changelog content (#131)', async () => {
@@ -329,9 +381,9 @@ describe('AboutDialog', () => {
     const iconCloseButton = screen.getByRole('button', { name: de['about.closeDialog'] });
     const bottomCloseButton = screen.getByRole('button', { name: de['about.close'] });
 
-    // The dialog's LAST focusable element is the bottom Close button (no
-    // links/inputs in this content, so the two Disclosure <summary>s and
-    // the two Close buttons are the only tab stops, in DOM order).
+    // The dialog's LAST focusable element is the bottom Close button (the
+    // #1895 project links, the two Disclosure <summary>s and the icon Close
+    // all precede it in DOM order).
     bottomCloseButton.focus();
     expect(bottomCloseButton).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Tab' });
