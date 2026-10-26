@@ -264,23 +264,6 @@ function cspMeta(): Plugin {
   };
 }
 
-// #1896: vite-plugin-pwa 2.0.0 builds sw.ts with a hardcoded
-// `output.inlineDynamicImports: true`, which rolldown deprecates in favour of
-// `codeSplitting: false`, the same setting. Passed only to that build via
-// `injectManifest.buildPlugins.vite`; a no-op once upstream sets
-// `codeSplitting` itself.
-function swCodeSplittingOption(): Plugin {
-  return {
-    name: 'sailcommand:sw-code-splitting-option',
-    outputOptions(options) {
-      if (options.inlineDynamicImports !== true || options.codeSplitting != null) return null;
-      const next = { ...options, codeSplitting: false as const };
-      delete next.inlineDynamicImports;
-      return next;
-    },
-  };
-}
-
 // #28: emits dist/glyph-manifest.json — the complete, sorted list of font
 // glyph-range files under public/basemap-assets/fonts/, as BASE_URL-relative
 // paths. Fonts are excluded from the SW precache (globIgnores below) and
@@ -730,7 +713,6 @@ export default defineConfig(({ command }) => ({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        buildPlugins: { vite: [swCodeSplittingOption()] },
         // ~40 MB (basemap.pmtiles.png + mask.bin + polars + sprites + app
         // shell; the #295 build reports 31 precache entries, 38,784 KiB) —
         // see spec §7's first-load budget. The ~11 MB of font
