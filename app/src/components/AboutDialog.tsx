@@ -14,6 +14,7 @@ import fragmentsRaw from 'virtual:changelog-fragments';
 import Button from './Button';
 import { useT, useLang } from '../i18n';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
+import { PROJECT_NEW_ISSUE_URL, PROJECT_REPO_URL } from '../lib/projectLinks';
 import { parseChangelog } from '../lib/changelog';
 import { assembleFragments, withPendingFragments } from '../lib/changelogFragments';
 import type { BoatDef } from '../data/boats';
@@ -284,6 +285,17 @@ export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
             the installed bundle for stale-service-worker triage. Shows the
             literal 'dev' on the dev server by design. */}
         <p className="about-version">{t('about.version', { version: __SC_APP_VERSION__ })}</p>
+
+        {/* #1895: beside the version line because a report needs the version.
+            Not in a Disclosure: collapsed content leaves the a11y tree. */}
+        <p className="about-project">
+          <a href={PROJECT_REPO_URL} target="_blank" rel="noopener noreferrer">
+            {t('about.project.repo')}
+          </a>
+          <a href={PROJECT_NEW_ISSUE_URL} target="_blank" rel="noopener noreferrer">
+            {t('about.project.report')}
+          </a>
+        </p>
 
         {/* #131: "What's new" — sibling of the version line it answers
             ("…and what's in this build?"). Collapsed by default so the

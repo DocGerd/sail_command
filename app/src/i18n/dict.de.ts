@@ -1309,6 +1309,8 @@ export const de = {
   // eigener Schlüssel ist statt 'about.close' wiederzuverwenden.
   'about.closeDialog': 'Dialog schließen',
   'about.version': 'Version {version}',
+  'about.project.repo': 'SailCommand auf GitHub',
+  'about.project.report': 'Fehler melden oder Funktion vorschlagen',
   'about.changelog.title': 'Was ist neu',
   'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
   'about.caveats.heading': 'Wichtige Hinweise',
