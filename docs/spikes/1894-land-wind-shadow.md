@@ -255,7 +255,7 @@ hour and trim. The controls disagree:
   0.5 nm wide. There, current (#18's spike quotes the harbour pilot on up to
   3 kn in Alssund), traffic and caution are alternative causes. Between
   legs the deficit does not vanish outside narrow water: in water ≥ 1 nm
-  wide the upwind `Δ` is 0.097 without the fast leg.
+  wide the upwind `Δ` is 0.143, and 0.097 without the fast leg.
 - In the TWA and TWS bands where some trip has both groups, the deficit
   stays positive in every trip: 0.068 at 45–80° and 0.133 at 80–120° TWA,
   0.154 at 8–14 kn TWS. No trip has both groups in the other bands. So the
