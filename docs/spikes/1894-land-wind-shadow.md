@@ -179,16 +179,22 @@ Descriptive only, `R = SOG / table speed`, one value per leg per bin:
 
 `Δ` (open water minus short fetch), on the same §0.3 sample set:
 
-| Wind paired | All legs | Without the fast leg |
-|---|---|---|
-| App request (`land` cells) | 0.148 | 0.102 |
-| App request, strict rerun | 0.143 | 0.095 |
-| `cell_selection=sea` | 0.140 | 0.109 |
-| `cell_selection=nearest` | PENDING | PENDING |
-| ICON-D2 on a 0.025° lattice | 0.125 | 0.087 |
-| DMI HARMONIE on a 0.025° lattice | PENDING | PENDING |
+| Wind paired | All legs | Strict rerun | Without the fast leg |
+|---|---|---|---|
+| App request (`land` cells) | 0.148 | 0.143 | 0.102 |
+| `cell_selection=sea` | 0.140 | 0.135 | 0.109 |
+| `cell_selection=nearest` | 0.138 | 0.128 | 0.099 |
+| ICON-D2, 0.025° lattice, `land` | 0.125 | 0.124 | 0.087 |
+| ICON-D2, 0.025° lattice, `sea` | 0.149 | 0.136 | 0.122 |
+| DMI HARMONIE, 0.025° lattice | 0.096 | 0.068 | 0.068 |
 
-- `Δ` is positive in every trip under every pairing (per trip 0.05–0.23).
+- `Δ` is positive in every trip under every pairing (per trip 0.03–0.26).
+- ICON-D2 on the finer lattice is the app's own model sampled 4 × denser
+  (it equals `icon_seamless` at all 36 shared points over these hours), so
+  it tests lattice smoothing: −15 %. DMI HARMONIE is a different 2 km model:
+  −35 % on the primary set, −52 % on the strict set. §0.5's option-3 credit
+  (≥ 50 % on the §0.3 set) is therefore not met; 0.9 % of fixes leave the
+  polar domain under DMI wind and drop out.
 - The fast leg: one open-water leg of 1,115 fixes sails at `R` 1.26 (SOG
   about 8.8 kn on a broad reach in about 11 kn of model wind). Engine,
   current or model under-reading; neither cap in rule 4 reaches it. It is a
@@ -229,7 +235,8 @@ October 2026 (§0.7.2):
 - The app omits `cell_selection`, so Open-Meteo answers in `land` mode. At
   water lattice points with land within 2 km (44 points), 75 % are answered
   from a land cell, and their TWS is a median 0.861 of the `sea` answer
-  (10th percentile 0.771). Far from land the ratio is 1.000.
+  (10th percentile 0.771; 0.877 against `nearest`). Far from land the ratio
+  is 1.000.
 - Correction to §0.7.1: the expected bias toward zero did not occur. On these
   tracks the land-answered corners sat mostly under open-water fixes (all
   four corners land-answered for 61 % of open-water fixes, 2 % of
