@@ -266,13 +266,15 @@ place, hour and trim. The controls disagree:
   stays positive in every trip: 0.068 at 45–80° and 0.133 at 80–120° TWA,
   0.154 at 8–14 kn TWS. No trip has both groups in the other bands. So the
   TWA mix does not explain it.
-- No single wind-sampling variant tested removes it: scaling short-fetch
-  model TWS by 0.8 only halves `Δ` (0.076), and by 0.7 leaves 0.019. On the
-  4 × denser lattice the app's own model moves `Δ` by −15 % in `land` mode
-  and +6 % in `sea` mode, and `land` against `sea` there moves it by −9 % to
-  −29 % (§1.3). Every deterministic 10–20° TWD rotation tested leaves `Δ`
-  ≥ 0.11; random per-leg errors of 20° give a 5th percentile of 0.117 and a
-  minimum of 0.072 over 300 draws. A combined worst case was not computed.
+- Removing it would take a large wind error: true short-fetch wind about a
+  third below the model's. Scaling short-fetch model TWS by 0.8 gives a `Δ`
+  of 0.076, by 0.7 gives 0.019, and by 0.6 gives −0.061. No sampling variant
+  tested removes it: on the 4 × denser lattice the app's own model moves `Δ`
+  by −15 % in `land` mode and +6 % in `sea` mode, and `land` against `sea`
+  there moves it by −9 % to −29 % (§1.3). Every deterministic 10–20° TWD
+  rotation tested leaves `Δ` ≥ 0.11; random per-leg errors of 20° give a 5th
+  percentile of 0.117 and a minimum of 0.072 over 300 draws. A combined worst
+  case was not computed.
 
 ### 1.5 The wind the router sees
 
