@@ -213,18 +213,20 @@ fast-leg columns are their own sets.
   removal and the land-mode effect in §1.5 may overlap: every open-water fix
   of that trip is land-answered.
 - ICON-D2 requested at 36 points of the app's own lattice equals
-  `icon_seamless` there over the 16 track hours, so the 0.025° ICON-D2 rows test
+  `icon_seamless` there over all 120 past-day hours of the fetch, which
+  include every hour the pairing reads, so the 0.025° ICON-D2 rows test
   lattice density, not another model: −15 % in `land` mode, +6 % in `sea`
-  mode (against the `sea` row). DMI HARMONIE is a different 2 km model:
-  −35 % on the primary set, −34 % without the fast leg, −52 % on the strict
-  set (where its set keeps 32,062 fixes against 32,085, and one trip reads
-  0.026).
+  mode (all legs, against the `sea` row). DMI HARMONIE is a different 2 km
+  model: −35 % on the primary set, −34 % without the fast leg, −52 % on the
+  strict set (where its set keeps 32,062 fixes against 32,085, and one trip
+  reads 0.026).
 - §0.5's option-3 credit (≥ 50 % "on the same sample set") does not name
   the set. This spike reads the primary set as binding, since §0.3 calls the
   strict rerun a sensitivity check; on that reading the credit is not met,
   on the strict set it is. The recommendation does not rest on it (§3).
 - With three trips each holding both groups, the bootstrap "95 % interval"
-  is just the per-trip minimum and maximum (10 distinct resamples).
+  is the minimum and maximum of the 10 distinct resample values; for the
+  app row those are the per-trip values.
 - Open-water level: `R` 0.77 against model wind (§1.7); per §0.6 it cannot
   be told apart from model-wind bias or current.
 
@@ -241,18 +243,21 @@ place, hour and trim. The controls disagree:
   its interval rests on two trips, and 73 of its 2,000 bootstrap draws are
   undefined (strict: 0.085, [−0.003, 0.218]).
 - Between legs, at equal proximity (land within 0.25 nm in any direction),
-  land-upwind legs average `R` 0.607 against 0.731 for land-downwind legs
-  (7 legs each), lower in all three trips (−0.126 / −0.090 / −0.191;
-  strict −0.105). At 0.25–0.5 nm the gap is −0.013 and mixed in sign by
-  trip (−0.015 / +0.024 / −0.019). This favours a lee effect only at the
-  closest range.
-- Within legs (leg fixed effects, 120 s blocks), land within 0.5 nm upwind
-  costs `R` 0.035–0.054 and land within 0.5 nm downwind 0.034–0.048, so the
+  land-upwind legs (upwind fetch < 0.5 nm) average `R` 0.607 against 0.731
+  for land-downwind legs (downwind fetch < 0.5 nm, upwind ≥ 0.5 nm; each leg
+  ≥ 60 fixes in the class; 7 legs each), lower in all three trips
+  (−0.126 / −0.090 / −0.191; strict −0.105). At 0.25–0.5 nm the gap is
+  −0.013 and mixed in sign by trip (−0.015 / +0.024 / −0.019). This favours
+  a lee effect only at the closest range.
+- Within legs (leg fixed effects on 120 s block medians; ranges over the
+  specifications holding each term, alone or with downwind, any-direction,
+  TWA/TWS or water-width terms), land within 0.5 nm upwind costs `R`
+  0.035–0.054 and land within 0.5 nm downwind 0.034–0.048, so the
   regression shows no direction dependence; on the strict set the upwind
   cost is 0.011–0.026 with intervals including 0. A paired within-leg
-  comparison of nearest land upwind against nearest land in any other
-  direction reads
-  −0.153 under 0.25 nm (4 legs, 2 trips) and +0.037 at 0.25–0.5 nm
+  comparison of nearest land upwind (within ±45° of the wind direction)
+  against nearest land in any other direction, each side ≥ 60 fixes per
+  leg, reads −0.153 under 0.25 nm (4 legs, 2 trips) and +0.037 at 0.25–0.5 nm
   (8 legs, 3 trips).
 - In a paired split by water width, the within-leg deficit appears only in
   narrow water: −0.081 under 0.5 nm
@@ -270,8 +275,9 @@ place, hour and trim. The controls disagree:
   third below the model's. Scaling short-fetch model TWS by 0.8 gives a `Δ`
   of 0.076, by 0.7 gives 0.019, and by 0.6 gives −0.061. No sampling variant
   tested removes it: on the 4 × denser lattice the app's own model moves `Δ`
-  by −15 % in `land` mode and +6 % in `sea` mode, and `land` against `sea`
-  there moves it by −9 % to −29 % (§1.3). Every deterministic 10–20° TWD
+  by −15 % in `land` mode and +6 % in `sea` mode (all legs), and `land`
+  against `sea` there moves it by −9 % to −29 % across the three columns
+  (§1.3). Every deterministic 10–20° TWD
   rotation tested leaves `Δ` ≥ 0.11; random per-leg errors of 20° give a 5th
   percentile of 0.117 and a minimum of 0.072 over 300 draws. A combined worst
   case was not computed.
@@ -304,8 +310,9 @@ one fetch in October 2026 (§0.7.2):
 - Over this area `icon_seamless` serves ICON-D2 (0.02°, 0–48 h) and its
   rapid-update run at the highest priority, ICON-EU (7 km) to 5 days, then
   ICON global. A 6-day plan spans all three; the track analysis saw only
-  ICON-D2 hours, while the lattice check's last 24 hours differ from
-  `icon_d2` (likely its rapid-update run). Open-Meteo applies no downscaling
+  ICON-D2 hours, while the lattice check's last 24 hours (the fetch's
+  forecast day) were not shown to be ICON-D2. Open-Meteo applies no
+  downscaling
   to 10 m wind. Answers come from native-grid cells a median 0.8–0.9 km from
   the requested point, and 1.7 km at water points within 2 km of land in
   `land` mode. (Open-Meteo server source, `ForecastapiController.swift` and
@@ -335,7 +342,7 @@ one fetch in October 2026 (§0.7.2):
   kept fixes; an independent exact-grid recompute of the upwind fetch moves
   `Δ` from 0.148 to 0.146; an independent kinematics recompute on 1,000
   fixes agrees to 2.5e-10 kn SOG (an alternative window-endpoint convention
-  moves SOG by ≤ 0.06 kn); the statistics reproduce exactly. Varying the
+  moves SOG by ≤ 0.061 kn); the statistics reproduce exactly. Varying the
   window guard (20–27 s) and the turn-event displacement (0–30 m) leaves `Δ`
   at 0.148; varying §0's harbour radius (0.75–1.25 nm), turn threshold
   (25–40°) and minimum leg (120–300 s) keeps it at 0.140–0.161 (0.098–0.107
@@ -350,8 +357,8 @@ Posted on #1894: open-water level `R` 0.77 (per trip 0.75 / 0.72 / 0.78),
 the fast leg included. Every table cell has fewer than three trips, so no
 shape finding qualifies for an issue. Other readings of the convention put
 the level at 0.73–0.77 and let up to three cells reach three trips (nearest
-table node); none shows a qualifying shape deviation (largest single-trip
-−14.7 %).
+table node); none shows a qualifying shape deviation (in those cells, largest
+single-trip −14.7 %).
 
 ### 1.8 Corrections to §0
 
@@ -493,5 +500,6 @@ open-water legs, outside October, with engine on/off noted per leg.
   `routing/isochrone.ts`, `lib/reefSuggestion.ts`, and the #282 closure
   (`closure.mjs files`, run 2026-10-26).
 - Tracks, scripts and per-fix tables stay in the session scratchpad and are
-  not committed (§0.1). §0, §1.2 and §1.4 specify the pipeline and its
-  views, so a rerun re-implements them.
+  not committed (§0.1). §0 and §1.2 specify the pipeline, so a rerun
+  re-implements it; §1.4 states each view's definitions but not every
+  implementation detail.
