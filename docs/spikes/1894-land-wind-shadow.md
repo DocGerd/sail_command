@@ -151,11 +151,12 @@ outbound IP.
 | 4 motoring (leg median `R` > 1.6) | 0 legs | 0 legs |
 
 Kept: 38,497 fixes (50.8 %) in 24 legs, every trip contributing. Strict
-rerun: 32,085 (42.4 %), 20 legs. All waiting fell inside harbour zones.
+rerun: 32,085 (42.4 %), 20 legs. No waiting remained after rules 1 and 2.
 
 Implementation choices §0 does not fix. The window guard, the turn-event
 displacement and the polar-check convention were varied for effect (§1.6,
-§1.7); the "sustained" run rule and the omnidirectional ray set were not:
+§1.7); the "sustained" run rule, the omnidirectional ray set and the
+water width were not:
 
 - A window must span ≥ 24 s. A first guard of ≥ 28 s cut runs on
   millisecond timestamp jitter (3–5 % of full windows read just under
@@ -165,6 +166,9 @@ displacement and the polar-check convention were varied for effect (§1.6,
 - "Sustained" means an unbroken per-fix run; legs split at gaps > 2 s (never
   fired: no gap exceeds 1.2 s).
 - Omnidirectional distance to land: 36 bearings, capped at 2 nm.
+- Water width (§1.4, §4): the minimum over 36 axes of the summed distance
+  to land in both directions (72 bearings at 5°, each capped at 2 nm, the
+  mask edge counted as land).
 - Polar-check cells are the fock table's bracket cells; a leg-cell needs
   ≥ 60 fixes; the level is the median of leg-cell medians.
 
@@ -209,7 +213,7 @@ fast-leg columns are their own sets.
   removal and the land-mode effect in §1.5 may overlap: every open-water fix
   of that trip is land-answered.
 - ICON-D2 requested at 36 points of the app's own lattice equals
-  `icon_seamless` there over these hours, so the 0.025° ICON-D2 rows test
+  `icon_seamless` there over the 16 track hours, so the 0.025° ICON-D2 rows test
   lattice density, not another model: −15 % in `land` mode, +6 % in `sea`
   mode (against the `sea` row). DMI HARMONIE is a different 2 km model:
   −35 % on the primary set, −34 % without the fast leg, −52 % on the strict
@@ -219,16 +223,16 @@ fast-leg columns are their own sets.
   the set. This spike reads the primary set as binding, since §0.3 calls the
   strict rerun a sensitivity check; on that reading the credit is not met,
   on the strict set it is. The recommendation does not rest on it (§3).
-- With three trips the bootstrap "95 % interval" is just the per-trip
-  minimum and maximum (10 distinct resamples).
+- With three trips each holding both groups, the bootstrap "95 % interval"
+  is just the per-trip minimum and maximum (10 distinct resamples).
 - Open-water level: `R` 0.77 against model wind (§1.7); per §0.6 it cannot
   be told apart from model-wind bias or current.
 
 ### 1.4 Is the deficit a lee effect?
 
-Not shown. `Δ` compares different legs: 8 legs supply short-fetch values, 8
-open-water values and 1 both, so fetch is confounded with each leg's place,
-hour and trim. The controls disagree:
+Not shown. `Δ` compares different legs: 8 legs supply short-fetch values and
+8 open-water values, one leg both, so fetch is confounded with each leg's
+place, hour and trim. The controls disagree:
 
 - Direction placebo (§0.5): downwind `Δ` 0.067 and +90° `Δ` 0.054 are below
   half the upwind `Δ`. The −90° `Δ` is 0.115 with interval
@@ -245,11 +249,13 @@ hour and trim. The controls disagree:
 - Within legs (leg fixed effects, 120 s blocks), land within 0.5 nm upwind
   costs `R` 0.035–0.054 and land within 0.5 nm downwind 0.034–0.048, so the
   regression shows no direction dependence; on the strict set the upwind
-  cost is 0.015–0.020 with intervals including 0. A paired within-leg
-  comparison of nearest land upwind against nearest land abeam reads
+  cost is 0.011–0.026 with intervals including 0. A paired within-leg
+  comparison of nearest land upwind against nearest land in any other
+  direction reads
   −0.153 under 0.25 nm (4 legs, 2 trips) and +0.037 at 0.25–0.5 nm
   (8 legs, 3 trips).
-- The within-leg deficit appears only in narrow water: −0.081 under 0.5 nm
+- In a paired split by water width, the within-leg deficit appears only in
+  narrow water: −0.081 under 0.5 nm
   wide (2 legs, 1 trip), −0.104 at 0.5–1 nm (4 legs, 2 trips), +0.011 at
   ≥ 1 nm (5 legs, 2 trips); 58 % of upwind-short fixes are in water under
   0.5 nm wide. There, current (#18's spike quotes the harbour pilot on up to
@@ -260,12 +266,13 @@ hour and trim. The controls disagree:
   stays positive in every trip: 0.068 at 45–80° and 0.133 at 80–120° TWA,
   0.154 at 8–14 kn TWS. No trip has both groups in the other bands. So the
   TWA mix does not explain it.
-- No single wind-sampling variant tested removes it: zeroing `Δ` would need
-  near-shore model TWS 25–30 % too high relative to open water, and the
-  largest sampling effect of the app's own model, the 4 × denser lattice in
-  `land` mode, is −15 % (§1.3). Every deterministic 10–20° TWD rotation
-  tested leaves `Δ` ≥ 0.11; random per-leg errors of 20° put it below 0.10
-  in 2.7 % of 300 draws. A combined worst case was not computed.
+- No single wind-sampling variant tested removes it: scaling short-fetch
+  model TWS by 0.8 only halves `Δ` (0.076), and by 0.7 leaves 0.019. On the
+  4 × denser lattice the app's own model moves `Δ` by −15 % in `land` mode
+  and +6 % in `sea` mode, and `land` against `sea` there moves it by −9 % to
+  −29 % (§1.3). Every deterministic 10–20° TWD rotation tested leaves `Δ`
+  ≥ 0.11; random per-leg errors of 20° give a 5th percentile of 0.117 and a
+  minimum of 0.072 over 300 draws. A combined worst case was not computed.
 
 ### 1.5 The wind the router sees
 
@@ -282,23 +289,25 @@ one fetch in October 2026 (§0.7.2):
   sat mostly under open-water fixes (all four corners land-answered for
   61 % of open-water fixes, 2 % of short-fetch fixes), and `land` exceeds
   `sea` by 0.007 (strict 0.008) and `nearest` by 0.009 (strict 0.015).
-  Without the fast leg it did against `sea` (−0.007; +0.003 against
-  `nearest`), and on the 0.025° ICON-D2 lattice it did in every column
-  (−0.012 to −0.035).
+  Without the fast leg it did against `sea` (−0.007) but not against
+  `nearest` (+0.003); on the 0.025° ICON-D2 lattice it did against `sea` in
+  every column (−0.012 to −0.035).
 - The model already carries a fetch gradient: at water lattice points of
   the app request, TWS divided by that hour's median is 0.68–0.86 with under
   2 nm of upwind fetch (lowest at 0.5–1 nm, not monotone), 0.98 at 4–10 nm
-  and 1.07–1.09 beyond 10 nm (Spearman ρ ≈ 0.67); `sea` mode shows the same
+  and 1.09 beyond 10 nm (Spearman ρ ≈ 0.67); `sea` mode shows the same
   shape. 11 % of these fetches are cut short by the mask edge. This is the
   regional, kilometre-scale gradient. Sub-kilometre obstacle lee (§1.6) is
   resolved nowhere in the pipeline.
 - Over this area `icon_seamless` serves ICON-D2 (0.02°, 0–48 h) and its
   rapid-update run at the highest priority, ICON-EU (7 km) to 5 days, then
-  ICON global. A 6-day plan spans all three; the analyses here saw only
-  ICON-D2 hours. Open-Meteo applies no downscaling to 10 m wind. Answers come
-  from native-grid cells a median 0.8–0.9 km from the requested point, and
-  1.7 km at water points within 2 km of land in `land` mode. (Open-Meteo
-  server source, `ForecastapiController.swift` and `Icon.swift`.)
+  ICON global. A 6-day plan spans all three; the track analysis saw only
+  ICON-D2 hours, while the lattice check's last 24 hours differ from
+  `icon_d2` (likely its rapid-update run). Open-Meteo applies no downscaling
+  to 10 m wind. Answers come from native-grid cells a median 0.8–0.9 km from
+  the requested point, and 1.7 km at water points within 2 km of land in
+  `land` mode. (Open-Meteo server source, `ForecastapiController.swift` and
+  `Icon.swift`.)
 - Finer models whose grids reach the area: DMI HARMONIE 2 km and MET Nordic
   1 km; only partly KNMI 2 km (ends at 11.28° E) and AROME France HD 1.5 km
   (ends at 55.4° N); UKMO 2 km, unverified over Denmark. Requested by their
@@ -321,20 +330,26 @@ one fetch in October 2026 (§0.7.2):
   so a constant-height rule would be off by that factor.
 - Adversarial verification of the app (`land`) pairing: the Python pairing
   matches `WindField.sample` and `Polar.speedKn` to Float32 precision on all
-  kept fixes; an independent exact-grid fetch moves `Δ` from 0.148 to
-  0.146; an independent kinematics recompute on 1,000 fixes agrees to
-  2.5e-10 kn SOG (an alternative window-endpoint convention moves SOG by
-  ≤ 0.06 kn); the statistics reproduce exactly. Varying implementation
-  choices keeps `Δ` at 0.140–0.161 (0.095–0.107 without the fast leg);
-  dropping motor-suspect steady blocks as well as the fast leg gives 0.088.
-  Every per-trip value stays positive. The `nearest`, ICON-D2 `sea` and DMI
-  rows came later and were not independently recomputed.
+  kept fixes; an independent exact-grid recompute of the upwind fetch moves
+  `Δ` from 0.148 to 0.146; an independent kinematics recompute on 1,000
+  fixes agrees to 2.5e-10 kn SOG (an alternative window-endpoint convention
+  moves SOG by ≤ 0.06 kn); the statistics reproduce exactly. Varying the
+  window guard (20–27 s) and the turn-event displacement (0–30 m) leaves `Δ`
+  at 0.148; varying §0's harbour radius (0.75–1.25 nm), turn threshold
+  (25–40°) and minimum leg (120–300 s) keeps it at 0.140–0.161 (0.098–0.107
+  without the fast leg); dropping three motor-suspect steady legs as well as
+  the fast leg gives 0.088. Every per-trip value stays positive. Of the
+  other wind rows, only the `sea` all-legs value was independently
+  recomputed (0.1406).
 
 ### 1.7 Polar check (report only, §0.6)
 
 Posted on #1894: open-water level `R` 0.77 (per trip 0.75 / 0.72 / 0.78),
 the fast leg included. Every table cell has fewer than three trips, so no
-shape finding qualifies for an issue.
+shape finding qualifies for an issue. Other readings of the convention put
+the level at 0.73–0.77 and let up to three cells reach three trips (nearest
+table node); none shows a qualifying shape deviation (largest single-trip
+−14.7 %).
 
 ### 1.8 Corrections to §0
 
@@ -346,8 +361,9 @@ shape finding qualifies for an issue.
   note says that range compares two sister-hull VPP runs and is not an error
   bound for this boat; 0.10 stays a judgment.
 - §0.7.1 expected the land-mode bias to push `Δ` toward zero. On the app
-  lattice with all legs it did not; without the fast leg and on the 0.025°
-  ICON-D2 lattice it did (§1.5).
+  lattice with all legs it did not; without the fast leg it did against
+  `sea` but not against `nearest`, and on the 0.025° ICON-D2 lattice it did
+  against `sea` (§1.5).
 
 ## 2. Recommendation
 
@@ -409,10 +425,10 @@ shape finding qualifies for an issue.
   the app's own model on a 4 × denser lattice changes `Δ` by −15 % in `land`
   mode and +6 % in `sea` mode; DMI HARMONIE by −35 % (−52 % on the strict
   set, §1.3).
-- **5 `cell_selection=sea` inside #1894:** it barely moves `Δ` (0.148 to
-  0.140) and changes the wind the router sees near land, against keeping
-  near-coast TWS low, which §2 finds conservative only for motor-off ETAs or
-  above the sail-speed floor; that is the maintainer's call (§2).
+- **5 `cell_selection=sea` inside #1894:** it barely moves `Δ` (by 0.007)
+  and changes the wind the router sees near land, against keeping near-coast
+  TWS low, which §2 finds conservative only for motor-off ETAs or above the
+  sail-speed floor; that is the maintainer's call (§2).
 - **6 interpolate only from water lattice points, or move points onto
   water:** unmeasured; in `land` mode water points would still be answered
   from land cells; owes a sweep that uniform-wind arms cannot exercise.
@@ -475,5 +491,5 @@ open-water legs, outside October, with engine on/off noted per leg.
   `routing/isochrone.ts`, `lib/reefSuggestion.ts`, and the #282 closure
   (`closure.mjs files`, run 2026-10-26).
 - Tracks, scripts and per-fix tables stay in the session scratchpad and are
-  not committed (§0.1). §0 and §1.2 specify the pipeline, so a rerun
-  re-implements it.
+  not committed (§0.1). §0, §1.2 and §1.4 specify the pipeline and its
+  views, so a rerun re-implements them.
