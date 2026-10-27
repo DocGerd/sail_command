@@ -462,10 +462,13 @@ making design-level decisions; do not silently deviate.
   including queueing/startup, not the job's own duration.
 - **Since #1286 the required `app` and `e2e` checks are FAN-IN jobs** that
   fail unless every needed job (`changes`, `app-static`, `app-shard (i/3)`;
-  `changes`, `e2e-shard (i/2)`) reports `success`. The docs-only classify step
-  (#327, PR #330) and #877's retest step run once in `changes`; its outputs
-  gate the shard jobs' STEPS (checkout through `npm run e2e`), never the jobs.
-  The JOB always runs and always reports — a trigger-level
+  `changes`, `e2e-shard (i/2)`) reports `success`. A push or server-side
+  `update-branch` that supersedes a PR run cancels its shards, and that run's
+  fan-ins then read `failure`: read the shard conclusions before treating
+  `app`/`e2e` red as a test failure (four times on PR #1897). The docs-only
+  classify step (#327, PR #330) and #877's retest step run once in `changes`;
+  its outputs gate the shard jobs' STEPS (checkout through `npm run e2e`),
+  never the jobs. The JOB always runs and always reports — a trigger-level
   `paths`/`paths-ignore` on a REQUIRED check never reports at all, leaving the
   PR blocked forever, so only STEPS may be skipped; `python-lint.yml`/
   `verify-mask.yml` may use trigger filters precisely because neither is
@@ -555,6 +558,20 @@ making design-level decisions; do not silently deviate.
   what changed, not what silently didn't) and by comparing built `dist` hashes.
   Reproduced 2026-08-18 in PR #568 (which closed #533): the `install` form
   added `dependencies.nanoid` AND stripped that entry's `"dev": true`.
+  Write every lockfile change with npm 11 (`npx -y npm@11 …` from `app/`):
+  npm 10 drops the `libc` fields of the lockfile's platform-specific entries
+  (commit 8876a9b on PR #1897; re-measured 2026-10-27 with npm 10.9.4, 10.9.9
+  and 11.21.1).
+- **MAINTAINER RULING 2026-10-26 (on #1901): use the latest stable release;
+  overriding a transitive dependency is fine only when no newer release of its
+  parent exists.** It clarified the same day's "Fix them by using the proper
+  version not workarounds", also recorded there. #1903 applied it with a
+  scoped `workbox-build › glob` override (drop it once workbox-build ships a
+  non-deprecated glob). Under the maintainer's delegation, #1901's decision
+  comment kept rolldown's `inlineDynamicImports` warning unshimmed until
+  vite-plugin-pwa fixes it, and says when to re-propose the shim.
+  python-dateutil 3.0.0 waits for a pandas release that supports it (#1904;
+  #1892 closed).
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
   This makes EVERY Dependabot bump of one of the runtime packages listed in
@@ -565,6 +582,9 @@ making design-level decisions; do not silently deviate.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
+  Doing that on a branch you own (merge the Dependabot branch in, regenerate,
+  open your own PR) keeps the regeneration commit off Dependabot's branch, and
+  merging your PR marks the Dependabot PR merged (#1902 for #1891, 2026-10-26).
   A maplibre-gl bump reds `app` a SECOND, unrelated way:
   `app/src/test/glyphFallbackWarningGuard.test.ts` reads
   `node_modules/maplibre-gl/src/render/glyph_manager.ts` and fails if the
@@ -5143,6 +5163,10 @@ making design-level decisions; do not silently deviate.
   write-then-revert leaves NO trace in `git status` (only mtimes), so never
   assert a tree is exclusively an agent's own unless you created it for them,
   and tell workers to diff-before-stage regardless of any such assurance.
+  A "write nothing" brief does not prevent it either: on 2026-10-26 a review
+  workflow agent briefed that way replaced `app/src/app.css.test.ts` with a
+  JSON list of test names. Name output-file flags and redirects in the ban,
+  and run `git status --untracked-files=all` after every review round.
 - Post an in-session maintainer ruling as an issue comment BEFORE a spec or doc
   attributes it, then cite it: #1748 credited decisions to the maintainer while
   #1716 had no record, a claim-audit Major fixed by posting one.
@@ -5206,6 +5230,10 @@ making design-level decisions; do not silently deviate.
   2026-09-09 against this harness). Issue such calls one at a time rather than reaching for a
   permission rule. This is a HARNESS observation, not a repo property — a read-only agent could
   not reproduce it, and it may not survive a harness upgrade.
+  On 2026-10-26 the classifier also denied closing an issue the user had not
+  asked to close ("External System Writes"; allowed once they delegated the
+  decision) and a `git push origin --delete` of a fully merged branch ("Git
+  Destructive"). Ask the user before either.
 - **A FORK PR's runs sit at `action_required`** until approved —
   `gh api -X POST repos/O/R/actions/runs/<id>/approve` after a static safety
   review; `pulls/N/update-branch` works when `maintainer_can_modify`, and the
@@ -5215,8 +5243,10 @@ making design-level decisions; do not silently deviate.
   scope, and the session proxy refused the contents-API write to that path (a
   read of it succeeds). A session in that state puts the change in an issue
   as a diff for the maintainer (#1852). Separately, it could not delete a
-  remote branch (API 403, push refused).
-- **Cloud-container facts, measured 2026-10-23 to 25** (harness properties;
+  remote branch (API 403, push refused). A server-side `PUT
+  pulls/N/update-branch` still merges a base that changed `.github/workflows/`
+  into a PR branch (#1897, #1902; 2026-10-26).
+- **Cloud-container facts, measured 2026-10-23 to 26** (harness properties;
   re-check after a harness change). The session runs as uid 0, so
   `changelogFragmentsFs.test.ts`'s mode-000 permission row fails here and is not
   a regression. `ss` and `netstat` are absent. The proxy refuses hosts outside
@@ -5230,7 +5260,10 @@ making design-level decisions; do not silently deviate.
   Open-Meteo. The full vitest suite does not finish in one 600 s Bash call: run
   explicit file-list chunks and diff their union against
   `find app/src -name '*.test.ts*'`; slow `src/routing` chunks still overrun and
-  get backgrounded.
+  get backgrounded. The container's Node 22.22.0 is below the engines range
+  `^22.22.2 || ^24.15.0 || >=26.0.0` of jsdom 30.1.3 and three of its
+  dependencies, so npm prints `EBADENGINE` warnings that CI does not (Node
+  22.23.3 in deploy run 40217822033).
 - **In a cloud session every GraphQL call 403s** ("GitHub GraphQL is not
   available from Claude Code sessions"; seen 2026-10-22 and 2026-10-25, a
   harness property, re-check after a harness change), so `gh auth status`,
