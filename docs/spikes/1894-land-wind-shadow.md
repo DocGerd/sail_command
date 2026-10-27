@@ -1,9 +1,12 @@
 # Spike #1894 — land blocking or disturbing the wind (lee, shadow, channelling)
 
 - **Issue:** #1894
-- **Date:** 2026-10-26
-- **Status:** In progress. §0 is the pre-registration, committed before any
-  track result was computed; the rest is filled in later commits.
+- **Date:** 2026-10-26 to 2026-10-27
+- **Status:** Decision / Recommendation. Maintainer decision pending.
+- **Verdict:** Not resolvable from these tracks (three trips, five
+  required). Disclose now; defer any routing change behind a rerun (§4).
+  The app's default Open-Meteo cell selection goes to the maintainer as a
+  separate question (§2).
 
 ## 0. Pre-registration (written before any Phase 3 result)
 
@@ -280,10 +283,133 @@ October 2026 (§0.7.2):
 Posted on #1894. Every table cell has fewer than three trips, so no shape
 finding qualifies for an issue.
 
+### 1.8 Corrections to §0
+
+- §0.5 names option 2 "soft cost away from a lee shore". In this spike
+  "lee" means land upwind of the boat, which seamanship calls a weather
+  shore; a lee shore is land downwind. Option 2 means a cost away from land
+  upwind.
+- §0.7.1 expected the land-mode bias to push `Δ` toward zero; it did not
+  (§1.5).
+
 ## 2. Recommendation
 
-Pending.
+**Disclose now; change no routing.**
+
+1. Add a wind caveat: a new `about.caveats.wind` key in both dicts, its
+   About list item and test row, a README Known-limitations bullet and a
+   `changelog.d/` fragment. None of these is in the #282 closure, so no
+   sweep is owed. The copy rests on verified pipeline facts, not on the
+   track verdict:
+   - the wind is a forecast-model value on a 0.1° lattice, from model cells
+     of 2 km or more, with no terrain correction;
+   - nothing in the pipeline resolves shelter behind land at sub-kilometre
+     scale or channelling in narrow sounds;
+   - gusts do not enter routing;
+   - real wind near land and in narrow water can differ from the forecast.
+
+   It states no effect size, does not attribute anything to a lee effect
+   (§1.4), does not claim the forecast over-reads near every coast (the model
+   carries the regional gradient, §1.5), and claims no chart authority. Both
+   languages get a claim audit. If the land-cell default stays (question
+   below), the caveat may add that near-coast wind can come from an adjacent
+   land model cell and then tends to read lower.
+2. Defer options 1 and 2 behind the rerun in §4.
+3. Separate question for the maintainer: keep Open-Meteo's `land` cell
+   default or request `cell_selection=sea`? The default reads near-coast
+   water TWS at a median 0.861 of `sea` (§1.5). That is the conservative
+   error only for ETAs with the motor off, or while sail speed stays above
+   the sail-speed floor; with the motor on, a lower TWS can flip a leg to
+   motor at the wind-independent motor speed (6.5 kn by default) and make
+   the plan faster. It also feeds
+   `leg.twsKn`, which the reef suggestion reads, adding to the
+   under-reefing bias the README already states for gusts. A switch needs
+   a provenance marker (the stored `model` string would not change) and a
+   choice between sending the parameter only and storing the returned cell
+   coordinates (the latter changes `WindGrid` and owes a sweep). Either
+   way, sending `cell_selection` explicitly would stop an upstream default
+   change from silently changing the wind.
 
 ## 3. Considered and rejected
 
-Pending.
+- **1a/1b/1c lee TWS penalty** (precomputed layer, per-node ray, lazy
+  layer): needs a fetch curve the verdict cannot give; a fetch-keyed
+  penalty double-counts the regional gradient the model already carries;
+  with the motor on, a cut below the sail-speed floor makes a plan faster.
+  1a's full-resolution layer is 9.4 MB per direction bin, over the
+  per-file precache cap once combined; 1b adds a mask ray per expanded node
+  at unmeasured cost; 1c holds about 9.4 MB per used bin per worker.
+- **2 soft cost away from land upwind, now:** the §0.5 gate is unmet, and
+  within legs the deficit does not depend on direction, so a cost keyed on
+  land upwind may target the wrong variable. Deferred, not discarded.
+- **3 finer model or denser lattice:** the app's own model on a 4 × denser
+  lattice shrinks `Δ` by 15 %, DMI HARMONIE by 35 %, both below the 50 %
+  credit. Finer models requested by their bare id stop at 2.5 days or less;
+  `dmi_seamless` continues on ECMWF IFS, which would replace ICON-EU for
+  days 3–6, a model choice this spike did not evaluate. A 0.05° lattice is
+  1,215 points, beyond the free tier's 600 calls per minute in one request,
+  and the app has no request splitting.
+- **5 `cell_selection=sea` inside #1894:** it barely moves `Δ` (0.148 to
+  0.140) and trades accuracy against the stated conservative preference;
+  that is the maintainer's call (§2).
+- **6 interpolate only from water lattice points, or move points onto
+  water:** unmeasured; in `land` mode water points would still be answered
+  from land cells; owes a sweep that uniform-wind arms cannot exercise.
+- **Do nothing:** no wind caveat exists today (the only near-coast caveat
+  is the waves legend's "coarse near coasts"), and one costs no sweep, asset
+  or request.
+- **Defer alone:** right for 1 and 2, but ships no disclosure meanwhile.
+- **A sail-only option-2 factor:** would make motor edges rank cheaper
+  wherever land is upwind.
+- **A constant-height shelter rule:** coastal barrier height varies 4–9 ×
+  (§1.6).
+- **Caveat copy naming a lee effect, an effect size, or a near-coast
+  over-read:** not supported (§1.4, §1.5).
+- **Fitting any coefficient before the wind source is fixed:** the fetch is
+  outside the #282 closure, so a later change of model, lattice or cell
+  selection would stale a coefficient with no gate firing.
+
+## 4. What would reopen this
+
+Option 2, then option 1, reopens only if a rerun passes §0.5 as committed,
+with these additions committed to this spike before any new track is read:
+
+- a motoring rule that catches a leg like the `R` 1.26 one, and `Δ` ≥ 0.10
+  after dropping any single leg (strict, without the fast leg, it is 0.095
+  today);
+- the strict rerun's interval also excludes 0;
+- within legs, land upwind costs more than land downwind, with separate
+  intervals, outside water under 1 nm wide (if this fails while the gate
+  holds, the follow-up is a narrow-water or current disclosure, not a lee
+  model);
+- the between-leg equal-proximity control has the same sign in every trip;
+- the −90° placebo's overlap with upwind-short fixes is resolved;
+- trips span more than one month;
+- the wind source (model, lattice, cell selection) is fixed before any fit.
+
+Option 1 must also show an effect beyond the regional gradient the model
+carries, and ship with a test that it cannot make a motor-on plan faster
+through the sail-speed floor; it must handle the reef suggestion, the
+motor-off `calm-without-motor` reclassification (#282) and the polar's
+non-monotone 20 → 25 kn column. Option 2 must use a geometry-only factor on
+all edge kinds, guard against steering toward land downwind, and add a
+sweep arm with the setting on.
+
+Option 3 reopens if a model covering the full 6-day horizon shrinks `Δ` by
+≥ 50 % on the same sample set. Within 0–48 h `icon_seamless` already serves
+ICON-D2, so there option 3 means a denser lattice, which must first fit the
+free-tier request budget (one app fetch costs 322 weighted calls).
+
+Data that would help: at least five trips with both near-shore and
+open-water legs, outside October, with engine on/off noted per leg.
+
+## 5. Evidence
+
+- Open-Meteo behaviour: its server source (`open-meteo/open-meteo` at
+  `03d62919`, `ForecastapiController.swift`, `Icon.swift`) and website docs
+  (`open-meteo/open-meteo-website` at `eae13874`), both read 2026-10-26.
+- App pipeline: `services/openMeteo.ts`, `lib/wind.ts`, `lib/polar.ts`,
+  `routing/isochrone.ts`, `lib/reefSuggestion.ts`, and the #282 closure
+  (`closure.mjs files`, run 2026-10-26).
+- Tracks, scripts and per-fix tables stay in the session scratchpad and are
+  not committed (§0.1).
