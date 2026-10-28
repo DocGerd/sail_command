@@ -457,7 +457,7 @@ making design-level decisions; do not silently deviate.
   30805575220: 10:26:31Z→~10:30:26Z). Those two runs stand as past events,
   but that range is SUPERSEDED for planning — the #605 bullet under
   PWA/E2E/deploy re-measured a wider one, and that sized #605's original 30-min
-  cap (`ci.yml`'s current shard cap is sized in its own comment); read the figure there rather than restating it here. The older
+  cap (`ci.yml`'s current shard cap is sized in its own comment); read the range in the #605 bullet rather than restating it here. The older
   ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
 - **Since #1286 the required `app` and `e2e` checks are FAN-IN jobs** that
@@ -1175,7 +1175,8 @@ making design-level decisions; do not silently deviate.
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
   commit it). The COMMITTED fixture is stale (its last forecast hour is in
-  the file's `hourly.time`) and reachable ONLY through the `?windFixture=` escape hatch
+  each point's `hourly.time`, epoch seconds — the file is an array of
+  per-point objects) and reachable ONLY through the `?windFixture=` escape hatch
   (`usePlanFlow.ts`, its sole consumer) — so a MANUAL browser pass that uses
   that parameter fails 'beyond horizon' until
   `node app/scripts/gen-wind-fixture.mjs` is run; restore it afterwards. An
@@ -2489,8 +2490,8 @@ making design-level decisions; do not silently deviate.
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
   (session 30). This route is also one of the app's most expensive inputs —
-  `DEFAULT_PLAN_TIMEOUT_MS` is `PLAN_BUDGET_MS` plus a grace
-  (`workerClient.ts`), so a slow enough machine can exhaust the budget on a
+  `PLAN_BUDGET_MS` (`workerClient.ts`) is a fixed wall-clock budget, not
+  scaled to the device, so a slow enough machine can exhaust the budget on a
   route that routes correctly (#432, #1331). No magnitude is quoted here on purpose: any figure
   has to carry its method and environment, and a Node/vitest number cannot be
   compared to a browser worker's budget.
@@ -3031,13 +3032,13 @@ making design-level decisions; do not silently deviate.
   residual can NEVER fire on it. Ask all three: "what can this not see?", "was
   this threshold chosen to accept the thing I am asking it to catch?", and
   **"did the SUBJECT under test change size?"** The third is new (#628 / PR
-  #688 Major 1): the #277/#598 width pins run at 320px, where #628 made the
+  #688 Major 1): the #277/#598 width pins ran at 320px, where #628 made the
   cluster default-COLLAPSED, so they pass MORE EASILY after the change
   (clearance 16.00px → 41.98px DE / 51.64px EN, measured) and "they still
   pass" cannot
   establish that the change cost no width. A guard that got EASIER is not a
-  control. (The `layout.spec.ts` comment that witnessed these figures was
-  removed with #813.)
+  control. (The `layout.spec.ts` comment that witnessed the EN figure was
+  removed with #813; the DE figure never had a twin.)
 - **The release ship gate earns its cost — do not optimise it away as
   ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
   Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
@@ -3431,7 +3432,7 @@ making design-level decisions; do not silently deviate.
   number alone** — five citations here rotted at once (#467) because a line
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
-  cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
+  cannot catch that class. Write `App.tsx`'s `className="banner-area"` div
   (~:1917): the name is the identity, the number is a hint — and note this
   very example's hint read `~:989` until 2026-08-26 and `~:1091` until
   2026-10-28, drifting while the symbol stayed exact, which is the rule
@@ -4192,7 +4193,7 @@ making design-level decisions; do not silently deviate.
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
   `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
-  since #1705 and, when a comfort preference is set, applies
+  since #1705 or, when a comfort preference is set, instead applies
   `tryMerge`'s comfort rule (not its #1842 per-step check) via
   `mergeKeepsClearance` (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
@@ -4322,7 +4323,7 @@ making design-level decisions; do not silently deviate.
   kept OUT of `types.ts` so it cannot leak into UI code. The public
   `NoRouteReason` is unchanged, derived from the cause at exactly four
   presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for
-  the per-sail result, the #432/#1280 budget guards immediately before and
+  the per-sail result, the budget guards immediately before and
   after the relaxation BFS probes, and the final return. A LABELLING change
   is now safe — free to reword or re-granularise with zero routing effect. A
   CLASSIFICATION change is NOT: the cause is still DERIVED from
@@ -4403,7 +4404,7 @@ making design-level decisions; do not silently deviate.
   guard is at `reroute.ts`, `usePlanFlow.ts`, `useDepartureConfirm.ts` and
   `useDepartureScan.ts`, and must
   never be made unconditional — `dispose()` calls `failAll()` on a singleton
-  shared by three consumers). The two wrapping `save()` deliberately do NOT,
+  shared by every consumer). The two wrapping `save()` deliberately do NOT,
   and their comments say why: routing SUCCEEDED and only the write failed, so
   the worker is healthy. Disposing there would be wrong. The plan-path pair
   pairs with `RoutingClient.isDisposed` + an `ensureClient()` rebuild —
@@ -4627,8 +4628,8 @@ making design-level decisions; do not silently deviate.
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
   neither could have found the other's. It has no Edit or Write tool (Bash is its only way to write a file),
-  so brief it to write a review JSON via a Bash heredoc that the orchestrator
-  posts.
+  so brief it to write, via a Bash heredoc, a review JSON that the
+  orchestrator posts.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
@@ -4712,8 +4713,8 @@ making design-level decisions; do not silently deviate.
   or non-repo `git` (verified across 15 constructed failure inputs).
 - **The Bash arm ADVISES now** (#478, 2026-08-09); since #1021 (v0.25.0) only
   `docs/superpowers/specs/`, a plans+specs-mixed command, a tree-level or
-  `..`-traversing write, and an rm/rmdir/mv naming the `plans/` directory
-  itself (#1041) still ASK — a write confined to
+  `..`-traversing write, and (since #1041) an rm/rmdir/mv naming the
+  `plans/` directory itself still ASK — a write confined to
   `docs/superpowers/plans/` advises, on BOTH the Bash and Edit/Write arms.
   `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
   `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
