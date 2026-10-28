@@ -83,7 +83,7 @@ making design-level decisions; do not silently deviate.
   **39 inbound citations of a `docs/spikes/` path across 17 tracked files**
   (`git grep -n 'docs/spikes' -- ':!docs/spikes'` at that commit) —
   including two files already inside the #282 sweep closure
-  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both in
+  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts`, both in
   `closure.mjs closure`'s output), each citing only the
   `452-local-depth-relaxation.md` spike. That is why #644 shipped as a
   convention-and-cross-link change with **ZERO files moved**: renaming that
@@ -843,7 +843,7 @@ making design-level decisions; do not silently deviate.
 - `Plan` is structured-clone-safe (IndexedDB/postMessage) but NOT JSON-safe
   (Float32Array wind grids) — file export needs a dedicated serializer (#3).
 - Tests import vitest APIs explicitly (`import { describe, it, expect, vi }
-  from 'vitest'`) — one file, `i18n/i18n.test.tsx`, relies on `globals: true`.
+  from 'vitest'`) — among `app/` tests, one file, `i18n/i18n.test.tsx`, relies on `globals: true`.
 - Never transfer the wind grid's buffers to the worker (clone keeps the saved
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
@@ -1196,7 +1196,8 @@ making design-level decisions; do not silently deviate.
   at ~1.79x, not 2.06x — size any future change against the outlier, not the
   sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
   queue-blocks later develop pushes until it reds. The PRE-CAP wedges below
-  (32/54/65/90 min) are durations the cap now forbids — they are the
+  (32/54/65/90 min) are durations the 30-min cap forbade (the 35-min shard cap
+  forbids 54/65/90) — they are the
   evidence FOR the cap, not observations of current behaviour. FOUR PRs' `e2e` wedged on
   `npx playwright install --with-deps chromium` in one session — step-6 durations
   **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
@@ -3360,7 +3361,7 @@ making design-level decisions; do not silently deviate.
   glyph range"`, from that method's literal `warnOnce(...)` call.
   Separately, `_getAndCacheGlyphsPromise` takes a COMPLETELY silent
   local-font path — no fetch, no warning — through its `if (!this.url || …)`
-  block (6.15.0 adds an `isCluster(id)` term to that condition), i.e.
+  block (6.15.0 adds an `isCluster(id)` term to that condition), e.g.
   whenever the style's `glyphs` URL is falsy, and `glyphManager.setURL()` is
   fed from the style's `glyphs` field at two sites in `style.ts` — `_load`,
   which is what a `map.setStyle()` reaches and therefore what
@@ -3593,7 +3594,7 @@ making design-level decisions; do not silently deviate.
   Every gate passed. Found by maintainer UAT (#947, 2026-09-04), and it had
   already turned a CHANGELOG entry into an over-claim — corrected hours before
   that section froze at the tag. The "guard the rendering, not the data" lesson
-  (`docs/spikes/1022-whole-journey-ux.md`) lands one level deeper here: ask WHICH rendering surface the guard reads.
+  (invoked in `docs/spikes/1022-whole-journey-ux.md`) lands one level deeper here: ask WHICH rendering surface the guard reads.
 - **A guard with an APERTURE needs something testing the aperture itself.**
   `i18nPlaceholderParity.test.ts` (#524) extracted `/\{([a-zA-Z]+)\}/g` while
   `t()`'s
@@ -4190,7 +4191,8 @@ making design-level decisions; do not silently deviate.
   allowed post-processing is merging near-collinear legs with re-validation.
   `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
   since #1705 and, when a comfort preference is set, applies
-  `postprocess.ts`'s clearance rule via `mergeKeepsClearance` (#1754).
+  `tryMerge`'s comfort rule (not its #1842 per-step check) via
+  `mergeKeepsClearance` (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible. Since #1793 the two rigs can
   solve in parallel: `workerClient.ts` spawns a solve-only sibling worker
@@ -4622,7 +4624,7 @@ making design-level decisions; do not silently deviate.
   verdict as a prior. Measured at the v0.18.0 docs sweep — the auditor found
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
-  neither could have found the other's. It has no Edit or Write tool (Bash only),
+  neither could have found the other's. It has no Edit or Write tool (Bash is its only way to write a file),
   so brief it to write a review JSON via a Bash heredoc that the orchestrator
   posts.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
@@ -4660,7 +4662,7 @@ making design-level decisions; do not silently deviate.
   place of it.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
   (high/medium/low) + `area:` + optional `status:` — and a milestone
-  (the open release milestone, `Backlog` or `Icebox`;
+  (an open release milestone, `Backlog` or `Icebox`;
   `gh api repos/DocGerd/sail_command/milestones` is the fact); apply type+area+priority to every new
   issue. Taxonomy documented in CONTRIBUTING.md (#167/#168); its label
   section is the authoritative copy of the `area:` member list, including the
@@ -5521,8 +5523,9 @@ making design-level decisions; do not silently deviate.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
-- A local edit to `.claude/settings.json` that differs from the target
-  branch's blob blocks `git switch` until both sides hold the same blob — `git fetch
+- A local edit to `.claude/settings.json` blocks `git switch` to a branch
+  whose blob of it differs from the current branch's, until both sides hold
+  the same blob — `git fetch
   origin develop:develop` (ref update without checkout), then switch. That
   ref-update trick REFUSES while `develop` is itself the checked-out branch —
   branch straight off the remote instead (`git switch -c <b> origin/develop`).
