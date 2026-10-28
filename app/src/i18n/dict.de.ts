@@ -724,6 +724,9 @@ export const de = {
     'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.seamarks.proximity.plural':
     'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+  'route.bridge.notice':
+    'Diese Route passiert {name}, eine Klappbrücke, die zu bestimmten Zeiten öffnet. Außerhalb dieser Zeiten kann eine Öffnung auf Anfrage möglich sein, und die Brücke kann gesperrt sein. SailCommand bildet Öffnungen und Sperrungen nicht ab — die aktuellen Zeiten vor der Fahrt prüfen.',
+  'route.bridge.link': 'Öffnungszeiten der Brücke (Danske Havnelods)',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -859,6 +862,13 @@ export const de = {
   'route.waves.toggle': 'Seegang anzeigen',
   'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
   'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
+  // #1830: Höchstwert über die Stunden und den Weg der Etappe, nur Anzeige.
+  'route.legs.seaState': 'Seegang',
+  'route.legs.seaStateNote':
+    'Seegang: höchste signifikante Wellenhöhe auf der Etappe, über ihre Stunden und ihren Weg. Modellschätzung, keine amtliche Angabe; „≥“ heißt, dass für Teile der Etappe keine Daten vorliegen.',
+  'route.totals.seaState': 'Höchster Seegang',
+  'route.seaState.noData': 'keine Daten',
+  'route.seaState.partial': 'teils ohne Daten',
   'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
   'route.legend.seaStateBelow': 'unter {max} m',
   'route.legend.seaStateRange': '{min} bis {max} m',

@@ -75,6 +75,7 @@ import { ShallowWarning } from './ShallowWarning';
 // #1398a: the third, affirmative state — shares depthExposureState with
 // MarginalDepthNotice so the two stay mutually exclusive here too.
 import { DepthClearNotice, MarginalDepthNotice } from './RouteSummary';
+import { OpeningBridgeNotice } from './OpeningBridgeNotice';
 import { HarborHandoverNotice } from './HarborHandoverNotice';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
@@ -1756,6 +1757,8 @@ export default function PlannerPanel({
               the banner and MarginalDepthNotice above by construction (depthExposureState, shared in
               RouteSummary.tsx). Same `plan &&` type-level requirement. */}
           {plan && <DepthClearNotice plan={plan} legs={result?.legs ?? null} />}
+          {/* #1881: same component as RouteSummary's, so a user who stays on this tab sees it. */}
+          <OpeningBridgeNotice legs={result?.legs ?? null} />
           {summary && (
             <>
               <div className="planner-result-primary">

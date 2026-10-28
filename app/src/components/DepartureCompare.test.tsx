@@ -117,13 +117,14 @@ function stubConfirmHook(
   return { confirm };
 }
 
-function renderCompare(plan: Plan | null, onConfirmed = vi.fn()) {
+function renderCompare(plan: Plan | null, onConfirmed = vi.fn(), onConfirmStart?: () => void) {
   return render(
     <I18nProvider>
       <DepartureCompare
         plan={plan}
         ensureClient={() => Promise.resolve({ failure: 'worker-init' })}
         onConfirmed={onConfirmed}
+        {...(onConfirmStart ? { onConfirmStart } : {})}
       />
     </I18nProvider>,
   );
@@ -388,6 +389,29 @@ describe('DepartureCompare', () => {
 
       expect(screen.getByText('Vollständige Berechnung läuft …')).toBeInTheDocument();
       expect(screen.queryByText(/beiden Riggs/)).not.toBeInTheDocument();
+    });
+
+    it('#1867: onConfirmStart fires synchronously on the confirm click, before confirm resolves, and not on render', () => {
+      const plan = makePlan();
+      stubHook({
+        candidates: [{ departureMs: DEPARTURE_MS, outcome: { kind: 'ok', result: OK_RESULT } }],
+      });
+      const onConfirmStart = vi.fn();
+      const { confirm } = stubConfirmHook(
+        {},
+        vi.fn(() => {
+          expect(onConfirmStart).toHaveBeenCalledTimes(1);
+          return new Promise<Plan | null>(() => {});
+        }),
+      );
+      renderCompare(plan, vi.fn(), onConfirmStart);
+      expect(onConfirmStart).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Vergleich starten' }));
+      expect(onConfirmStart).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Diese Abfahrt übernehmen' }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(onConfirmStart).toHaveBeenCalledTimes(1);
     });
 
     it('a successful confirm calls onConfirmed and shows a plain success notice when the comparison agrees with genoa', async () => {
