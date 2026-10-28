@@ -1,12 +1,12 @@
 # Spike #1894 — land blocking or disturbing the wind (lee, shadow, channelling)
 
 - **Issue:** #1894
-- **Date:** 2026-10-26 to 2026-10-27
+- **Date:** 2026-10-26 to 2026-10-28
 - **Status:** Decision / Recommendation. Maintainer decision pending.
-- **Verdict:** Not resolvable from these tracks (three trips, five
-  required). Disclose now; defer any routing change behind a rerun (§4).
-  The app's default Open-Meteo cell selection goes to the maintainer as a
-  separate question (§2).
+- **Verdict:** Not resolvable from these tracks (three of four trips hold
+  both groups, five required). Disclose now; defer any routing change
+  behind a rerun (§4). The app's default Open-Meteo cell selection goes to
+  the maintainer as a separate question (§2).
 
 ## 0. Pre-registration (written before any Phase 3 result)
 
@@ -136,7 +136,8 @@ October 2026, Als / Flensburg Fjord area, 75,746 fixes at 1 Hz, about
 83 nm. The kept fixes fall in 16 distinct clock hours, so the analysis rests
 on few model hours as well as few trips. Wind was fetched with `past_days`
 (§0.7.3); a first attempt hit Open-Meteo's daily quota on the session's
-outbound IP.
+outbound IP. A fourth trip, supplied later, is reported in §1.9; §1.2–§1.8
+cover the first three.
 
 ### 1.2 Exclusions (§0.3, sequential, share of all 75,746 fixes)
 
@@ -374,6 +375,37 @@ single-trip −14.7 %).
   `sea` but not against `nearest`, and on the 0.025° ICON-D2 lattice it did
   against `sea` (§1.5).
 
+### 1.9 Fourth trip (added 2026-10-28)
+
+A fourth track arrived after the decision question was first put, and no
+further tracks are available. It ran through the unchanged §0 pipeline. Its
+wind is a second `past_days` fetch from the same endpoint, made after the
+trip, so its hours are past hours there too. Where both fetches cover an
+hour (12,576 point-hours over the seven wind variants) they agree exactly,
+and the first three trips' samples are identical in all 19 sample sets.
+
+- Kept: 1,505 of 9,610 fixes in 5 legs (strict: 729 in 3 legs). The
+  harbour/start/end rule removes 5,898.
+- Every kept fix has upwind fetch 0.67–1.63 nm (bins C and D), so the trip
+  adds to neither group: `Δ`, its interval and the per-trip values are
+  unchanged in every row and column of §1.3, and three trips still hold
+  both groups. The verdict stands, and the five trips §0.5 requires cannot
+  come from these tracks (§4).
+- Polar check (§1.7): the trip has no open-water fix, so nothing changes.
+- ICON-D2 equals `icon_seamless` at the trip's lattice points over the
+  hours it reads (30 of 30 point-hours), as for the first three (§1.3).
+- §0.5's placebo clause now fails on downwind. The trip adds two
+  downwind-short leg-bins (`R` 0.48 and 0.69) and no downwind-open one,
+  which lifts the downwind `Δ` to 0.0741 against half the upwind `Δ`,
+  0.0738, with interval [0.041, 0.295] (strict: 0.0769 against 0.0715,
+  [0.045, 0.532]). With three trips it passed (0.067, §1.4).
+- Between legs at land within 0.25 nm, land-downwind legs average 0.727
+  (8 legs, 4 trips) against 0.607 for land-upwind legs (unchanged). At
+  0.25–0.5 nm the gap becomes +0.005 (was −0.013).
+- Within legs, the land-downwind cost becomes 0.036–0.051 (was
+  0.034–0.048). The land-upwind cost ranges and the paired figures §1.4
+  quotes are unchanged.
+
 ## 2. Recommendation
 
 **Disclose now; change no routing.**
@@ -489,7 +521,9 @@ ICON-D2, so there option 3 means a denser lattice, which must first fit the
 free-tier request budget (one app fetch costs 322 weighted calls).
 
 Data that would help: at least five trips with both near-shore and
-open-water legs, outside October, with engine on/off noted per leg.
+open-water legs, outside October, with engine on/off noted per leg. The four
+trips here are all the tracks available (§1.9), so these would have to come
+from other logs.
 
 ## 5. Evidence
 

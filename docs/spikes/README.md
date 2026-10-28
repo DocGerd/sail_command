@@ -157,7 +157,7 @@ instead of here.
   the judging, critique and revision records in `1854-forecast-view-ux/`)
 - [1894-land-wind-shadow.md](1894-land-wind-shadow.md) — #1894: should
   routing model land blocking or disturbing the wind? A pre-registered
-  analysis of three EASY GO! trips is not resolvable; recommends a wind
+  analysis of four EASY GO! trips is not resolvable; recommends a wind
   caveat now, defers lee penalties behind a rerun, and puts Open-Meteo's
   default land-cell selection to the maintainer
 
