@@ -72,6 +72,15 @@ async function openControls(page: Page): Promise<void> {
   }
 }
 
+// The route fit holds no in-mask water lattice point, so no marker: markers
+// are counted on the open water around the null point instead.
+function showOpenWater(page: Page): Promise<void> {
+  return page.evaluate(
+    ({ lng, lat }) => (window as MapWindow).__scMap?.jumpTo({ center: [lng, lat], zoom: 8 }),
+    NULL_CELL,
+  );
+}
+
 function waveToggle(page: Page) {
   return page.getByRole('checkbox', { name: 'Seegang anzeigen', exact: true });
 }
@@ -129,7 +138,11 @@ function cellsAt(page: Page, points: Record<string, [number, number]>) {
           { layers: [arrows] },
         ).length;
         const px = Math.floor(((lng - west!) / (east! - west!)) * canvas.width);
-        const py = Math.floor(((my(lat) - my(north!)) / (my(south!) - my(north!))) * canvas.height);
+        // A lattice point on the mask's south edge is drawn by the row inside it.
+        const py = Math.min(
+          canvas.height - 1,
+          Math.floor(((my(lat) - my(north!)) / (my(south!) - my(north!))) * canvas.height),
+        );
         out[name] = { markers, alpha: ctx.getImageData(px, py, 1, 1).data[3]! };
       }
       return out;
@@ -201,7 +214,6 @@ test.describe('sea-state overlay (#1699)', () => {
 
       await expect.poll(() => layerVisibility(page, FILL), { timeout: 30_000 }).toBe('visible');
       await expect.poll(() => layerVisibility(page, ARROWS)).toBe('visible');
-      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       // Centre the map on the null point: its four water neighbours (S is a
       // real calm cell) are shaded and carry a marker; the null point has neither.
@@ -217,19 +229,15 @@ test.describe('sea-state overlay (#1699)', () => {
           east: [NULL_CELL.lng + STEP_DEG, NULL_CELL.lat],
           west: [NULL_CELL.lng - STEP_DEG, NULL_CELL.lat],
         });
-      await expect
-        .poll(
-          async () => {
-            const c = await cells();
-            const nb = [c.north, c.south, c.east, c.west];
-            return {
-              nullCell: c.nullCell,
-              neighbours: nb.every((n) => n !== undefined && n.markers > 0 && n.alpha === 255),
-            };
-          },
-          { timeout: 30_000 },
-        )
-        .toEqual({ nullCell: { markers: 0, alpha: 0 }, neighbours: true });
+      const shaded = { markers: 1, alpha: 255 };
+      await expect.poll(cells, { timeout: 30_000 }).toEqual({
+        nullCell: { markers: 0, alpha: 0 },
+        north: shaded,
+        south: shaded,
+        east: shaded,
+        west: shaded,
+      });
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       expect(openMeteoRequests, 'fixtures must keep the run off the live APIs').toEqual([]);
     } finally {
@@ -245,6 +253,7 @@ test.describe('sea-state overlay (#1699)', () => {
       const toggle = waveToggle(page);
       await expect(toggle).toBeEnabled();
       await expect(toggle).toBeChecked();
+      await showOpenWater(page);
       await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       await toggle.uncheck();
@@ -266,14 +275,15 @@ test.describe('sea-state overlay (#1699)', () => {
 
       await waveToggle(page).check();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('visible');
+      await showOpenWater(page);
       await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
     } finally {
       server.kill();
     }
   });
 
-  // #1854 AC-3: in-cell pixel pairs where a shaded raster pixel sits beside an
-  // unshaded one whose mask cell is land in the SAME lattice cell (so the old
+  // #1854 AC-3: in-cell pixel pairs where a shaded raster pixel sits beside a
+  // pixel whose mask cells are all land, in the SAME lattice cell (so the old
   // cell rectangle tinted it). Toggling sea state must change the water pixel
   // on screen and leave the land pixel byte-identical.
   test('shades water only: a toggle changes coastal water, never the land beside it', async ({
@@ -284,63 +294,84 @@ test.describe('sea-state overlay (#1699)', () => {
       await planRoute(page, server, `windFixture=${WIND}&waveFixture=${WAVE}`);
       await openControls(page);
       await page.getByRole('checkbox', { name: 'Windpfeile anzeigen', exact: true }).uncheck();
-      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
+      await expect.poll(() => layerVisibility(page, FILL), { timeout: 30_000 }).toBe('visible');
 
-      const pairs = await page.evaluate(async (raster) => {
-        const map = (window as MapWindow).__scMap!;
-        const src = map.getSource(raster) as {
-          getCanvas(): HTMLCanvasElement;
-          coordinates: [number, number][];
-        };
-        const canvas = src.getCanvas();
-        const { width: W, height: H } = canvas;
-        const alpha = canvas.getContext('2d')!.getImageData(0, 0, W, H).data;
-        const meta = (await (await fetch('data/mask.meta.json')).json()) as {
-          south: number;
-          north: number;
-          west: number;
-          east: number;
-          rows: number;
-          cols: number;
-        };
-        const bytes = new Uint8Array(await (await fetch('data/mask.bin')).arrayBuffer());
-        const [[west, north], [east], , [, south]] = src.coordinates;
-        const my = (lat: number) => {
-          const s = Math.sin((lat * Math.PI) / 180);
-          return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
-        };
-        const yN = my(north!);
-        const span = my(south!) - yN;
-        const latAt = (y: number) =>
-          (360 / Math.PI) * Math.atan(Math.exp((0.5 - y) * 2 * Math.PI)) - 90;
-        const centre = (i: number, j: number) => ({
-          lat: latAt(yN + ((i + 0.5) / H) * span),
-          lon: west! + ((j + 0.5) / W) * (east! - west!),
-        });
-        const land = (p: { lat: number; lon: number }) => {
-          const r = Math.floor(((p.lat - meta.south) / (meta.north - meta.south)) * meta.rows);
-          const c = Math.floor(((p.lon - meta.west) / (meta.east - meta.west)) * meta.cols);
-          return bytes[r * meta.cols + c] === 0;
-        };
-        const cell = (p: { lat: number; lon: number }) =>
-          `${Math.round((p.lat - 54.3) * 10)},${Math.round((p.lon - 9.4) * 10)}`;
-        const out: Array<{
-          water: { lat: number; lon: number };
-          land: { lat: number; lon: number };
-        }> = [];
-        for (let i = 0; i < H; i++)
-          for (let j = 1; j < W - 1; j++) {
-            if (alpha[(i * W + j) * 4 + 3] !== 255) continue;
-            for (const dj of [-1, 1]) {
-              if (alpha[(i * W + j + dj) * 4 + 3] !== 0) continue;
-              const w = centre(i, j);
-              const l = centre(i, j + dj);
-              if (land(l) && !land(w) && cell(l) === cell(w)) out.push({ water: w, land: l });
+      const findPairs = () =>
+        page.evaluate(async (raster) => {
+          const map = (window as MapWindow).__scMap!;
+          const src = map.getSource(raster) as {
+            getCanvas(): HTMLCanvasElement;
+            coordinates: [number, number][];
+          };
+          const canvas = src.getCanvas();
+          const { width: W, height: H } = canvas;
+          const alpha = canvas.getContext('2d')!.getImageData(0, 0, W, H).data;
+          const meta = (await (await fetch('data/mask.meta.json')).json()) as {
+            south: number;
+            north: number;
+            west: number;
+            east: number;
+            rows: number;
+            cols: number;
+          };
+          const bytes = new Uint8Array(await (await fetch('data/mask.bin')).arrayBuffer());
+          const [[west, north], [east], , [, south]] = src.coordinates;
+          const my = (lat: number) => {
+            const s = Math.sin((lat * Math.PI) / 180);
+            return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+          };
+          const yN = my(north!);
+          const span = my(south!) - yN;
+          const latAt = (y: number) =>
+            (360 / Math.PI) * Math.atan(Math.exp((0.5 - y) * 2 * Math.PI)) - 90;
+          const centre = (i: number, j: number) => ({
+            lat: latAt(yN + ((i + 0.5) / H) * span),
+            lon: west! + ((j + 0.5) / W) * (east! - west!),
+          });
+          // Whether every mask cell under raster pixel (i, j), bar the column it
+          // shares with its pair, has this byte class;
+          // read from the mask alone, never from the raster under test.
+          const rowOf = (lat: number) =>
+            Math.floor(((lat - meta.south) / (meta.north - meta.south)) * meta.rows);
+          const colOf = (lon: number) =>
+            Math.floor(((lon - meta.west) / (meta.east - meta.west)) * meta.cols);
+          const footprint = (i: number, j: number, wantLand: boolean, shared: number) => {
+            const r0 = rowOf(latAt(yN + ((i + 1) / H) * span));
+            const r1 = rowOf(latAt(yN + (i / H) * span) - 1e-9);
+            const c0 = colOf(west! + (j / W) * (east! - west!));
+            const c1 = colOf(west! + ((j + 1) / W) * (east! - west!) - 1e-9);
+            for (let r = Math.max(0, r0); r <= Math.min(meta.rows - 1, r1); r++)
+              for (let c = Math.max(0, c0); c <= Math.min(meta.cols - 1, c1); c++)
+                if (c !== shared && (bytes[r * meta.cols + c] === 0) !== wantLand) return false;
+            return true;
+          };
+          const cell = (p: { lat: number; lon: number }) =>
+            `${Math.round((p.lat - 54.3) * 10)},${Math.round((p.lon - 9.4) * 10)}`;
+          const out: Array<{
+            water: { lat: number; lon: number };
+            land: { lat: number; lon: number };
+          }> = [];
+          for (let i = 0; i < H; i++)
+            for (let j = 1; j < W - 1; j++) {
+              if (alpha[(i * W + j) * 4 + 3] !== 255) continue;
+              for (const dj of [-1, 1]) {
+                const w = centre(i, j);
+                const l = centre(i, j + dj);
+                if (cell(l) !== cell(w)) continue;
+                const shared = colOf(west! + (Math.max(j, j + dj) / W) * (east! - west!));
+                if (footprint(i, j + dj, true, shared) && footprint(i, j, false, shared))
+                  out.push({ water: w, land: l });
+              }
             }
-          }
-        return out;
-      }, RASTER);
-      expect(pairs.length, 'coastal pairs on the real mask').toBeGreaterThan(20);
+          return out;
+        }, RASTER);
+      await expect
+        .poll(async () => (await findPairs()).length, {
+          message: 'coastal pairs on the real mask',
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(5);
+      const pairs = await findPairs();
 
       // Zoom in on one pair so a raster pixel spans many screen pixels.
       const anchor = pairs[Math.floor(pairs.length / 2)]!;
