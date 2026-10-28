@@ -114,7 +114,10 @@ describe('seaStateRasterIndex: water-clipped cells (#1854)', () => {
   it.each([1, 2, 3])(
     'stride %i: the partition is the old rectangles minus land pixels',
     (stride) => {
-      const coast = (lat: number, lon: number) => (lon < 10.02 && lat < 54.62 ? 0 : 50);
+      // A coastal strip inside the water points' rectangles, plus land on
+      // (54.5, 10.0) itself.
+      const coast = (lat: number, lon: number) =>
+        lon < 9.98 || (Math.abs(lat - 54.5) < 0.011 && Math.abs(lon - 10.0) < 0.011) ? 0 : 50;
       const mask = fineMask(coast);
       const grid = flat();
       const raster = seaStateRasterIndex(mask, grid, stride);
@@ -267,6 +270,26 @@ describe('seaStatePixelAt and shadedWaveCellAt (#1854)', () => {
       : { heightM: 0.8, periodS: 4.4, dirFromDeg: 10 },
   );
   const raster = seaStateRasterIndex(mask, grid, 1);
+
+  // Rows are Mercator-spaced, so over the real mask's latitude span a
+  // latitude-linear lookup lands rows away.
+  it('finds the row of a point over a tall mask in Web Mercator', () => {
+    const tall: MaskMeta = {
+      south: 54.3,
+      north: 55.6,
+      west: 9.95,
+      east: 10.15,
+      rows: 130,
+      cols: 20,
+    };
+    const m = new NavMask(tall, new Uint8Array(tall.rows * tall.cols).fill(50));
+    const r = seaStateRasterIndex(m, flat(), 1);
+    const rowMap = depthCanvasRowMap(tall);
+    for (let i = 0; i < r.height; i++) {
+      const p = seaStatePixelAt(r, { lat: m.grid.lat.centre(rowMap[i]!), lon: 10 });
+      expect(rowMap[Math.floor(p! / r.width)], `row ${i}`).toBe(rowMap[i]);
+    }
+  });
 
   it('finds a pixel sampling the same mask cell as the point', () => {
     for (const s of samples(mask, 1)) {
