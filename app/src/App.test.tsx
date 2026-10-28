@@ -4436,6 +4436,40 @@ describe('plan-form sync (#301)', () => {
         expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
       });
 
+      it('a mid-run edit replaced by opening a saved plan does not outlive that write — the result keeps the run departure', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(MOUNT_MS);
+        const openedMs = MOUNT_MS + 5 * 3_600_000;
+        const other = prefillPlan('prefill-edit-then-open', { departureMs: openedMs });
+        other.name = 'Other Passage';
+        await db.savePlan(other);
+
+        renderApp();
+        await screen.findByRole('heading', { name: 'SailCommand' });
+        pickOriginAndDestination();
+        fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+        await waitFor(() => expect(routingMock.calls.length).toBe(1));
+        editDeparture(screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement);
+
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+        fireEvent.click(await screen.findByRole('button', { name: new RegExp(other.name) }));
+        await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+        await waitFor(() =>
+          expect(
+            (screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement).value,
+          ).toBe(toLocalInputValue(openedMs)),
+        );
+
+        routingMock.calls[0].resolve(okPlanResult(10));
+        await waitFor(() => expect(screen.getByText(formatNm(10, 'de'))).toBeInTheDocument());
+        await flushPlanFormSync();
+
+        const input = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+        expect(input.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+        expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+      });
+
       describe('Live reroute', () => {
         type PosCb = (pos: unknown) => void;
 

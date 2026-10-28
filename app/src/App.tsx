@@ -641,7 +641,7 @@ function AppShell() {
   // #301: also written by the plan-form sync effect below (next to
   // planIdRef) whenever a NEW plan.id becomes active — origin/destination
   // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
-  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs; state declared above usePlanFlow), unless the app just computed the plan (#1761) and the departure was not edited while it computed (#1867).
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs; state declared above usePlanFlow). A plan the app just computed keeps its own departure instead (#1761), and none is written if the field was edited while it computed (#1867).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   // #571 redesign (maintainer ruling: a via edit "is kind of a new route and
@@ -835,6 +835,8 @@ function AppShell() {
       setDestination(syncedDestination);
     }
     if (!editedMidSolve && (baseline === null || departureMs === baseline.departureMs)) {
+      // #1867: this write replaces any mid-solve edit.
+      departureEditedMidSolveRef.current = false;
       // #1761: a plan the app just computed keeps its own departure.
       setDepartureMs(departureAfterSyncMs(plan, freshResult));
     }
