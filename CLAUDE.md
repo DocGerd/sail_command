@@ -657,7 +657,9 @@ making design-level decisions; do not silently deviate.
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
   Moving the flagged code closes the dismissed alert as fixed and opens a NEW
   one under a new number (#13 -> #52, #15 -> #51 after #1793): re-dismiss
-  citing the original.
+  citing the original. It also scans committed Python under `docs/`: PR
+  #1905 drew 25 `py/file-not-closed` alerts for bare `json.load(open(p))`;
+  use `with open` or `Path.read_text`.
 - **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
   they look alike until you read `.tool.name`.** Measured 2026-09-02: both
   alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
@@ -4552,6 +4554,9 @@ making design-level decisions; do not silently deviate.
   `429 "Too many concurrent requests"` during the 2026-10-17 outage, which can
   also block their browser. Probe with one tiny single-point request, never the app's grid.
   A release-gate walkthrough plans offline too: run `gen-wind-fixture.mjs`, then load `?windFixture=test-fixtures/wind-sw12.json`.
+  The Historical Forecast API and `past_days` returned
+  identical `icon_seamless` values for the same past hours (206 of 206 read
+  point-hours, #1894 spike §7.2).
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
@@ -4947,6 +4952,10 @@ making design-level decisions; do not silently deviate.
   keeps no output path (sweep-closure `SKILL.md` says to omit it).
   `run-sharded.mjs` refuses a non-empty `--out` (stale part files), so it cannot
   resume a killed run.
+- **`/teleport` to a local machine carries the transcript, not the cloud
+  scratchpad**: its uncommitted inputs and caches are gone (#1894,
+  2026-10-28). Committed scripts plus an input hash list let the local
+  rebuild be checked; #1894's reproduced every compared published figure.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
