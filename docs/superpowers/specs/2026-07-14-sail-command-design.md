@@ -23,7 +23,7 @@ Android as an offline-capable PWA.
 | Obstacles | Land **and** depth aware; safety depth configurable, default 3.0 m (draft 2.1 m); depth beyond the gate is a *preference*, not just a gate — comfort margin default 2.0 m (#243) |
 | Departure time | Selectable within forecast horizon (~6 days) |
 | Port entry | Searchable curated harbor list **plus** tap-anywhere on map |
-| Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted). Amended by `2026-10-17-next-passage-design.md` (#19 slice 1): a next passage seeded from a planned route may be planned offline from that route's stored forecast |
+| Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted). Amended by `2026-10-17-next-passage-design.md` (#19 slice 1): a next passage seeded from a planned route may be planned offline from that route's stored forecast. Amended by #1854 (maintainer rulings 2026-10-24 and 2026-10-28): the Wetter tab's area forecast needs internet; offline it shows only a forecast held in memory, with its age, and planning never falls back offline to the Wetter tab's session grid |
 | Sail choice | Router evaluates both rigs (main+genoa, main+fock) and recommends the faster; routes with recommendation |
 | Live guidance | GPS position + active leg, heading to steer, distance to next maneuver, ETA. No live re-routing in v1 |
 | Area | 54.3–55.6°N, 9.4–11.6°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, Little Belt to Kolding/Middelfart, Fehmarn, Great Belt south of 55.6°N (#1585's harbour additions per the 2026-09-15 addendum's Great Belt bullet)). Amended by the 2026-09-15 coverage addendum (#295) — was "54.3–55.3°N, 9.4–11.0°E … southern Little Belt" |
@@ -143,7 +143,8 @@ app runtime.
     settings. Plans survive restarts and offline periods; user can delete.
   - Service worker: precache app shell + static data (mask, polars, harbors,
     basemap). After first online visit, everything except *new* planning
-    works offline.
+    and fetching the Wetter tab's area forecast (#1854, maintainer ruling
+    2026-10-24) works offline.
 - **i18n** — lightweight dictionary (de/en), toggle in UI, persisted.
 
 ### 3.3 Hosting / CI
@@ -211,7 +212,9 @@ forecast horizon, route sharing/collaboration, official ENC chart data.
 
 The planned route carries its own reading aids on the map and in the panel. All of it is
 presentation-only: no routing/solver behavior changed, and all wind/depth data comes from the
-plan's stored grid and the committed mask (offline-safe, never re-fetched).
+plan's stored grid and the committed mask (offline-safe, never re-fetched). Exception
+(#1854, maintainer ruling 2026-10-24): on the Wetter tab the map's barbs and sea state show
+the Wetter forecast at the card's hour, not the plan's weather at the slider hour.
 
 - **Map annotations (#35, #37).** Route point features (start, finish, tack/gybe maneuvers, and
   every surviving heading change) render with a visual hierarchy: user via-waypoints (#CC79A7) >
