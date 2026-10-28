@@ -59,6 +59,8 @@ export interface DepartureCompareProps {
   // `setPlan`), same "the result you asked for becomes active
   // unconditionally on success" precedent handleLiveReroute follows.
   onConfirmed: (plan: Plan) => void;
+  // #1867: called synchronously when a confirm solve starts.
+  onConfirmStart?: () => void;
 }
 
 type TFn = (key: MsgKey, vars?: Record<string, string | number>) => string;
@@ -208,6 +210,7 @@ export default function DepartureCompare({
   plan,
   ensureClient,
   onConfirmed,
+  onConfirmStart,
 }: DepartureCompareProps) {
   const t = useT();
   const [lang] = useLang();
@@ -279,6 +282,7 @@ export default function DepartureCompare({
   // #937: never generalises the scan's own single-sail rig choice (§2.2) —
   // this re-solves with `plan.request.sailIds` unchanged (useDepartureConfirm.ts).
   const handleConfirm = (departureMs: number) => {
+    onConfirmStart?.();
     setConfirmed(null);
     const identity = `${plan.id}-${plan.createdAtMs}`;
     void confirm(plan, departureMs).then((updated) => {
