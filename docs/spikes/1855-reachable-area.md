@@ -1,6 +1,6 @@
 # #1855 — Reachable area: "Erreichbar ab {Start}" in the Wetter tab
 
-Status: design spike, not a spec. It ends in a recommendation; the maintainer rules on it (ruling on #1855, 2026-10-28). Implementation is v0.62.0 and needs #1854 slice 1 (sea-state raster, Wetter tab, hour store, "Als Abfahrt übernehmen") merged first. Promotion to a spec owes, as ask-gated main-session edits: a new spec section for the reach card, since no spec describes a destination-free solve; and a re-check of the spec rows #1854's status line lists (offline scope, the "only planning needs network" constraint, waves spec §0) against a compute that runs online only and hides the sea-state fill while shown. The maintainer decisions still open are in §16.
+Status: design spike, not a spec. It ends in a recommendation; the maintainer rules on it, per the process ruling on #1855 (2026-10-28). Implementation is v0.62.0 and needs #1854 slice 1 (sea-state raster, Wetter tab, hour store, "Als Abfahrt übernehmen") merged first. Promotion to a spec owes, as ask-gated main-session edits: a new spec section for the reach card, since no spec describes a destination-free solve; and a re-check of the spec rows #1854's status line lists (offline scope, the "only planning needs network" constraint, waves spec §0) against a compute that runs online only and hides the sea-state fill while shown. The maintainer decisions still open are in §16.
 
 Code anchors use `file:symbol (~:line)`, paths relative to `app/src/` unless they start with `app/`, `docs/` or `.github/`. The probe ran at develop `32f67af0`; `git diff --stat 32f67af0..59abdbb4` over `app/src/routing/`, the mask, depth-gate, harbour-reachability, boat-depth, polar, wind and geo modules, `types.ts`, `data/boats.ts`, `test/fixtures.ts` and `app/public/data/` is empty, so its results transfer to `59abdbb4`, this document's base. Supporting files are in `1855-reachable-area/` (README there). `judges.json`, `critique.json` and `revision-log.md` hold the judges' scores, the critique's 27 findings and their dispositions; where the log and this document differ, this document is current.
 
@@ -85,7 +85,7 @@ Non-goals:
 
 ### 5.2 Cell map and stamping
 - **Times.** Coarse prune lattice (0.002° × 0.003°) over the mask bounds: 650 × 734 cells (derived from `mask.meta.json`), `Uint16Array` minutes after departure rounded up, `0xFFFF` unreached. A cell holds the minimum true `tMs` of any stamp.
-- **Survivor edges, not every child (C8).** Each surviving child stamps the cells its parent edge crosses, at linearly interpolated times. Generated children outnumber expanded nodes 33.0–34.1× in the 10 h configs (`childrenTotal`/`expandedTotal`), so stamping every child is declined.
+- **Survivor edges, not every child (C8).** Each surviving child stamps the cells its parent edge crosses, at linearly interpolated times. Generated children outnumber expanded nodes 33.0–34.1× in the five M1 configs (`childrenTotal`/`expandedTotal`), so stamping every child is declined.
 - **Mask-cell trace (C7).** The same DDA marks the ~46 m mask cells each accepted edge crosses. The raster fills only at-gate pixels connected at the gate to such a marked cell, by a flood bounded to reached coarse cells and their neighbours. A mole inside one coarse cell then leaves the water behind it unfilled. Hole rate and cost are unmeasured (R0).
 
 ### 5.3 Run to drain; the final partial step
@@ -98,10 +98,10 @@ Non-goals:
 - A stopped run (cancel, preemption, budget, frontier cap) keeps its map. Every stamped cell is reachable no later than its stamp; unstamped water may be reachable too. The card labels it `reach.partial` ("mindestens erreichbar") and its ETAs "ca., kann früher sein".
 
 ### 5.5 Origin posture (C1, C4)
-- Classify the origin with `lib/harborReachability.ts:endpointStateAt` (~:363), exported for this; the file is NOT_IN_CLOSURE (§5.9). `harborAccessAt` (~:655) gives the same answer for a harbour Start but takes a `Harbor`, not a point. The three states:
+- Classify the origin with `lib/harborReachability.ts:endpointStateAt` (~:363), module-private at `59abdbb4`; R1 exports it. The file is NOT_IN_CLOSURE (§5.9). `harborAccessAt` (~:655) takes a `Harbor`, not a point, and returns `known-disconnected` where `endpointStateAt` does not. The three states:
   - `ok`: run at the requested gate.
-  - `shallow-approach`: an origin `approachGate` at `relaxationFloorM(boat)`, radius `APPROACH_RADIUS_M` (1852 m). M3: Marstal at 3.0 m stamped 11 cells in 7 rings; with the disc it reached 2 655 nm² in 10 h.
-  - `unreachable`: seed the run at `findHarborHandoverFor(mask, origin, boat, gate)` (~:570) with the `route.handover.origin` wording, as a plan from that Start does (#1721). No handover point: status `stranded`.
+  - `shallow-approach`: an origin `approachGate` at `relaxationFloorM(boat)`, radius `APPROACH_RADIUS_M` (1852 m). M3: Marstal at 3.0 m stamped 11 cells in 7 rings; with the disc it reached 2 655 nm² in 10 h. With the disc, `edgeFactor` anchors the comfort ramp at the floor across the whole search (`gateFloorM`), as a relaxed plan tier does, not at the gate as tier 1 does.
+  - `unreachable`: seed the run at `findHarborHandoverFor(mask, origin, boat, gate)` (~:570) with the `route.handover.origin` wording. Unlike a plan (#1721), it has no `toward` point, so the seed is the nearest handover candidate and can differ from the plan's. No handover point: status `stranded`.
 - Disc-only water (below the gate, at or above the floor) is drawn hatched, not in the fill colour (§8).
 - Relaxed-depth copy states the cautious bound (`lib/mask.ts:cautiousDepthLowerBoundM`, 1.2 m for the Salona 45's 2.1 m floor) and the below-draft fact as `route.shallow.leadSevere` does, plus "Route planen zeigt die Flachwasserwarnung". It never presents the floor as water depth (C2).
 
@@ -111,7 +111,7 @@ Non-goals:
 
 ### 5.7 Motor, gate, comfort
 - `Settings` pass through: `motorEnabled`, the sail-speed floor, `maneuverPenaltyS`, `performanceFactor`, `safetyDepthM`. No motor toggle in the card.
-- Comfort as `planRoute`'s tier 1: `comfortDepthM` = gate + `depthComfortMarginM`. Dominance ranks on `costMs`; stamps record true `tMs`.
+- Comfort as `planRoute`'s tier 1: `comfortDepthM` = gate + `depthComfortMarginM`, with the ramp anchored at the gate; with an origin disc it is anchored at the floor (§5.5). Dominance ranks on `costMs`; stamps record true `tMs`.
 - No tier-2 retry and no destination relaxation: those need a destination.
 - Copy never says "alles Erreichbare": M5 shows motor-off reaching more than motor-on at 12 kn.
 
@@ -127,7 +127,7 @@ Non-goals:
 
 ## 6. Worker, client, cancel, preemption
 
-- **Dedicated worker.** `routing/reachWorker.ts`, `reachProtocol.ts`, `reachClient.ts`. Spawned lazily on the first press; disposed when Wetter is left with no run in flight. Cost: one mask copy (9 438 000 bytes) plus polars, and the visited map per rig (428 002–708 160 keys in the 10 h probe runs).
+- **Dedicated worker.** `routing/reachWorker.ts`, `reachProtocol.ts`, `reachClient.ts`. Spawned lazily on the first press; disposed when Wetter is left with no run in flight. Cost: one mask copy (9 438 000 bytes) plus polars, and the visited map per rig (428 002–708 160 keys in the five M1 runs).
 - **Protocol.** `init`; `reach` (origin posture, departure, cap, settings, boat, rigs, wind grid cloned, never transferred); `stop`. Responses: `progress` (search time reached, phase), `result` (cell buffers transferred), `failed` (typed kinds).
 - **Cancel (C10).** [Abbrechen] posts `stop`; the worker returns its partial map at the next yield, latency one ring. Leaving Wetter does not stop a run.
 - **Preemption (C11).** Starting a plan, recalc, departure scan or confirm, via replan or Live reroute posts `stop`; the partial is kept. A reach never delays or cancels a planning request. While one runs, the compute button is `aria-disabled` with `reach.busy`.
@@ -144,7 +144,7 @@ Non-goals:
 
 ### 7.2 Depth-limited harbours (C4, C6, C19)
 - No destination discs in the search.
-- `shallow-approach` (Salona 45: Marstal; EASY GO!: also Faldsled, Rudkøbing; M3): **Nur mit flacherer Ansteuerung**, ETA from reached cells inside the disc that `cellsConnected` links to the snap under an `approachGate` at `relaxationFloorM`; copy per §5.5 (C2).
+- `shallow-approach` (Salona 45, Speedy Go, Elan 444: Marstal; EASY GO!: Faldsled and Rudkøbing, its Marstal and Augustenborg being `unreachable`; M3): **Nur mit flacherer Ansteuerung**, ETA from reached cells inside the disc that `cellsConnected` links to the snap under an `approachGate` at `relaxationFloorM`; copy per §5.5 (C2).
 - `unreachable` at the gate: same group, ETA to the `findHarborHandoverFor` point, with the `route.handover.destination` wording. The planner routes these (`realmask.repro.harborHandover.test.ts`), so the card never calls them unreachable.
 - `known-disconnected`: omitted, with a count line.
 - The origin harbour is not listed.
@@ -216,8 +216,8 @@ A press on an `aria-disabled` button announces its reason (C23).
 | reach.legend | In höchstens {duration} erreichbar ab {datetime} | Reachable within {duration} from {datetime} |
 | reach.notice | Planungshilfe aus der Vorhersage (abgerufen {time}). Gezeigt ist, was diese Suche findet, nicht jede mögliche Fahrt; „Route planen“ kann abweichen. | Planning aid from the forecast (fetched {time}). It shows what this search finds, not every possible passage; "Plan route" may differ. |
 | reach.partial | Berechnung beendet bei +{elapsed}. Gezeigtes Wasser ist mindestens erreichbar, Zeiten können früher sein; weiteres Wasser vielleicht auch. | Stopped at +{elapsed}. The water shown is reachable at least, times may be earlier; more water may be too. |
-| reach.originRelaxed | Ausfahrt aus {start}: Innerhalb 1 sm nutzt die Suche Wasser unter der Sicherheitstiefe {gate}; dort kann es flacher als {cautious} sein, unter dem Tiefgang. „Route planen“ zeigt dafür die Flachwasserwarnung. | Leaving {start}: within 1 nm the search uses water below the safety depth {gate}; it may be shallower than {cautious}, below the draft. "Plan route" shows the shallow-water warning for it. |
-| reach.list.approach | Ansteuerung in ca. {duration}; die Zufahrt ist flacher als {gate} und nicht eingerechnet. | Approach in about {duration}; the entrance is shallower than {gate} and not counted. |
+| reach.originRelaxed | Ausfahrt aus {start}: Innerhalb 1 sm nutzt die Suche Wasser unter der Sicherheitstiefe {gate}; eine vorsichtigere Lesart der Kartentiefen kann dort bis auf {cautious} sinken — unter den Bootstiefgang von {draft}. „Route planen“ zeigt dafür die Flachwasserwarnung. | Leaving {start}: within 1 nm the search uses water below the safety depth {gate}; a more cautious reading of the charted depth data could run as low as {cautious} there, below this boat's {draft} draft. "Plan route" shows the shallow-water warning for it. |
+| reach.list.approach | Ansteuerung in ca. {duration}; die Zufahrt liegt unter der Sicherheitstiefe {gate} und ist nicht eingerechnet. Eine vorsichtigere Lesart der Kartentiefen kann dort bis auf {cautious} sinken — unter den Bootstiefgang von {draft}; „Route planen“ zeigt dafür die Flachwasserwarnung. | Approach in about {duration}; the entrance is below the safety depth {gate} and not counted. A more cautious reading of the charted depth data could run as low as {cautious} there, below this boat's {draft} draft; "Plan route" shows the shallow-water warning for it. |
 | reach.list.notFound | Nicht in {duration} gefunden | Not found within {duration} |
 | reach.busy | Eine Routenberechnung läuft gerade. | A route calculation is running. |
 | reach.offline | Offline: Die Reichweite braucht eine aktuelle Vorhersage, wie die Routenplanung. | Offline: the reachable area needs a current forecast, like route planning. |
@@ -228,7 +228,7 @@ The other keys follow D1 §14 with these changes. `reach.originHandover` and the
 
 ## 13. Measurements
 
-Configuration: probe `1855-reachable-area/reach.probe.test.ts` with its own `vitest.config.ts`, at `32f67af0`, committed mask, harbours and Salona 45 polars, `DEFAULT_SETTINGS` (gate 3.0 m, comfort depth 5.0 m, motor on, 6.5 kn) unless noted, uniform wind from 225° (`uniformWindGrid`, 48 h), departure at grid start. Area unit: coarse prune cells holding the minimum true `tMs`. Wall times: one thread on one WSL machine (32 logical cores), loadavg 2.1–2.4 with another session's solver test running; not tablet figures and not a planning basis. Raw data: `results.json`; summary: `grounding.md` §4.
+Configuration: probe `1855-reachable-area/reach.probe.test.ts` with its own `vitest.config.ts`, at `32f67af0` (per `grounding.md` §4; `results.json` does not record the SHA), committed mask, harbours and Salona 45 polars, `DEFAULT_SETTINGS` (gate 3.0 m, comfort depth 5.0 m, motor on, 6.5 kn) unless noted, uniform wind from 225° (`uniformWindGrid`, 48 h), departure at grid start. Area unit: coarse prune cells holding the minimum true `tMs`. Wall times: one thread on one WSL machine, `/proc/loadavg` 2.1–2.3 at the end of each M1 run (`loadavg` in `results.json`; machine and concurrent load per `grounding.md` §4); not tablet figures and not a planning basis. Raw data: `results.json`; summary: `grounding.md` §4.
 
 - **Fidelity.** With `towards` = Marstal, `reach()` frontier sizes equal `solve()`'s `onProgress` sizes over 12 rings from Flensburg (`fidelity.identical: true`).
 - **M1, cost to drain at 10 h (12 kn).**

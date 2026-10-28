@@ -103,7 +103,7 @@ Base: develop `32f67af0`. Code anchors are `file:symbol`, paths under `app/src/`
 
 - Basis: connectivity to the Flensburg-fjord seed, not reachability from each probe origin.
 - **Origin side.** Flensburg and Sønderborg are `ok` for every boat. Marstal as ORIGIN at the Salona 45's requested 3.0 m gate: the destination-free expansion died in 7 rings having stamped 11 cells (< 1 nm²). With one origin disc (`approachGate` at `relaxationFloorM` 2.1 m, radius 1852 m) it reached 2 655 nm² in 10 h. So a reach view needs an origin-disc posture for pocketed origins; for the Easy Go Marstal stays `unreachable` even with the disc.
-- **Destination side.** No destination disc exists in a destination-free solve, so a `shallow-approach` harbour's last mile is never inside a requested-gate region. With the Salona 45 that is Marstal only; with Easy Go also Faldsled and Rudkøbing.
+- **Destination side.** No destination disc exists in a destination-free solve, so a `shallow-approach` harbour's last mile is never inside a requested-gate region. With the Salona 45 that is Marstal only; with Easy Go it is Faldsled and Rudkøbing, its Marstal and Augustenborg being `unreachable`.
 
 ### M5 — motor-on vs sail-only reach (Sønderborg genoa, 6 h, wind from 225°)
 

@@ -11,7 +11,7 @@ Verbs: APPLIED (taken as suggested), NARROWED (taken in part, the rest stated), 
 5. C5 [high] Streaming bands promised from ring-12 timings. APPLIED (§0, §5.4, §17). `drainedToMs` is computed but unused by copy until R0 records it per ring; progress shows search time reached; partial label stays "mindestens erreichbar".
 6. C6 [medium] Destination discs relax the gate for every path and re-anchor the comfort ramp. APPLIED (§7.2, §15). No destination discs; origin disc only per C1.
 7. C7 [medium] Fill paints at-gate water cut off inside a coarse cell. APPLIED (§5.2, §14). Mask-cell edge trace plus a bounded at-gate flood; unit fixture with a mole. Cost DEFERRED-R0.
-8. C8 [medium] Tablet cost of the grafts unmeasured; every-child stamping ~34× edges. APPLIED (§5.2, §6, §13, §16 Q7–Q8, §17). Survivor-plus-edge stamping kept; memory costs stated; R0 measures time and heap for one and two rigs; a reach budget is a maintainer question.
+8. C8 [medium] Tablet cost of the grafts unmeasured; every-child stamping ~34× edges. APPLIED (§5.2, §6, §13, §16 Q7–Q8, §17). Survivor-plus-edge stamping kept; mask and visited-map costs stated; R0 measures time and heap for one and two rigs; a reach budget is a maintainer question.
 9. C9 [medium] Two-rig graft rests on one mark. APPLIED (§5.6, §13 M4, §16 Q1). Gap reported per mark; single rig kept until R0's per-harbour ETA comparison by rig.
 10. C10 [medium] Cancel discards the partial; tab leave cancels. APPLIED (§6). Cooperative `stop` returns the partial; leaving Wetter keeps the run.
 11. C11 [medium] Own worker still competes with planning. APPLIED (§6). Preemption rule: every planning entry point stops a running reach and keeps its partial; a reach never delays or cancels a plan.
