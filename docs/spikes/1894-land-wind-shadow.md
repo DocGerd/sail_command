@@ -462,16 +462,18 @@ fast leg).
 ## 3. Considered and rejected
 
 - **1a/1b/1c lee TWS penalty** (precomputed layer, per-node ray, lazy
-  layer): needs a fetch curve the verdict cannot give; a fetch-keyed
+  layer): needs option 2 justified first (§0.5), which the §6 rerun does
+  not give (§7.4); a fetch-keyed
   penalty double-counts the regional gradient the model already carries;
   with the motor on, a cut below the sail-speed floor can make a plan faster.
   1a's full-resolution layer is 9.4 MB per direction bin, over the
   per-file precache cap once combined; 1b adds a mask ray per expanded node
   at unmeasured cost; 1c holds about 9.4 MB per used bin per worker.
-- **2 soft cost away from land upwind, now:** the §0.5 gate is unmet, and
-  within legs the regression shows no direction dependence (§1.4), so a
-  cost keyed on land upwind may target the wrong variable. Deferred, not
-  discarded.
+- **2 soft cost away from land upwind, now:** the gate is unmet (§1.3,
+  §7.4). Within legs §1.4 showed no direction dependence, and the rerun
+  shows land downwind costing `R` while land upwind does not (§7.4 rule
+  5), so a cost keyed on land upwind may target the wrong variable.
+  Deferred, not discarded.
 - **3 finer model or denser lattice:** finer models requested by their own
   id stop at 2.5 days or less, against the 6-day horizon; `dmi_seamless`
   continues on ECMWF IFS, which would replace ICON-EU for days 3–6, a model
@@ -510,8 +512,8 @@ with these additions committed to this spike before any new track is read
 (the §6 rerun did not pass, §7):
 
 - a motoring rule that catches a leg like the `R` 1.26 one, and `Δ` ≥ 0.10
-  after dropping any single leg (strict, without the fast leg, it is 0.095
-  today);
+  after dropping any single leg (on §1.3's three trips, strict without
+  the fast leg, it was 0.095; §7.4 gives the rerun's);
 - the strict rerun's interval also excludes 0;
 - within legs, land upwind costs more than land downwind, with separate
   intervals, outside water under 1 nm wide (if this fails while the gate
@@ -749,7 +751,7 @@ each cohort's own `Δ`.
   differs from §1.3's 0.232 only because the 1.2 rule removed that trip's
   fast leg.
 
-Rule 4, placebo, genoa (fock within 0.002):
+Rule 4, placebo, genoa (fock within 0.004):
 
 - Downwind: primary 0.037 [0.006, 0.077], strict 0.048 [0.010, 0.090].
   Each is at least half the same set's upwind `Δ`, and each interval
@@ -758,7 +760,7 @@ Rule 4, placebo, genoa (fock within 0.002):
 - −90°, upwind fetch ≥ 0.5 nm only: 4 trips hold both groups, so the term
   is not evaluable under the five-trip floor (`Δ` 0.024, primary set).
 
-Rule 5, within legs (§6.4):
+Rule 5, within legs (§6.4), genoa (fock within 0.002):
 
 - Primary set, 453 blocks in 45 legs; 8 legs vary in the upwind indicator
   and 13 in the downwind one. Upwind 0.000 [−0.039, 0.060], downwind
@@ -767,10 +769,12 @@ Rule 5, within legs (§6.4):
 - Strict set: 5 and 12 legs vary. Upwind −0.031 [−0.110, 0.022], downwind
   −0.058. Not met.
 
-Rule 6, between legs at land within 0.25 nm, primary set, 13 land-upwind
-and 13 land-downwind legs. Per trip, upwind minus downwind is negative in
-all three 2026 trips (−0.126, −0.090, −0.191) and positive in all three
-2025 trips holding both classes (+0.129, +0.031, +0.271). Not met.
+Rule 6, genoa (fock within 0.005), between legs at land within 0.25 nm,
+primary set, 13 land-upwind and 13 land-downwind legs. Per trip, upwind
+minus downwind is negative in all three 2026 trips (−0.126, −0.090,
+−0.191) and positive in all three 2025 trips holding both classes
+(+0.129, +0.031, +0.271). Not met. Strict: 9 and 13 legs, 5 trips;
+−0.109, −0.069, −0.181 against +0.121, +0.179. Not met.
 
 ### 7.5 Option 1
 
@@ -792,10 +796,14 @@ about 0.06; no short-to-open rise exceeds B to E (0.056).
 
 - Rule 8 is not evaluated in the scripts' output. It holds by
   construction: §6.2 fixes one source, and no coefficient was fitted.
-- §0.4's "short fetch = A + B" is implemented as separate A and B leg-bin
-  values per leg. Merging A and B into one value per leg gives `Δ`
-  0.030 / 0.038 under genoa (primary / strict) and 0.030 / 0.040 under
-  fock, with the same verdict.
+- §0.4's "short fetch = A + B" and "open water = E + F" are implemented
+  as separate leg-bin values per bin. Merging A + B and E + F each into
+  one value per leg gives `Δ` 0.029 / 0.038 under genoa (primary /
+  strict) and 0.030 / 0.040 under fock, with the same verdict.
+- `run.sh analyse` re-checks the scripts and static inputs against
+  `FROZEN_AT`, not the doc blob it records. The doc's §6 did not change
+  after the freeze (§7.1); the gap is disclosed, not fixed, since the
+  scripts are frozen.
 - §6, the scripts and the inputs did not change after the freeze. Before
   it, the pipeline was rebuilt on a second machine: tracks re-parsed from
   the original exports and the `past_days` cache refetched. The rebuild
@@ -808,8 +816,10 @@ about 0.06; no short-to-open rise exceeds B to E (0.056).
   at the pre-registered size, with intervals that include 0; it is not
   shown absent.
 - The near-shore deficit in the 2026 trips does not replicate in the 2025
-  trips; its sign reverses by cohort.
-- Sail, year and season coincide by cohort and are not adjusted for
-  (§6.3), so the reversal is not attributed to any one of them.
+  trips: their own `Δ` is −0.042 (two of three trips negative), and the
+  between-leg sign reverses in all three.
+- Sail and year coincide by cohort and are not adjusted for, so the
+  reversal is not attributed to either. Both cohorts are autumn (§6.3
+  rule 7), and the one October 2025 trip reverses as well (`Δ` −0.087).
 - §2's recommendation (a wind caveat now, no routing change) stands.
 - §2's open cell-selection question is unaffected.

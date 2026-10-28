@@ -166,6 +166,6 @@ than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
 `354-mode-churn/` (the reproduction test file and its measured output),
 `1136-motor-off-solve-termination/` (the §11 probe scripts and results),
 `1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
-results), `1360-aaroesund-relaxation-cost/` (the probe and its results)
-`1854-forecast-view-ux/` (screenshots, the measurement scripts, `measure.json`, and the judging, critique and revision records)
+results), `1360-aaroesund-relaxation-cost/` (the probe and its results),
+`1854-forecast-view-ux/` (screenshots, the measurement scripts, `measure.json`, and the judging, critique and revision records),
 and `1894-land-wind-shadow/` (the §6 rerun scripts and input hashes).
