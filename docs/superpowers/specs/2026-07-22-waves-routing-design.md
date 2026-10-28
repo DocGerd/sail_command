@@ -21,8 +21,18 @@ open on #1699.
   FROM convention.
 - **Plan-bound.** Fetched alongside the wind at plan time, stored on the plan, sampled at
   the slider hour. Toggle persisted via `usePersistedToggle`, default ON. No browsing
-  before a plan exists.
-- **Map only.** A per-leg/route max-Hs readout is follow-up #1830.
+  before a plan exists. Amended by #1854 (maintainer ruling 2026-10-24): the Wetter tab
+  also shows sea state without a plan. It fetches the area's waves after its wind and holds
+  them in its own state for the session; Wetter itself writes nothing to a plan or to
+  IndexedDB. On Wetter the map samples sea state at the card's hour, not the plan's weather
+  at the slider hour.
+- **Map only.** A per-leg/route max-Hs readout is follow-up #1830. Amended by #1854
+  (maintainer rulings 2026-10-24 and 2026-10-28): the Wetter card also shows sea state off
+  the map, as Hs text in its day strip and viewport area line and as a per-hour band ribbon
+  on its scrubber. In a later slice, its Start and Ziel lines show Hs from the nearest
+  in-mask water point among the place's own nearest lattice point and its eight
+  neighbours, labelled with distance and bearing, else no model data. Missing data reads
+  as no model data, never as calm.
 
 Derived for this slice, not ruled:
 
@@ -43,6 +53,17 @@ Derived for this slice, not ruled:
   `FORECAST_DAYS`, fitting the wind lattice in one URL, coastal nulls, and what
   the API returns for land points (the request sets no `cell_selection`). Record the
   requested model in `WaveGrid.model`.
+
+Amended by #1854 (maintainer rulings 2026-10-24 and 2026-10-28):
+
+- **Water-clipped cells.** Sea state is a canvas raster: each pixel belongs to its nearest
+  lattice point and is coloured only if it is nav-mask water, that point is in-mask water
+  and Hs is finite, so nothing is borrowed from a neighbour point. The mask is sampled at the
+  raster's resolution, so a pixel whose sample is water can still cover some land at the coast.
+  Each shaded cell carries exactly one marker: the travel arrow, or a dot when the
+  direction is missing. The cell-outline layer `sc-waves-edge` is removed. Raster
+  resolution (half or quarter of the mask grid) is set by one main-thread paint
+  measurement.
 
 Corrections to stale facts below:
 
