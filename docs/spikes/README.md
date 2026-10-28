@@ -155,17 +155,24 @@ instead of here.
   water-clipped sea-state raster that can ship alone; design only, direction
   approved 2026-10-24 (screenshots, measurement scripts, `measure.json`, and
   the judging, critique and revision records in `1854-forecast-view-ux/`)
+- [1855-reachable-area.md](1855-reachable-area.md) — #1855: water and
+  harbours reachable from the planner's Start within a chosen duration, as a
+  second Wetter card. Recommends a destination-free stepper in its own worker,
+  one shaded region and a harbour list with [Als Ziel]; design only, nine
+  questions open for the maintainer (probe, `results.json`, the three designs
+  and the judging, critique and revision records in `1855-reachable-area/`)
 - [1894-land-wind-shadow.md](1894-land-wind-shadow.md) — #1894: should
   routing model land blocking or disturbing the wind? A pre-registered
   pooled analysis of eight EASY GO! trips is resolvable and does not
   justify a lee penalty; recommends a wind caveat now and puts
   Open-Meteo's default land-cell selection to the maintainer
 
-Seven entries carry a same-named subdirectory of supporting artifacts rather
+Eight entries carry a same-named subdirectory of supporting artifacts rather
 than being self-contained: `1022-whole-journey-ux/` (reference screenshots),
 `354-mode-churn/` (the reproduction test file and its measured output),
 `1136-motor-off-solve-termination/` (the §11 probe scripts and results),
 `1168-motor-off-prune-instability/` (the instrumentation patch, probes and raw
 results), `1360-aaroesund-relaxation-cost/` (the probe and its results),
 `1854-forecast-view-ux/` (screenshots, the measurement scripts, `measure.json`, and the judging, critique and revision records),
+`1855-reachable-area/` (the probe, `results.json`, the three designs, and the judging, critique and revision records),
 and `1894-land-wind-shadow/` (the §6 rerun scripts and input hashes).
