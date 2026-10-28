@@ -69,7 +69,7 @@ describe('barbSegments (WMO geometry, 5 kn buckets)', () => {
 });
 
 // Recording canvas context: captures the path/draw op stream, plus the stroke
-// style and width at each stroke/fill, so the halo pass is pinned separately
+// style, width and join at each stroke/fill, so the halo pass is pinned separately
 // from the ink pass.
 function recordingContext(log: string[]): CanvasRenderingContext2D {
   const ctx = {
@@ -80,7 +80,7 @@ function recordingContext(log: string[]): CanvasRenderingContext2D {
     arc: (cx: number, cy: number, r: number) => log.push(`A${cx},${cy},${r}`),
     closePath: () => log.push('close'),
     fill: () => log.push(`fill:${ctx.fillStyle}`),
-    stroke: () => log.push(`stroke:${ctx.strokeStyle}@${ctx.lineWidth}`),
+    stroke: () => log.push(`stroke:${ctx.strokeStyle}@${ctx.lineWidth}/${ctx.lineJoin}`),
     getImageData: () => ({}) as ImageData,
     strokeStyle: '',
     fillStyle: '',
@@ -106,11 +106,11 @@ function pathOps(seg: BarbSegment): string[] {
 function expectedOps(speedKn: number): string[] {
   const segs = barbSegments(speedKn);
   const ops = ['clear0,0,36,36'];
-  for (const seg of segs) ops.push(...pathOps(seg), `stroke:${HALO_COLOR}@3.5`);
+  for (const seg of segs) ops.push(...pathOps(seg), `stroke:${HALO_COLOR}@3.5/round`);
   for (const seg of segs)
     ops.push(
       ...pathOps(seg),
-      seg.kind === 'fill' ? `fill:${INK_COLOR}` : `stroke:${INK_COLOR}@1.5`,
+      seg.kind === 'fill' ? `fill:${INK_COLOR}` : `stroke:${INK_COLOR}@1.5/round`,
     );
   return ops;
 }

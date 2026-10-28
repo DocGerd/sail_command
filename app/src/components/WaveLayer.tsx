@@ -179,6 +179,7 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
   const hasGrid = grid !== undefined;
   const popupRef = useRef<Popup | null>(null);
   const paintedRef = useRef<{ canvas: HTMLCanvasElement; key: unknown[] } | null>(null);
+  const imageRef = useRef<{ canvas: HTMLCanvasElement; image: ImageData } | null>(null);
   const latest = useRef({ mapPickArmed, t, lang, grid, tMs, mask, shown: visible && hasGrid });
   useEffect(() => {
     latest.current = { mapPickArmed, t, lang, grid, tMs, mask, shown: visible && hasGrid };
@@ -218,7 +219,12 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     if (raster && grid && hourIdx !== null) {
-      const image = ctx.createImageData(raster.width, raster.height);
+      // paintSeaState writes every pixel, so one buffer per canvas serves every hour.
+      let image = imageRef.current?.canvas === canvas ? imageRef.current.image : null;
+      if (image?.width !== raster.width || image.height !== raster.height) {
+        image = ctx.createImageData(raster.width, raster.height);
+        imageRef.current = { canvas, image };
+      }
       paintSeaState(raster, grid, hourIdx, image.data);
       ctx.putImageData(image, 0, 0);
     } else {
