@@ -3004,7 +3004,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // ...and still visible after switching to Routes — the exact surface the
     // #299 risk named as silently uninformed before this fix.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
-    expect(screen.getAllByText(de['planner.result.stale']).length).toBeGreaterThan(0);
+    expect(screen.getByText(de['planner.result.stale'])).toBeInTheDocument();
   });
 
   it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
@@ -4298,10 +4298,51 @@ describe('plan-form sync (#301)', () => {
         expect(planTabInput().value).toBe(toLocalInputValue(EDITED_MS));
       });
 
-      it('a departure edited while a confirm solve computes survives the result', async () => {
+      it('a departure edited before a recalculate-replace starts does not block the recalculated departure', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(MOUNT_MS);
-        const plan = prefillPlan('prefill-confirm-edit');
+        const plan = prefillPlan('prefill-recalc-preedit', {
+          departureMs: MOUNT_MS - 2 * 3_600_000,
+        });
+        await db.savePlan(plan);
+
+        renderApp();
+        await screen.findByRole('heading', { name: 'SailCommand' });
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+        fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+        await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+        const planTabInput = () =>
+          screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+        await waitFor(() => expect(planTabInput().value).toBe(toLocalInputValue(RUN_DEPARTURE_MS)));
+        editDeparture(planTabInput());
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+
+        vi.setSystemTime(new Date(2026, 9, 20, 11, 20, 0).getTime());
+        fireEvent.click(await screen.findByRole('button', { name: de['plansList.recalc'] }));
+        fireEvent.click(screen.getByRole('button', { name: de['plansList.recalc.replace'] }));
+        fireEvent.click(
+          screen.getByRole('button', { name: de['plansList.recalc.confirmReplace'] }),
+        );
+        await waitFor(() => expect(routingMock.calls.length).toBe(1));
+        const recalcDepartureMs = routingMock.calls[0].request.departureMs;
+        expect(recalcDepartureMs).not.toBe(EDITED_MS);
+        routingMock.calls[0].resolve(okPlanResult(55));
+        await waitFor(() => expect(screen.getByText(formatNm(55, 'de'))).toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+        await flushPlanFormSync();
+        expect(planTabInput().value).toBe(toLocalInputValue(recalcDepartureMs));
+        expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+      });
+
+      async function startConfirm(
+        planId: string,
+        editBeforeConfirm: boolean,
+      ): Promise<HTMLInputElement> {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(MOUNT_MS);
+        const plan = prefillPlan(planId);
         await db.savePlan(plan);
 
         renderApp();
@@ -4316,6 +4357,7 @@ describe('plan-form sync (#301)', () => {
         await waitFor(() =>
           expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs)),
         );
+        if (editBeforeConfirm) editDeparture(departureInput);
 
         fireEvent.change(screen.getByLabelText(de['departureScan.count.label']), {
           target: { value: '4' },
@@ -4334,6 +4376,11 @@ describe('plan-form sync (#301)', () => {
           screen.getAllByRole('button', { name: de['departureScan.confirm.action'] })[1],
         );
         await waitFor(() => expect(routingMock.calls.length).toBe(5));
+        return departureInput;
+      }
+
+      it('a departure edited while a confirm solve computes survives the result', async () => {
+        const departureInput = await startConfirm('prefill-confirm-edit', false);
 
         editDeparture(departureInput);
         routingMock.calls[4].resolve(okPlanResult(10));
@@ -4344,6 +4391,51 @@ describe('plan-form sync (#301)', () => {
         expect(screen.getAllByText(de['planner.result.stale']).length).toBeGreaterThan(0);
       });
 
+      it('a departure edited before a confirm solve starts does not block the confirmed departure', async () => {
+        const departureInput = await startConfirm('prefill-confirm-preedit', true);
+        const confirmedMs = routingMock.calls[4].request.departureMs;
+        expect(confirmedMs).not.toBe(EDITED_MS);
+
+        routingMock.calls[4].resolve(okPlanResult(10));
+        await screen.findByText(de['departureScan.confirm.done']);
+        await flushPlanFormSync();
+
+        expect(departureInput.value).toBe(toLocalInputValue(confirmedMs));
+        expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+      });
+
+      it('opening a saved plan while a run computes does not read as a user edit — the result keeps the run departure', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(MOUNT_MS);
+        const other = { ...prefillPlan('prefill-open-mid-run', { departureMs: EDITED_MS }) };
+        other.name = 'Other Passage';
+        await db.savePlan(other);
+
+        renderApp();
+        await screen.findByRole('heading', { name: 'SailCommand' });
+        pickOriginAndDestination();
+        fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+        await waitFor(() => expect(routingMock.calls.length).toBe(1));
+
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+        fireEvent.click(await screen.findByRole('button', { name: new RegExp(other.name) }));
+        await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+        fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+        await waitFor(() =>
+          expect(
+            (screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement).value,
+          ).toBe(toLocalInputValue(EDITED_MS)),
+        );
+
+        routingMock.calls[0].resolve(okPlanResult(10));
+        await waitFor(() => expect(screen.getByText(formatNm(10, 'de'))).toBeInTheDocument());
+        await flushPlanFormSync();
+
+        const input = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+        expect(input.value).toBe(toLocalInputValue(RUN_DEPARTURE_MS));
+        expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+      });
+
       describe('Live reroute', () => {
         type PosCb = (pos: unknown) => void;
 
@@ -4352,7 +4444,7 @@ describe('plan-form sync (#301)', () => {
           delete (window.navigator as { geolocation?: unknown }).geolocation;
         });
 
-        async function startReroute(): Promise<HTMLInputElement> {
+        async function startReroute(editBeforeReroute = false): Promise<HTMLInputElement> {
           const cbs: PosCb[] = [];
           Object.defineProperty(window.navigator, 'geolocation', {
             value: {
@@ -4388,10 +4480,19 @@ describe('plan-form sync (#301)', () => {
           await db.savePlan(plan);
           localStorage.setItem(
             'sc-session',
-            `{"v":1,"planId":"${plan.id}","tab":"live","rig":"genoa"}`,
+            `{"v":1,"planId":"${plan.id}","tab":"${editBeforeReroute ? 'plan' : 'live'}","rig":"genoa"}`,
           );
 
           renderApp();
+          if (editBeforeReroute) {
+            await waitFor(() =>
+              expect(
+                (screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement).value,
+              ).toBe(toLocalInputValue(plan.request.departureMs)),
+            );
+            editDeparture(screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement);
+            fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
+          }
           fireEvent.click(await screen.findByRole('button', { name: de['live.toggle'] }));
           await waitFor(() => expect(cbs.length).toBe(1));
           act(() =>
@@ -4416,6 +4517,43 @@ describe('plan-form sync (#301)', () => {
           await flushPlanFormSync();
 
           expect(departureInput.value).toBe(toLocalInputValue(MOUNT_MS));
+          expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+        });
+
+        it('a departure edited before a reroute starts does not block the reroute departure', async () => {
+          const departureInput = await startReroute(true);
+          vi.setSystemTime(new Date(2026, 9, 20, 12, 20, 0).getTime());
+          routingMock.calls[0].resolve(okPlanResult(31));
+          await waitFor(() => expect(screen.getByText(formatNm(31, 'de'))).toBeInTheDocument());
+          await flushPlanFormSync();
+
+          expect(departureInput.value).toBe(toLocalInputValue(MOUNT_MS));
+          expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+        });
+
+        it('opening a saved plan while a reroute computes does not read as a user edit', async () => {
+          const other = prefillPlan('prefill-open-mid-reroute', { departureMs: EDITED_MS });
+          other.name = 'Other Passage';
+          await db.savePlan(other);
+          await startReroute();
+
+          fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+          fireEvent.click(await screen.findByRole('button', { name: new RegExp(other.name) }));
+          await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+          fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+          await waitFor(() =>
+            expect(
+              (screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement).value,
+            ).toBe(toLocalInputValue(EDITED_MS)),
+          );
+
+          vi.setSystemTime(new Date(2026, 9, 20, 12, 20, 0).getTime());
+          routingMock.calls[0].resolve(okPlanResult(31));
+          await waitFor(() => expect(screen.getByText(formatNm(31, 'de'))).toBeInTheDocument());
+          await flushPlanFormSync();
+
+          const input = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+          expect(input.value).toBe(toLocalInputValue(MOUNT_MS));
           expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
         });
 
