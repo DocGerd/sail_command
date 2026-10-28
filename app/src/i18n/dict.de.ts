@@ -862,7 +862,7 @@ export const de = {
   // #1830: Höchstwert über die Stunden und den Weg der Etappe, nur Anzeige.
   'route.legs.seaState': 'Seegang',
   'route.legs.seaStateNote':
-    'Seegang: höchste signifikante Wellenhöhe auf der Etappe, über ihre Stunden und ihren Weg. Modellschätzung, keine amtliche Angabe; „≥“ heißt, Teile fehlen in den Daten.',
+    'Seegang: höchste signifikante Wellenhöhe auf der Etappe, über ihre Stunden und ihren Weg. Modellschätzung, keine amtliche Angabe; „≥“ heißt, dass für Teile der Etappe keine Daten vorliegen.',
   'route.totals.seaState': 'Höchster Seegang',
   'route.seaState.noData': 'keine Daten',
   'route.seaState.partial': 'teils ohne Daten',

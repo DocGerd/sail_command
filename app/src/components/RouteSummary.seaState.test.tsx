@@ -235,6 +235,9 @@ describe('#1830 sea state in the route summary', () => {
     expect(routeLine(container, en['route.totals.seaState'])).toBe(
       `${en['route.totals.seaState']}: ≥ 2.6 m · ${en['seaState.band.rough']} · ${en['route.seaState.partial']}`,
     );
+    expect(container.querySelector('p.ergebnis-maneuvers span.route-legs-note')?.textContent).toBe(
+      en['route.seaState.partial'],
+    );
   });
 
   it('reads the active rig, not a fixed one', () => {

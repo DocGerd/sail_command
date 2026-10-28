@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { legMaxHsM, routeMaxHsM } from './routeSeaState';
+import { crossedCells, legMaxHsM, mergeReadings, routeMaxHsM } from './routeSeaState';
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 const H = 3_600_000;
@@ -125,6 +125,21 @@ describe('legMaxHsM', () => {
     expect(r).toEqual({ maxM: Math.fround(0.6), incomplete: true });
   });
 
+  it('flags a leg that starts before the time axis', () => {
+    const r = legMaxHsM(
+      leg([54.6, 10.0], [54.6, 10.2], -2, 1),
+      grid(() => 0.6),
+    );
+    expect(r).toEqual({ maxM: Math.fround(0.6), incomplete: true });
+  });
+
+  it('counts a cell the leg only clips at a corner', () => {
+    // Crosses the lat edge at 54.55 and the lon edge at 10.15, so it grazes cell (1,1).
+    const clip = leg([54.54, 10.12], [54.56, 10.16]);
+    const g = grid((la, lo) => (la === 1 && lo === 1 ? 5 : 0.3));
+    expect(legMaxHsM(clip, g)).toEqual({ maxM: 5, incomplete: false });
+  });
+
   it('copes with a single-point axis', () => {
     const g = grid(() => 0.7, { lats: [54.6], lons: [10.1] });
     expect(legMaxHsM(leg([54.6, 10.1], [54.62, 10.12]), g).maxM).toBe(Math.fround(0.7));
@@ -148,5 +163,74 @@ describe('routeMaxHsM', () => {
 
   it('is incomplete when one leg has no data', () => {
     expect(routeMaxHsM([west, out], g)).toEqual({ maxM: Math.fround(0.3), incomplete: true });
+  });
+});
+
+describe('mergeReadings', () => {
+  it('folds readings like routeMaxHsM and treats none as incomplete', () => {
+    expect(mergeReadings([])).toEqual({ maxM: null, incomplete: true });
+    expect(
+      mergeReadings([
+        { maxM: 0.4, incomplete: false },
+        { maxM: 1.1, incomplete: false },
+      ]),
+    ).toEqual({ maxM: 1.1, incomplete: false });
+    expect(mergeReadings([{ maxM: 0.4, incomplete: true }]).incomplete).toBe(true);
+  });
+});
+
+describe('crossedCells against dense sampling', () => {
+  // Reference: 0.1-degree lattice, nearest cell by rounding, outside beyond a
+  // half step; shares no code with the edge-crossing traversal.
+  const N = 12;
+  const STEP = 0.1;
+  const lats = Array.from({ length: N }, (_, i) => 54 + i * STEP);
+  const lons = Array.from({ length: N }, (_, i) => 10 + i * STEP);
+  const SAMPLES = 40_000;
+
+  function rng(seed: number) {
+    let a = seed;
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function dense(s: [number, number], e: [number, number]) {
+    const cells = new Set<number>();
+    let outside = false;
+    for (let i = 0; i <= SAMPLES; i++) {
+      const f = i / SAMPLES;
+      const la = Math.round((s[0] + (e[0] - s[0]) * f - lats[0]!) / STEP);
+      const lo = Math.round((s[1] + (e[1] - s[1]) * f - lons[0]!) / STEP);
+      if (la < 0 || la >= N || lo < 0 || lo >= N) outside = true;
+      else cells.add(la * N + lo);
+    }
+    return { cells, outside };
+  }
+
+  it('visits exactly the cells a dense walk visits, for seeded random legs', () => {
+    const rand = rng(1830);
+    let multiCell = 0;
+    let outsideCases = 0;
+    for (let k = 0; k < 300; k++) {
+      // Spans a little beyond the extent so the outside flag is exercised too.
+      const pt = (): [number, number] => [54 - 0.15 + rand() * 1.4, 10 - 0.15 + rand() * 1.4];
+      const s = pt();
+      const e = pt();
+      const got = crossedCells(
+        { start: { lat: s[0], lon: s[1] }, end: { lat: e[0], lon: e[1] } },
+        { lats, lons },
+      );
+      const want = dense(s, e);
+      expect([...got.cells].sort((x, y) => x - y)).toEqual([...want.cells].sort((x, y) => x - y));
+      expect(got.outside).toBe(want.outside);
+      if (want.cells.size > 3) multiCell++;
+      if (want.outside) outsideCases++;
+    }
+    expect(multiCell).toBeGreaterThan(100);
+    expect(outsideCases).toBeGreaterThan(20);
   });
 });

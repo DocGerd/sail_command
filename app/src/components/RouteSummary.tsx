@@ -37,7 +37,7 @@ import {
   roundExposureNm,
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
-import { legMaxHsM, routeMaxHsM, type SeaStateReading } from '../lib/routeSeaState';
+import { legMaxHsM, mergeReadings, type SeaStateReading } from '../lib/routeSeaState';
 import { seaStateBand } from '../lib/waves';
 import { formatSeaStateM, SEA_STATE_BAND_KEY } from '../lib/waveMap';
 import {
@@ -652,13 +652,8 @@ export default function RouteSummary({
   const reefSuggestions = result ? reefSuggestionsForLegs(result.legs) : null;
   // #1830: derived each render from the plan's own grid; a same-id replace changes it.
   const waveGrid = plan.waveGrid;
-  const seaState =
-    waveGrid && result
-      ? {
-          legs: result.legs.map((l) => legMaxHsM(l, waveGrid)),
-          route: routeMaxHsM(result.legs, waveGrid),
-        }
-      : null;
+  const seaLegs = waveGrid && result ? result.legs.map((l) => legMaxHsM(l, waveGrid)) : null;
+  const seaState = seaLegs ? { legs: seaLegs, route: mergeReadings(seaLegs) } : null;
   const routeBand = seaStateBand(seaState?.route.maxM ?? NaN);
   const seaText = (r: SeaStateReading) =>
     r.maxM === null
@@ -880,7 +875,10 @@ export default function RouteSummary({
                 <span className="tabular-nums">{seaText(seaState.route)}</span>
                 {routeBand !== 'no-data' && <> · {t(SEA_STATE_BAND_KEY[routeBand])}</>}
                 {seaState.route.incomplete && seaState.route.maxM !== null && (
-                  <> · {t('route.seaState.partial')}</>
+                  <>
+                    {' · '}
+                    <span className="route-legs-note">{t('route.seaState.partial')}</span>
+                  </>
                 )}
               </p>
             )}
@@ -1123,6 +1121,7 @@ export default function RouteSummary({
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
               )}
+              {seaState && <p className="route-legs-note">{t('route.legs.seaStateNote')}</p>}
               {/* #325: the reef suggestion is advisory seamanship guidance,
                 computed AFTER routing from apparent wind speed — it is NOT
                 part of the time optimisation (the boat speed every leg used
@@ -1130,7 +1129,6 @@ export default function RouteSummary({
                 to check it against. Stated plainly here, with the actual
                 thresholds, per the issue's own "documented where a user can
                 find them" requirement — never only in a code comment. */}
-              {seaState && <p className="route-legs-note">{t('route.legs.seaStateNote')}</p>}
               {result.legs.some((l) => l.kind === 'sail') && (
                 <p className="route-legs-note">
                   {t('route.legs.reefNote', {

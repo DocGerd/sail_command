@@ -3,7 +3,6 @@
 import type { Leg, WaveGrid } from '../types';
 
 const HALF_HOUR_MS = 1_800_000;
-const MAX_SAMPLES = 1_000;
 
 export interface SeaStateReading {
   // Max over the cells and hours the leg meets that have data; null when none do.
@@ -45,6 +44,48 @@ function hourIndices(grid: WaveGrid, startMs: number, endMs: number): number[] {
   return out;
 }
 
+// Parameters in (0, 1) where the segment a..b crosses a cell edge on one axis:
+// midpoints between neighbouring entries plus the two outer half-step edges.
+function edgeCrossings(axis: readonly number[], a: number, b: number): number[] {
+  const d = b - a;
+  if (d === 0 || axis.length === 0) return [];
+  const sorted = [...axis].sort((x, y) => x - y);
+  const h = axisStep(axis) / 2;
+  const edges = [sorted[0]! - h, sorted[sorted.length - 1]! + h];
+  for (let i = 1; i < sorted.length; i++) edges.push((sorted[i - 1]! + sorted[i]!) / 2);
+  return edges.map((e) => (e - a) / d).filter((f) => f > 0 && f < 1);
+}
+
+// Every cell the leg passes through (flattened `lat * nLon + lon`), by exact
+// edge-crossing traversal, so a clipped corner counts. `outside` is set when
+// any stretch of the leg lies beyond the grid's half-step margin.
+export function crossedCells(
+  leg: Pick<Leg, 'start' | 'end'>,
+  grid: Pick<WaveGrid, 'lats' | 'lons'>,
+): { cells: Set<number>; outside: boolean } {
+  const { lats, lons } = grid;
+  const { start, end } = leg;
+  const fs = [
+    0,
+    1,
+    ...edgeCrossings(lats, start.lat, end.lat),
+    ...edgeCrossings(lons, start.lon, end.lon),
+  ].sort((x, y) => x - y);
+  const cells = new Set<number>();
+  let outside = false;
+  for (let i = 1; i < fs.length; i++) {
+    const f0 = fs[i - 1]!;
+    const f1 = fs[i]!;
+    if (f1 === f0) continue;
+    const f = (f0 + f1) / 2;
+    const la = nearestIndex(lats, start.lat + (end.lat - start.lat) * f);
+    const lo = nearestIndex(lons, start.lon + (end.lon - start.lon) * f);
+    if (la === null || lo === null) outside = true;
+    else cells.add(la * lons.length + lo);
+  }
+  return { cells, outside };
+}
+
 export function legMaxHsM(leg: LegSpan, grid: WaveGrid): SeaStateReading {
   const { lats, lons, timesMs } = grid;
   let incomplete = false;
@@ -56,23 +97,8 @@ export function legMaxHsM(leg: LegSpan, grid: WaveGrid): SeaStateReading {
   const hours = hourIndices(grid, leg.startTimeMs, leg.endTimeMs);
   if (hours.length === 0) return { maxM: null, incomplete: true };
 
-  const dLat = leg.end.lat - leg.start.lat;
-  const dLon = leg.end.lon - leg.start.lon;
-  const n = Math.min(
-    MAX_SAMPLES,
-    Math.max(
-      1,
-      Math.ceil(Math.max(Math.abs(dLat) / axisStep(lats), Math.abs(dLon) / axisStep(lons)) * 2),
-    ),
-  );
-  const cells = new Set<number>();
-  for (let s = 0; s <= n; s++) {
-    const f = s / n;
-    const la = nearestIndex(lats, leg.start.lat + dLat * f);
-    const lo = nearestIndex(lons, leg.start.lon + dLon * f);
-    if (la === null || lo === null) incomplete = true;
-    else cells.add(la * lons.length + lo);
-  }
+  const { cells, outside } = crossedCells(leg, grid);
+  if (outside) incomplete = true;
 
   const nPoints = lats.length * lons.length;
   let maxM: number | null = null;
@@ -86,13 +112,17 @@ export function legMaxHsM(leg: LegSpan, grid: WaveGrid): SeaStateReading {
   return { maxM, incomplete };
 }
 
-export function routeMaxHsM(legs: readonly LegSpan[], grid: WaveGrid): SeaStateReading {
+// The route reading from its legs' readings; no legs is incomplete.
+export function mergeReadings(readings: readonly SeaStateReading[]): SeaStateReading {
   let maxM: number | null = null;
-  let incomplete = legs.length === 0;
-  for (const leg of legs) {
-    const r = legMaxHsM(leg, grid);
+  let incomplete = readings.length === 0;
+  for (const r of readings) {
     if (r.incomplete || r.maxM === null) incomplete = true;
     if (r.maxM !== null && (maxM === null || r.maxM > maxM)) maxM = r.maxM;
   }
   return { maxM, incomplete };
+}
+
+export function routeMaxHsM(legs: readonly LegSpan[], grid: WaveGrid): SeaStateReading {
+  return mergeReadings(legs.map((l) => legMaxHsM(l, grid)));
 }
