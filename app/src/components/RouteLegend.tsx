@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useLang, useT } from '../i18n';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
-import { formatSeaStateM, SEA_STATE_BAND_KEY, SHADED_BANDS, type ShadedBand } from '../lib/waveMap';
+import {
+  formatSeaStateM,
+  SEA_STATE_BAND_KEY,
+  SHADED_BANDS,
+  WAVE_LATTICE_MID_LAT,
+  WAVE_LATTICE_STEP_DEG,
+  type ShadedBand,
+} from '../lib/waveMap';
 import { SEA_STATE_EDGES_M } from '../lib/waves';
 import type { Lang } from '../lib/format';
 
@@ -29,6 +36,21 @@ function bandRange(band: ShadedBand, t: ReturnType<typeof useT>, lang: Lang): st
     case 'rough':
       return t('route.legend.seaStateAbove', { min: m(SEA_STATE_EDGES_M.rough) });
   }
+}
+
+const KM_PER_DEG_LAT = 111.32;
+
+// #1854: a cell's footprint from the fetch lattice's step at its mid-latitude.
+function cellSizeLine(t: ReturnType<typeof useT>, lang: Lang): string {
+  const n = (v: number) => new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-GB').format(v);
+  const nsKm = WAVE_LATTICE_STEP_DEG * KM_PER_DEG_LAT;
+  const ewKm = nsKm * Math.cos((WAVE_LATTICE_MID_LAT * Math.PI) / 180);
+  return t('route.legend.seaStateCells', {
+    step: n(WAVE_LATTICE_STEP_DEG),
+    ew: n(Math.round(ewKm)),
+    ns: n(Math.round(nsKm)),
+    lat: n(Math.round(WAVE_LATTICE_MID_LAT)),
+  });
 }
 
 // Collapsible map legend for the route overlay, mounted inside
@@ -133,6 +155,18 @@ export default function RouteLegend({
             </svg>
             {t('route.legend.seaStateArrow')}
           </p>
+          <p className="depth-legend-row">
+            <svg
+              className="route-legend-swatch route-legend-sea-dot"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+            >
+              <circle className="route-legend-sea-dot-halo" cx="8" cy="8" r="2.75" />
+              <circle cx="8" cy="8" r="2.75" />
+            </svg>
+            {t('route.legend.seaStateMarker')}
+          </p>
+          <p>{cellSizeLine(t, lang)}</p>
           <p>{t('route.legend.seaStateCaveat')}</p>
         </div>
       )}

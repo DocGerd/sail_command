@@ -31,7 +31,7 @@ import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { WAVE_ARROW_LAYER, WAVE_EDGE_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
+import { WAVE_ARROW_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -2618,9 +2618,11 @@ describe('sea-state toggle (#1699)', () => {
     waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
   });
 
-  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', () => {
+  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     renderRouteLayerWithPlan(map, makePlan());
+    await act(async () => {});
     const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
     expect(toggle).toBeDisabled();
     expect(toggle).not.toBeChecked();
@@ -2630,26 +2632,30 @@ describe('sea-state toggle (#1699)', () => {
     expect(map.layers.has(WAVE_FILL_LAYER)).toBe(false);
   });
 
-  it('is on by default for a plan with a grid and drives the layer visibility', () => {
+  it('is on by default for a plan with a grid and drives the layer visibility', async () => {
+    // #1854: the raster needs the mask's bbox, so the layers wait for it.
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     renderRouteLayerWithPlan(map, withWaves());
+    await act(async () => {});
     const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
     expect(toggle).toBeEnabled();
     expect(toggle).toBeChecked();
     expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
-    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
     fireEvent.click(toggle);
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
-    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     expect(localStorage.getItem('sc-waves-visible')).toBe('0');
   });
 
-  it('hides the overlay when the next plan has no grid, though the toggle stays on', () => {
+  it('hides the overlay when the next plan has no grid, though the toggle stays on', async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     const { rerender } = renderRouteLayerWithPlan(map, withWaves());
+    await act(async () => {});
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     rerender(
       <RouteLayer
         plan={makePlan()}
@@ -2676,7 +2682,8 @@ describe('sea-state tap while a map pick is armed (#1699)', () => {
     waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
   });
 
-  function renderArmed(mapPickArmed: boolean) {
+  async function renderArmed(mapPickArmed: boolean) {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = Object.assign(makeFakeMap(), { queryRenderedFeatures: vi.fn(() => []) });
     hoisted.map = map;
     hoisted.popupsAdded = 0;
@@ -2695,22 +2702,25 @@ describe('sea-state tap while a map pick is armed (#1699)', () => {
         mapPickArmed={mapPickArmed}
       />,
     );
+    await act(async () => {});
+    // #1854: a map-level click, resolved against the raster.
+    const clicks = map.on.mock.calls.filter((c) => c[0] === 'click' && typeof c[1] === 'function');
+    expect(clicks).toHaveLength(1);
     act(() => {
-      map.fireLayerEvent('click', WAVE_FILL_LAYER, {
+      (clicks[0]![1] as (e: unknown) => void)({
         point: { x: 5, y: 5 },
         lngLat: { lng: 10, lat: 54.6 },
-        features: [{ properties: { band: 'slight', heightM: 0.6 } }],
       });
     });
   }
 
-  it('opens the sea-state popup when no pick is armed', () => {
-    renderArmed(false);
+  it('opens the sea-state popup when no pick is armed', async () => {
+    await renderArmed(false);
     expect(hoisted.popupsAdded).toBe(1);
   });
 
-  it('opens no popup while a pick is armed', () => {
-    renderArmed(true);
+  it('opens no popup while a pick is armed', async () => {
+    await renderArmed(true);
     expect(hoisted.popupsAdded).toBe(0);
   });
 });

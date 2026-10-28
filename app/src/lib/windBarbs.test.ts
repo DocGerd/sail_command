@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { barbSegments, registerBarbImages, type BarbSegment } from './windBarbs';
+import { HALO_COLOR, INK_COLOR } from './mapColors';
 
 describe('barbSegments (WMO geometry, 5 kn buckets)', () => {
   it('calm (< 2.5 kn) is a single station circle, no shaft', () => {
@@ -67,70 +68,91 @@ describe('barbSegments (WMO geometry, 5 kn buckets)', () => {
   });
 });
 
-// Recording canvas context: captures only the path/draw op stream (ignores
-// style sets), so we can prove the private drawBarb replays barbSegments
-// verbatim — i.e. the canvas registration output is unchanged by the
-// extraction.
+// Recording canvas context: captures the path/draw op stream, plus the stroke
+// style and width at each stroke/fill, so the halo pass is pinned separately
+// from the ink pass.
 function recordingContext(log: string[]): CanvasRenderingContext2D {
   const ctx = {
-    clearRect: () => log.push('clear'),
+    clearRect: (x: number, y: number, w: number, h: number) => log.push(`clear${x},${y},${w},${h}`),
     beginPath: () => log.push('begin'),
     moveTo: (x: number, y: number) => log.push(`M${x},${y}`),
     lineTo: (x: number, y: number) => log.push(`L${x},${y}`),
     arc: (cx: number, cy: number, r: number) => log.push(`A${cx},${cy},${r}`),
     closePath: () => log.push('close'),
-    fill: () => log.push('fill'),
-    stroke: () => log.push('stroke'),
+    fill: () => log.push(`fill:${ctx.fillStyle}`),
+    stroke: () => log.push(`stroke:${ctx.strokeStyle}@${ctx.lineWidth}`),
     getImageData: () => ({}) as ImageData,
     strokeStyle: '',
     fillStyle: '',
     lineWidth: 0,
     lineCap: '',
+    lineJoin: '',
   };
   return ctx as unknown as CanvasRenderingContext2D;
 }
 
-/** Expected op stream for one barb, derived straight from barbSegments. */
+// #1854: the glyph box sits 2 px inside a 36 px canvas.
+const PAD = 2;
+
+function pathOps(seg: BarbSegment): string[] {
+  const ops = ['begin'];
+  if (seg.kind === 'circle') return [...ops, `A${seg.cx + PAD},${seg.cy + PAD},${seg.r}`];
+  seg.points.forEach((p, i) => ops.push(`${i === 0 ? 'M' : 'L'}${p.x + PAD},${p.y + PAD}`));
+  if (seg.kind === 'fill') ops.push('close');
+  return ops;
+}
+
+/** Expected op stream for one barb: a halo pass over every segment, then the ink pass. */
 function expectedOps(speedKn: number): string[] {
-  const ops = ['clear'];
-  for (const seg of barbSegments(speedKn)) {
-    ops.push('begin');
-    if (seg.kind === 'circle') {
-      ops.push(`A${seg.cx},${seg.cy},${seg.r}`, 'stroke');
-      continue;
-    }
-    seg.points.forEach((p, i) => ops.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`));
-    if (seg.kind === 'fill') ops.push('close', 'fill');
-    else ops.push('stroke');
-  }
+  const segs = barbSegments(speedKn);
+  const ops = ['clear0,0,36,36'];
+  for (const seg of segs) ops.push(...pathOps(seg), `stroke:${HALO_COLOR}@3.5`);
+  for (const seg of segs)
+    ops.push(
+      ...pathOps(seg),
+      seg.kind === 'fill' ? `fill:${INK_COLOR}` : `stroke:${INK_COLOR}@1.5`,
+    );
   return ops;
 }
 
 describe('registerBarbImages replays barbSegments onto the canvas', () => {
-  it('draws the exact op stream barbSegments implies for every 5 kn bucket 0..50', () => {
+  function register() {
     const log: string[] = [];
     const ctx = recordingContext(log);
+    const canvases: { width: number; height: number }[] = [];
     const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
       if (tag === 'canvas') {
-        return { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+        const c = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(c);
+        return c as unknown as HTMLCanvasElement;
       }
       return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
     });
     const addImage = vi.fn();
+    const getImageData = vi.spyOn(ctx, 'getImageData');
     const map = { hasImage: () => false, addImage } as unknown as Parameters<
       typeof registerBarbImages
     >[0];
-
     try {
       registerBarbImages(map);
     } finally {
       createSpy.mockRestore();
     }
+    return { log, addImage, canvases, getImageData };
+  }
 
+  it('draws a halo pass, then the ink pass, for every 5 kn bucket 0..50', () => {
+    const { log, addImage } = register();
     const expected: string[] = [];
     for (let speed = 0; speed <= 50; speed += 5) expected.push(...expectedOps(speed));
     expect(log).toEqual(expected);
     // 11 buckets registered (barb-0 .. barb-50).
     expect(addImage).toHaveBeenCalledTimes(11);
+  });
+
+  it('pads the canvas so the halo is not clipped at the glyph box edge', () => {
+    const { canvases, getImageData } = register();
+    expect(canvases.every((c) => c.width === 36 && c.height === 36)).toBe(true);
+    expect(getImageData).toHaveBeenCalledWith(0, 0, 36, 36);
   });
 });

@@ -6,7 +6,7 @@ import DataLayers from './DataLayers';
 import SavedWaypointsLayer from './SavedWaypointsLayer';
 import WaveLayer from './WaveLayer';
 import { I18nProvider } from '../i18n';
-import { makeWaveGrid } from '../test/waveFixtures';
+import { makeWaveGrid, waveTestMask } from '../test/waveFixtures';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
@@ -339,7 +339,8 @@ describe('fakeMaplibre layer-order model agrees with getStyle (#1537)', () => {
 // fill when it exists and its harbours/seamarks on the AIS/route chain;
 // WaveLayer anchors below saved waypoints, else harbour circles, else AIS,
 // else the route stack. Saved waypoints sit directly below harbour circles.
-const WAVES = ['sc-waves-fill', 'sc-waves-edge', 'sc-waves-arrows'];
+// WaveLayer creates its layers once it has a grid and a mask (#1854).
+const WAVES = ['sc-waves-fill', 'sc-waves-arrows'];
 const DEPTH_BELOW_WAVES = [
   'sc-contour-labels',
   'sc-depth',
@@ -365,7 +366,7 @@ function renderWaves() {
         tMs={Date.UTC(2026, 6, 15, 6, 0, 0)}
         visible
         mapPickArmed={false}
-        mask={null}
+        mask={waveTestMask()}
       />
     </I18nProvider>,
   );

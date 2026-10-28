@@ -273,6 +273,21 @@ describe('#1699: --sc-sea-* tokens twin SEA_STATE_COLORS', () => {
     );
   });
 
+  it('#1854: the legend ring strokes with --sc-wave-arrow on a --sc-halo halo', () => {
+    assertUsesToken(
+      css,
+      /\.route-legend-sea-dot circle\s*\{([^}]*)\}/,
+      'sc-wave-arrow',
+      '.route-legend-sea-dot circle',
+    );
+    assertUsesToken(
+      css,
+      /\.route-legend-sea-dot \.route-legend-sea-dot-halo\s*\{([^}]*)\}/,
+      'sc-halo',
+      '.route-legend-sea-dot-halo',
+    );
+  });
+
   it.each(SHADED_BANDS)('.route-legend-sea-%s uses its token', (band) => {
     assertUsesToken(
       css,

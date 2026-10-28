@@ -80,6 +80,9 @@ const mapTestHooks = vi.hoisted(() => ({
   // to queryRenderedFeatures.
   clickHandler: null as
     ((e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => void) | null,
+  // #1854: every live generic click handler (MapView's, and WaveLayer's once a
+  // plan carries a wave grid); `clickHandler` fires them all, as MapLibre does.
+  clickHandlers: [] as ((e: unknown) => void)[],
   // Same idea for MapView's `instance.on('error', handleError)' — lets tests
   // simulate a MapLibre runtime error (e.g. a failed tile/style fetch)
   // without a real map, to drive the project-gate map-error banner.
@@ -268,8 +271,12 @@ vi.mock('maplibre-gl', () => {
     // way — see that file's own header comment for the real semantics.
     on(event: string, layerOrCb: unknown, maybeCb?: unknown) {
       if (typeof layerOrCb === 'function') {
-        if (event === 'click')
-          mapTestHooks.clickHandler = layerOrCb as typeof mapTestHooks.clickHandler;
+        if (event === 'click') {
+          mapTestHooks.clickHandlers.push(layerOrCb as (e: unknown) => void);
+          mapTestHooks.clickHandler = (e) => {
+            for (const fn of [...mapTestHooks.clickHandlers]) fn(e);
+          };
+        }
         if (event === 'error')
           mapTestHooks.errorHandler = layerOrCb as typeof mapTestHooks.errorHandler;
       } else if (event === 'click' && typeof maybeCb === 'function') {
@@ -300,7 +307,12 @@ vi.mock('maplibre-gl', () => {
         }
         return;
       }
-      if (event === 'click') mapTestHooks.clickHandler = null;
+      if (event === 'click') {
+        const handlers = mapTestHooks.clickHandlers;
+        const at = handlers.indexOf(layerOrCb as (e: unknown) => void);
+        if (at !== -1) handlers.splice(at, 1);
+        if (handlers.length === 0) mapTestHooks.clickHandler = null;
+      }
       if (event === 'error') mapTestHooks.errorHandler = null;
     }
     getCanvas() {
@@ -799,6 +811,8 @@ beforeEach(async () => {
     delete mapTestHooks.routeHitFeatures[key];
   for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
   mapTestHooks.lastPopupContent = null;
+  mapTestHooks.clickHandlers.length = 0;
+  mapTestHooks.clickHandler = null;
   depthProfileProps.last = null;
 });
 
@@ -2096,8 +2110,13 @@ describe('#1170: tap the route line to insert a waypoint (App wiring)', () => {
 // sea-state popup yield to an armed origin/destination/via pick.
 describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', () => {
   it('opens on a wave-cell tap, and not while an origin pick is armed', async () => {
+    // The raster samples the slider hour, so the axis must cover the plan.
+    const hourMs = 3_600_000;
     vi.mocked(fetchWaveGrid).mockResolvedValueOnce(
-      makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+      makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 }), {
+        t0Ms: Math.floor(Date.now() / hourMs) * hourMs - 24 * hourMs,
+        hours: 24 * 9,
+      }),
     );
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
@@ -2109,20 +2128,14 @@ describe('#1699: the sea-state popup yields to an armed map pick (App wiring)', 
       expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
     );
     await flushPlanFormSync();
-    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-waves-fill']).toBeTruthy());
-
-    const tapWaveCell = () =>
-      act(() => {
-        mapTestHooks.layerClickHandlers['sc-waves-fill']?.({
-          point: { x: 5, y: 5 },
-          lngLat: { lat: 54.6, lng: 10 },
-          features: [{ properties: { band: 'slight', heightM: 0.6 } }],
-        });
-      });
+    // #1854: a map-level click, resolved against the raster once the mask loads.
+    const tapWaveCell = () => simulateMapClick(54.7, 10);
 
     // Positive control: unarmed, the tap opens the sea-state popup.
-    tapWaveCell();
-    expect(mapTestHooks.lastPopupContent?.className).toBe('wave-popover');
+    await waitFor(() => {
+      tapWaveCell();
+      expect(mapTestHooks.lastPopupContent?.className).toBe('wave-popover');
+    });
 
     mapTestHooks.lastPopupContent = null;
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
