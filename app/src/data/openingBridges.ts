@@ -1,8 +1,8 @@
 import type { LatLon } from '../types';
 
-// #1881: bridges a route notice names. Curated, typed and bundled (ADR-0003
-// route-notice data source B2): presentation-only, nothing here reaches
-// routing. `data/openingBridges.test.ts` pins span and URL to
+// #1881: bridges a route notice names. Curated, typed and bundled (data
+// source B2 of the #1881 maintainer ruling): presentation-only, nothing here reaches
+// routing. `test/openingBridgesPin.test.ts` pins span and URL to
 // pipeline/charted-channels.json. Add an entry only for a bridge plans can
 // reach; Kappeln and Egernsund are mask-disconnected.
 

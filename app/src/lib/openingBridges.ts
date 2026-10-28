@@ -9,7 +9,7 @@ import { pointToSegmentM } from './seamarkProximity';
 
 /**
  * A leg within this many metres of a bridge's passage line counts as passing
- * it. A maintainer judgement call, about one ~46 m mask cell: the merged
+ * it. An implementation choice, about one ~46 m mask cell: the merged
  * chord polyline has no finer precision. Not interpolated into any copy.
  */
 export const BRIDGE_PASS_M = 50;

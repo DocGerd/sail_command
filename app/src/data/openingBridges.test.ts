@@ -4,8 +4,7 @@ import { haversineNm } from '../lib/geo';
 import { pointToSegmentM } from '../lib/seamarkProximity';
 
 // #1881: shape invariants. The pin of span and URL to
-// pipeline/charted-channels.json lives in routing/realmask.repro.alssund.test.ts,
-// the node-typed file already allowed to read it.
+// pipeline/charted-channels.json is test/openingBridgesPin.test.ts.
 const MASK_CELL_M = 46;
 
 describe('#1881 OPENING_BRIDGES', () => {
