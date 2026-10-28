@@ -58,7 +58,8 @@ Amended by #1854 (maintainer rulings 2026-10-24 and 2026-10-28):
 
 - **Water-clipped cells.** Sea state is a canvas raster: each pixel belongs to its nearest
   lattice point and is coloured only if it is nav-mask water, that point is in-mask water
-  and Hs is finite, so land is never tinted and nothing is borrowed from a neighbour point.
+  and Hs is finite, so nothing is borrowed from a neighbour point. The mask is sampled at the
+  raster's resolution, so a pixel whose sample is water can still cover some land at the coast.
   Each shaded cell carries exactly one marker: the travel arrow, or a dot when the
   direction is missing. The cell-outline layer `sc-waves-edge` is removed. Raster
   resolution (half or quarter of the mask grid) is set by one main-thread paint
