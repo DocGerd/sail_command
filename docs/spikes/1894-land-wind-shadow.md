@@ -571,8 +571,10 @@ is the scripts in [`1894-land-wind-shadow/`](1894-land-wind-shadow/) at the
 freeze commit: the last commit before the rerun's first wind request, which
 `run.sh` records before it fetches and checks before it analyses. The first
 complete run on that commit binds. A later change to this section, the
-scripts or the static inputs is disclosed with the findings and reported
-alongside, never substituted.
+scripts, the static inputs or the track and wind data is disclosed with the
+findings and reported alongside, never substituted. The track and wind
+inputs are pinned by `inputs.sha256`; no track is trimmed, re-split or
+excluded after the freeze except by §6.2's drop rule.
 
 ### 6.1 Data
 
@@ -585,7 +587,7 @@ alongside, never substituted.
   sail's table: the fock table for 2026, `salona-44-easy-go-genoa.json`
   (tier C) for 2025. That table is the fock table times 1.000–1.053 per
   cell (1.035–1.053 at 4 kn, 1.000 from 16 kn). The factor falls with TWS,
-  and the model's TWS falls with upwind fetch (§1.5), so the table can move
+  and the model's TWS rises with upwind fetch (§1.5), so the table can move
   a 2025 trip's `Δ`, not only its level; §6.3 therefore decides under both
   tables.
 - Apart from §6, §0.1–§0.4 and §1.2's implementation choices are unchanged.

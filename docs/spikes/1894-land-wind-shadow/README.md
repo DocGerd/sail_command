@@ -4,9 +4,12 @@ The implementation of [§6 of the spike](../1894-land-wind-shadow.md#6-rerun-pre
 No track data, positions or times are committed; `SC_DATA` points at them.
 
 ```sh
-SC_DATA=<data dir> ./run.sh fetch     # records the freeze, then fetches the wind
-SC_DATA=<data dir> ./run.sh analyse   # refuses if scripts or static inputs changed since the freeze
+SC_DATA=<data dir> SC_PYTHON=<python> ./run.sh fetch     # records the freeze, then fetches the wind
+SC_DATA=<data dir> SC_PYTHON=<python> ./run.sh analyse   # refuses if scripts or static inputs changed since the freeze
 ```
+
+The scripts run under `-I`, so numpy must sit in the interpreter's own
+site-packages (e.g. a venv); `SC_PYTHON` defaults to `python3`.
 
 | Script | Step |
 |---|---|
