@@ -225,6 +225,25 @@
         "short-horizon": "d4e0ff30ac177e60"
       },
       "note": "PR #1885 (#1874, #1875) HEAD, sharded 4; BASE = the stored 943951a4 rows (reuse REUSE against merge base b7e1ce30); compare.mjs --harbour-superset 526/552 shared plans byte-identical, the 26 changed ones and 12 new Marina Minde rows in the PR's sweep comment; merge commit 5ce89b46 has the same closure"
+    },
+    {
+      "sha": "3320547b6fbec79dcc1b0f6a5a209996836621f1",
+      "date": "2026-10-28",
+      "arms": {
+        "becalmed": "30c44f8a258198f1",
+        "breeze": "ff57203d746846ca",
+        "deep-becalmed": "f750e42376dc8e7a",
+        "light-motorless": "4ff0923a0c9e88fb",
+        "margin-extreme": "5b2db725a8055410",
+        "margin-zero": "3399d96374275df6",
+        "motorless-short-horizon": "a5b9920b6f406b10",
+        "no-comfort": "65399233cb23683a",
+        "relaxation-dense": "90a4f5cb92457183",
+        "salona44-breeze": "7647e823d31c975d",
+        "salona44-relaxation": "8d3729f0965e1486",
+        "short-horizon": "d4e0ff30ac177e60"
+      },
+      "note": "PR #1923 (#1880 note wording) HEAD, sharded 4; BASE 906ed860 matched the c51228b5 entry 12/12 (reuse REUSE against merge base 59abdbb4); compare.mjs 564/564 plans byte-identical"
     }
   ]
 }

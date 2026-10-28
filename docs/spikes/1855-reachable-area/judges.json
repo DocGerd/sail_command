@@ -1,0 +1,77 @@
+[
+  {
+    "judge": 1,
+    "scores": [
+      {
+        "design": "D1",
+        "userValue": 6,
+        "feasibility": 7,
+        "safetyHonesty": 7,
+        "fitWith1854": 9,
+        "cost": 7,
+        "total": 7.2,
+        "notes": "Skipper lens: answers the ask with a fill plus a harbour list sorted by ETA and a one-tap [Als Ziel] handoff that sets Ziel and departure, which is enough to decide today's destination. Biggest skipper loss is the single rig. The probe shows the fock reaching more than the genoa from Flensburg (6 h: 478 vs 429 nm²; I re-read this in results.json). So a genoa-only fill under-reports exactly where the skipper sails from most. The assumptions line discloses it, but does not fix it. While the fill shows, sea state is hidden. For 'where should I go today' that removes half the decision context, though the hide/show toggle softens it. Fit with #1854 is the best of the three: it reuses the raster pipeline, hour store, held grid and §11 handoff, needs no popup slice, touches no closure file, and owes no sweep. Feasibility caveat: the shared RoutingClient forces an exclusivity rule threaded through App's runBusy, the via drags and the route-line drag, and D1's own risk table calls it fragile. Honesty is good: 'mindestens erreichbar' partials are a correct upper-bound claim, the shallow-approach group says the last mile is not counted, and the copy avoids 'alles Erreichbare'. Weak spot: the origin-disc trigger (every stamped cell within 1852 m) is a heuristic with a stated untested edge. Also, harbour ETAs come from a lookup of the snap's coarse cell, which can be unstamped beside reached water. Edge stamping is proposed for that but not measured."
+      },
+      {
+        "design": "D2",
+        "userValue": 8,
+        "feasibility": 5,
+        "safetyHonesty": 8,
+        "fitWith1854": 6,
+        "cost": 3,
+        "total": 6,
+        "notes": "Skipper lens: bands answer 'how far by lunch', and a tap readout ('ca. 3 h 40 mit Genua · davon 1 h 10 unter Motor') is the richest per-point information. Running both rigs as a per-cell minimum with the rig named is the right answer to M1/M5. On the 820 sheet, though, the map above the sheet is small. Flensburg's 2 h band covers about 16 nm² (probe), so the inner band is nearly invisible from the most common start. Open-water taps have no keyboard path, and the list carries the decision anyway. The strongest technical idea of the three is the stepper with a drainedToMs finality boundary. Children never precede their parent, so cells at or before the earliest frontier tMs are final. That gives correct streaming, a truthful partial at both cancel and budget, and cooperative cancel without terminate(), with the latency measured from the ring timings. Cost is the highest: a dedicated worker entry, its own protocol and client, an extra mask copy, a streaming merge, alternating rigs on one worker, and stamping every generated child including pruned ones (cost unmeasured). It also needs the map-level click and popup owner that #1854 deferred, or it ships them itself, which is scope creep into a later 1854 slice. Hiding sea state while the bands show costs the skipper context, as in D1. Showing stale bands 'at reduced contrast' invites acting on an old forecast. A band ramp is a third area colour scale beside depth and sea state."
+      },
+      {
+        "design": "D3",
+        "userValue": 9,
+        "feasibility": 6,
+        "safetyHonesty": 8,
+        "fitWith1854": 6,
+        "cost": 4,
+        "total": 6.6,
+        "notes": "Skipper lens: the best decision surface. Each row gives a named harbour, ETA, arrival clock, the faster rig (or 'beide' within RIG_TIE_BAND_MS), wind at arrival and a 'Zufahrt flach' flag. 'Nicht in 6 h gefunden' and 'ausgeschlossen' disclosures sit alongside. This is exactly what someone choosing a destination on a tablet reads. Keeping sea state visible by drawing only a faint vector outline lets the skipper weigh reach against conditions in one view. ETAs from per-harbour arrival tests (direct hop plus capture, validated by edgeFactor) avoid the snap-cell lookup failure that D1 and D2 share. R0's comparison of reach ETAs against planRoute ETAs is the honest way to set the rounding. A separate RoutingClient means a reach cancel cannot kill a Live reroute, which is safer than D1's exclusivity rule. Costs and risks: it recommends an export commit to isochrone.ts that owes a #282 sweep. It adds per-node per-target tests whose cost is unmeasured, plus marching squares with dilate/erode, a second worker set, and an in-card HarborPicker that duplicates the planner's Start. A Start edited in the card but not written to the planner can confuse. Honesty gap: destination discs around shallow-approach harbours lower the gate there for the whole search. A path to some other harbour that passes through such a disc gets an ETA at the relaxed gate with no flag on that row. D3 filters disc-only cells from the outline, but not from other rows' paths. Cancel via terminate() draws no outline, which is acceptable. It deviates from #1854 §12's shared raster pipeline, though it justifies the change with #1854 §15."
+      }
+    ],
+    "ranking": ["D1", "D3", "D2"],
+    "graftsFromRunnersUp": "Use D1 as the cheap, well-fitting base and graft the decision value from D3 and the compute correctness from D2.\n\n(1) From D2: run both rigs. Take the per-cell minimum and record which rig produced it, then name that rig in each harbour row. A single genoa assumption under-reports from Flensburg, where the fock covers 478 nm² against the genoa's 429 nm² at 6 h. On a single worker, alternate step() calls between the rigs, as D2 does.\n\n(2) From D2: build reach.ts as a stepper that reports cells as final once they fall at or before the earliest frontier tMs (drainedToMs). This yields a truthful progress figure, partial results that are correct at both cancel and budget expiry, and a cooperative cancel that needs no terminate(). It also removes D1's runBusy exclusivity coupling.\n\n(3) From D2: decide whether the origin needs a disc by testing mask.cellsConnected to SEED_POINT, or with D3's harborEndpointPocketed. This replaces D1's 1852 m stamped-cell heuristic.\n\n(4) From D3: give each harbour row the faster rig or 'beide', wind at arrival, a 'Zufahrt flach' chip, and the 'Nicht gefunden' / 'ausgeschlossen' disclosures.\n\n(5) From D3: take harbour ETAs from arrival tests validated by edgeFactor, not from a snap-cell lookup. At minimum, adopt D3's R0 gate comparing reach ETAs with planRoute ETAs before choosing the rounding.\n\n(6) From D3: give reach its own RoutingClient, so that a reach cancel can never tear down a plan or a Live reroute.\n\n(7) From D3: keep sea state visible. Either draw an outline instead of a fill, or make the fill opt-in and default it to hidden, so the skipper sees reach and conditions together.\n\n(8) Fix a gap in D3 before grafting its destination discs. Flag any row whose arrival path crossed another harbour's disc, or restrict each disc to arrivals at its own harbour only.\n\nDefer D2's graded bands and map taps to a later slice, after the #1854 popup slice exists."
+  },
+  {
+    "judge": 2,
+    "scores": [
+      {
+        "design": "D1",
+        "userValue": 6,
+        "feasibility": 8,
+        "safetyHonesty": 7,
+        "fitWith1854": 8,
+        "cost": 8,
+        "total": 7.4,
+        "notes": "Cheapest correct core: destination-free loop in NOT_IN_CLOSURE reach.ts, run to drain (M2), edge stamping, partial map labelled 'mindestens erreichbar' (sound: every stamp lies on a validated edge at <= its minutes). Single rig halves compute but understates the region (M1: Flensburg fock 478 vs genoa 429 nm2); card names the sail and hands off to the two-rig plan. Weaknesses for a solver engineer: (1) reach runs on the shared ladder worker and plan-path safety rests on an exclusivity POLICY (runBusy, disabled via/route drags, cancel on tab leave), not a mechanism; any future Wetter-side routing trigger lets cancel() kill a plan. (2) Mirrored pruneKey/better/constants pinned only by a behaviour twin that reds only if a changed constant moves ring sizes on the fixture. (3) Pocket detection is an all-stamps-within-1852 m heuristic it admits a wide pocket defeats; harborEndpointPocketed (develop 59abdbb4) exists. (4) Realmask twin relies on classify-realmask firing on isochrone.ts changes (true for drift, not for reach.ts regressions). Stays inside 1854 section 12; no sweep owed."
+      },
+      {
+        "design": "D2",
+        "userValue": 8,
+        "feasibility": 6,
+        "safetyHonesty": 8,
+        "fitWith1854": 7,
+        "cost": 4,
+        "total": 6.6,
+        "notes": "Best engine design: stepper createReach().step() in a dedicated reach worker gives message-based cancel and lets one worker alternate two rigs so a budget cut hits both evenly; own ReachClient removes the shared-client teardown hazard structurally. Finality boundary drainedToMs = earliest frontier tMs is provably sound (children never earlier than parents; future stamps descend from frontier) and is the right progress and partial boundary. Per-cell rig minimum with rig and motor attribution is the most truthful region (M1 rig dependence). Source-scanning constant twin (sourceStrip + assertNonVacuousStrip) is stronger than D1's. Gaps: 'the 2 h band appears within seconds' is argued from ring-12 stamping (M1 marks), not drainedToMs; M1's drain ran 25-30 rings past the cap ring, so drainedToMs can lag the ring clock and streaming/partials may show far less than known; probe never recorded per-ring min tMs; not in D2's risk table. Stamping every generated child with a DDA (62.6 M children in flens-genoa-12) is an unmeasured cost risk. Pocket test via cellsConnected(origin, SEED_POINT) is acceptable but not the existing harborEndpointPocketed. Fit/cost: may ship 1854's map-level click and popup owner itself, pulling a later 1854 slice in; two rigs, streaming, extra worker and protocol make it the largest build. No sweep owed."
+      },
+      {
+        "design": "D3",
+        "userValue": 7,
+        "feasibility": 5,
+        "safetyHonesty": 6,
+        "fitWith1854": 6,
+        "cost": 4,
+        "total": 5.6,
+        "notes": "Strongest fidelity ideas: per-harbour arrival tests mirroring solve()'s direct hop and CAPTURE_NM capture instead of a cell lookup, and R0 comparing reach ETAs with planRoute ETAs on ~10 pairs (the only validation of ETA vs plan in the set). Reuses harborEndpointPocketed and notes a #1721 handover can start a plan from different water. Notices classify-realmask.sh may skip a reach.ts realmask test. Defects: (1) Depth safety: a relaxationFloorM disc around EVERY shallow-approach harbour for the whole search lowers the transit gate, so ETAs and the outline for OTHER harbours can route through sub-gate disc water; conceded for the outline as 'accepted, unmeasured', silent for ETAs. Needs per-target or separate disc passes, not copy. (2) Owes a #282 sweep for the export-only isochrone.ts commit (#944 exemption deferred): BASE double-run plus HEAD, slowest arm ~72 min, while a sweep already loads this machine. (3) One PLAN_BUDGET_MS deadline per request with two rigs run sequentially on a one-worker pool lets rig 2 starve. (4) terminate()-only cancel on its second RoutingClient loses the outline; second client holds extra mask copies. (5) Outline from node-only stamps, ragged and unmeasured. Fit: no raster reuse (vector outline), in-card HarborPicker duplicates the planner Start the issue says to reuse; keeps sea state visible, which is a plus."
+      }
+    ],
+    "ranking": ["D1", "D2", "D3"],
+    "graftsFromRunnersUp": "Keep D1's scope (one region, harbour list, inside 1854 section 12, no sweep) but take its engine from D2 and its validation from D3. From D2: (a) stepper reach.ts in a dedicated reach worker with message-based cancel between rings, replacing D1's shared-client exclusivity policy; (b) drainedToMs = earliest frontier tMs as the progress figure and the boundary for 'final' times, keeping D1's 'mindestens erreichbar' fill for stamps beyond it; (c) the source-scanning constant twin via sourceStrip + assertNonVacuousStrip next to D1's behaviour twin; (d) alternating step() across rigs if the maintainer wants both rigs, as the upgrade path from D1's single rig. From D3: (e) pocket detection via the existing harborEndpointPocketed instead of D1's within-1852 m heuristic, and the #1721 handover divergence note; (f) R0 comparing reach ETAs with planRoute ETAs on ~10 harbour pairs, setting ETA rounding from it; (g) add reach.ts to classify-realm",
+    "truncated": "This judge's graftsFromRunnersUp reached the spike writer cut off after '(g) add reach.ts to classify-realm'; the remainder was not recovered and is not reconstructed here."
+  }
+]

@@ -2496,3 +2496,62 @@ describe('#1833 plan-keyed Card children keep distinct keys', () => {
     expect(errors.filter((e) => e.includes(DUP_KEY))).toEqual([]);
   });
 });
+
+// #1881: the opening-bridge notice is a bare <p> sibling of the seamark
+// proximity line, over the ACTIVE rig's own legs. Geometry rows live in
+// lib/openingBridges.test.ts; these pin the mount, the per-rig scope and the
+// #114 transition.
+describe('#1881: opening-bridge notice', () => {
+  const BRIDGE_LEGS: Leg[] = GENOA_LEGS.map((l, i) =>
+    i === 0
+      ? {
+          ...l,
+          start: { lat: 54.9210026, lon: 9.7830141 },
+          end: { lat: 54.9010026, lon: 9.7830141 },
+        }
+      : l,
+  );
+  const notice = (container: HTMLElement) => container.querySelectorAll('.opening-bridge-notice');
+  const planWithGenoaLegs = (legs: Leg[]): Plan => {
+    const plan = makePlan();
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs } });
+    return plan;
+  };
+
+  it('shows the notice, once, when the active rig crosses the bridge', () => {
+    const { container } = renderSummary({ plan: planWithGenoaLegs(BRIDGE_LEGS), rig: 'genoa' });
+    expect(notice(container)).toHaveLength(1);
+    expect(notice(container)[0]?.textContent).toContain("Kong Christian X's Bro");
+  });
+
+  it('shows nothing for a route that does not cross it', () => {
+    expect(notice(renderSummary().container)).toHaveLength(0);
+  });
+
+  it('is per rig: crossing for genoa, silent on the fock tab', () => {
+    const plan = planWithGenoaLegs(BRIDGE_LEGS);
+    expect(notice(renderSummary({ plan, rig: 'genoa' }).container)).toHaveLength(1);
+    cleanup();
+    expect(notice(renderSummary({ plan, rig: 'fock' }).container)).toHaveLength(0);
+  });
+
+  it('#114 recalculate-and-replace: a same-id plan with new legs re-computes', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const before = planWithGenoaLegs(BRIDGE_LEGS);
+    const { container, rerender } = render(
+      <I18nProvider>
+        <RouteSummary plan={before} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(notice(container)).toHaveLength(1);
+    const after: Plan = { ...before, createdAtMs: before.createdAtMs + 1 };
+    setSail(after, 'genoa', { result: { ...GENOA_RESULT, legs: GENOA_LEGS } });
+    expect(after.id).toBe(before.id);
+    rerender(
+      <I18nProvider>
+        <RouteSummary plan={after} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(notice(container)).toHaveLength(0);
+  });
+});

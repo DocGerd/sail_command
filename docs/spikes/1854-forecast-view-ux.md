@@ -364,6 +364,7 @@ harbourForecast store ◀── App onHarborPick (Wetter only) ──▶ WaveLay
 - **What it shares.** The hour store (departure), the held wind grid (it computes in the worker, so it can work offline with the grid's age shown), the place lines, the harbour popup with its [Als Start]/[Als Ziel] handoff, and the canvas raster pipeline (a sibling layer with an explicit `beforeId`).
 - **Primary action.** While the reach card is open, its compute button becomes the primary action and the departure handoff demotes to secondary.
 - **Open UX questions:** one region or time bands; inputs (max duration as a NumberInput; which sail plan); progress and cancel (the solver is synchronous, so only the `terminate()`-based cancel from #1193 exists); budget-exhausted and partial results; whether the reach fill hides the sea-state fill (two area fills do not read together); a "reachable in ~3 h 40" line in the harbour popup; whether "Wetter" still names the tab.
+- **Spike.** [`1855-reachable-area.md`](1855-reachable-area.md) answers these questions and lists its departures from this section in its §18.
 
 ## 13. Acceptance criteria
 

@@ -2648,7 +2648,8 @@ select {
   max-width: min(88vw, 19rem);
 }
 
-.ais-status-chip {
+/* Compound: a bare `.ais-status-chip` loses `background` to the later `.chip` rule (#1884, #506). */
+.chip.ais-status-chip {
   background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
 }
@@ -3454,6 +3455,21 @@ select {
   color: var(--sc-banner-info-fg);
   font-size: 0.85rem;
   font-weight: 400;
+}
+
+/* #1881: the opening-bridge advisory. Same quiet shape and info colour as
+   .seamark-proximity-notice; a flat single class, no modifier. */
+.opening-bridge-notice {
+  margin: 0;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-banner-info-fg);
+  color: var(--sc-banner-info-fg);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.opening-bridge-notice a {
+  color: inherit;
 }
 
 /* #1398a: the affirmative "no shallow water flagged" line — a THIRD sibling

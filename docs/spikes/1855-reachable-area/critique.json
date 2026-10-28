@@ -1,0 +1,164 @@
+[
+  {
+    "id": "C1",
+    "severity": "high",
+    "finding": "D3 §5.3 and grafts (3)/(e) gate the origin disc on harborEndpointPocketed, which returns true only for 'unreachable' (lib/harborReachability.ts:386, `endpointStateAt(...) === 'unreachable'`; tests at harborReachability.test.ts:606-609). M3 classifies Marstal for the Salona 45 as 'shallow-approach', so the predicate is false exactly where the probe's origin died in 7 rings with 11 cells, and true only for Easy Go from Marstal, where M3 says the disc does not connect.",
+    "suggestedChange": "Map the origin's access state to three postures: 'ok' → no disc; 'shallow-approach' → origin approachGate at relaxationFloorM (D2 §5.4's two cellsConnected tests to SEED_POINT compute this; or export endpointStateAt); 'unreachable' → see C4. Drop harborEndpointPocketed from the disc decision in both graft lists."
+  },
+  {
+    "id": "C2",
+    "severity": "high",
+    "finding": "Relaxed-depth copy quotes the relaxation gate as if it were water depth. D1 reach.originRelaxed 'Wasser ab {floor} zugelassen' and reach.list.approach 'flacher als {gate}'; D2 reach.originRelaxed / reach.harbour.shallow; D3 reach.flag.shallowDetail 'bis {floor}' and reach.origin.relaxed. relaxationFloorM is 2.1 m for the Salona 45 (results.json m3), equal to its draft; CLAUDE.md's boatDepth bullet puts the cautious bound at floor − MASK_TOLERANCE_M (1.2 m), which ShallowWarning's isSevere discloses as below draft. D1 §9 also fills disc water down to the floor in the same colour while sc-depth and sc-depth-hatch are hidden.",
+    "suggestedChange": "Reuse cautiousDepthLowerBoundM and ShallowWarning's below-draft sentence in every relaxed-depth string. Render disc-only water distinct from at-gate water (unfilled or hatched in the reach raster, as D3 §5.3 excludes it from the outline), and say the plan will show the shallow warning."
+  },
+  {
+    "id": "C3",
+    "severity": "high",
+    "finding": "The graft lists change what is being ranked. Grafts (1),(2),(6) import D2's engine (two rigs, stepper, own client/worker); (4),(5),(7) import D3's presentation, per-target arrival tests and outline. D1's cost score (7, 8) and fit score (9, 8) were earned by the single-rig, shared-worker, raster-fill design those grafts replace; D2 and D3 scored cost 3-4 for the same parts.",
+    "suggestedChange": "The revision re-estimates cost, fit and tablet budget for the composite as written, rather than carrying D1's scores, and names which grafts it declines."
+  },
+  {
+    "id": "C4",
+    "severity": "medium",
+    "finding": "No design models the #1721 handover. D1 §7.4 'stranded', D2 reach.originBlocked and D3 reach.none.origin cover Easy Go from Marstal, and all three drop 'unreachable' harbours (D3 AC-R4 pins Marstal and Augustenborg under 'ausgeschlossen'). The planner routes them: realmask.repro.harborHandover.test.ts at develop routes Easy Go Marstal→Assens, Marstal→Bagenkop, Bagenkop→Marstal and Augustenborg→Høruphav via findHarborHandoverFor. The card would call unreachable what Route planen reaches, the contradiction D3 §16 lists as its first risk.",
+    "suggestedChange": "Pocketed origin: seed the reach at findHarborHandoverFor(origin, gate) with HarborHandoverNotice-style copy. Pocketed destination: list it in the approach group with the ETA to its handover cell and the handover wording. Never use boat.harbors.unreachable wording in this card."
+  },
+  {
+    "id": "C5",
+    "severity": "high",
+    "finding": "D2 §1's 'the 2 h band appears within the first seconds' is a ring-12 timing (results.json marks.2h.wallMs 313-1537 ms), which D2's own drainedToMs rule does not license. Ring 12 had stamped 1 082 of the 1 268 cells final ≤ 2 h (Flensburg genoa), 1 076 of 1 237 (fock) and 7 384 of 14 887 (Marstal disc). lateTLoweredMaxMs reads 6 525 000 (fock), 6 300 000 (Marstal disc) and 7 350 000 ms (Sønderborg motor-off), so the earliest frontier tMs can trail the ring clock by a comparable margin (derived). Per-ring minimum frontier tMs was not recorded. Grafts (2)/(b) carry this into the leader's progress and partial semantics.",
+    "suggestedChange": "R1 records the minimum frontier tMs per ring on the probe configs before any copy promises streaming bands or 'vollständig bis' figures. Until then progress text states search time reached, and the partial label stays 'mindestens erreichbar'."
+  },
+  {
+    "id": "C6",
+    "severity": "medium",
+    "finding": "D3's destination discs relax the gate for every path through them (judge 2), and graft (8)'s per-harbour restriction needs either a pass per disc or a provenance bit that makes byKey/visitedDominates pruning unsound unless keys split by it. Separately, any ApproachGate re-anchors edgeFactor's comfort ramp field-wide at minGateM (isochrone.ts edgeFactor, `gateFloorM(gate)` ~:374). D3 always carries Marstal's disc for the Salona 45, so its whole search uses a 2.1-5.0 m ramp instead of tier 1's 3.0-5.0 m, contradicting D3 §5.5's 'as the plan's tier 1'.",
+    "suggestedChange": "No destination discs in the shared search. Use D1's approach group (ETA to the approach, last mile not counted) with C2's copy and C19's connectivity test. Apply an origin disc only when C1's classification calls for it."
+  },
+  {
+    "id": "C7",
+    "severity": "medium",
+    "finding": "D1 §9 and D2 §3 fill every at-gate mask pixel of a reached coarse cell. A coarse cell (0.002° × 0.003°, ~220 × 190 m) spans several ~46 m mask cells, so at-gate water cut off inside it by a mole or a sub-gate sill is shaded 'erreichbar'. D1 §7.6's 'each stamp lies on a navigable path' holds for coarse cells, not pixels, and D1 §20 rejects neighbour fill for the same reason.",
+    "suggestedChange": "Fill only pixels connected at the gate (bounded flood within the stamped coarse cell and its neighbours) to mask cells a validated edge crossed, or stamp edges at raster-pixel resolution. Add a unit fixture with a mole inside one coarse cell."
+  },
+  {
+    "id": "C8",
+    "severity": "medium",
+    "finding": "Tablet cost of the grafts is unmeasured and large on this machine. childrenTotal/expandedTotal is 33.0-34.1 across the 10 h configs (flens-genoa-12: 62 581 372 vs 1 838 683), so D2 §5.1's stamping of every generated child is ~34× the edges of survivor stamping, each a DDA walk beside edgeFactor's. Two rigs alternating on one worker double M1's 54.3-89.6 s single-rig drains to ~109-179 s (derived), 30-50 % of PLAN_BUDGET_MS before any device factor; defaultPoolSize is 1 on a 2-core device. A dedicated worker adds a 9 438 000-byte mask copy, plus one visited map per rig (428 002-708 160 keys measured), plus a second half-resolution canvas (1854 §5 sizes one at 9.6 MB RGBA + 4.8 MB index).",
+    "suggestedChange": "Keep survivor-plus-edge stamping. R1 measures wall time and heap for one and two rigs on the maintainer's tablet before fixing the 6 h default, the 10 h max and the rig policy. Rule a reach budget separately from PLAN_BUDGET_MS; a 360 s wait on an exploratory card is a UX decision."
+  },
+  {
+    "id": "C9",
+    "severity": "medium",
+    "finding": "The two-rig graft rests on one mark. From Flensburg the fock/genoa 6 h areas are 478/429 nm², but 2 h 15/16, 4 h 88/89 and 10 h 1623/1623 (results.json sectors); Sønderborg 6 h 1219/1228. The fock run lowered 8 212 cells by > 30 min against 0 for the genoa, so the 6 h gap may be search behaviour rather than rig. Per-harbour ETA by rig was not measured. Judge 1's 'under-reports where the skipper sails from most' generalises the 6 h mark.",
+    "suggestedChange": "Report the gap per mark in the spike. Decide rig policy from an R0/R1 per-harbour ETA comparison by rig. Until then keep D1's single rig, named in the card, with the two-rig plan at handoff."
+  },
+  {
+    "id": "C10",
+    "severity": "medium",
+    "finding": "In D1, cancel is RoutingClient.cancel() (§8), which terminates the worker, so the 'mindestens erreichbar' partial exists only on budget expiry, not on the user's cancel, the likelier stop on a slow tablet. Leaving Wetter also cancels (§8), so a glance at Planen during a multi-minute run discards it.",
+    "suggestedChange": "Graft D2's between-ring cooperative cancel. Cancel then returns the map so far, labelled partial. Tab leave may then keep the run, if C11's preemption rule allows it."
+  },
+  {
+    "id": "C11",
+    "severity": "medium",
+    "finding": "Graft (6)/(a) is credited with removing D1's exclusivity coupling, but D2 §5.6 itself requires 'starting a plan cancels a running reach', and runBusy covers Live reroutes (App.tsx ~:1517, liveReroute.state.rerouting). A reach on extra workers still competes for tablet cores with a plan, recalc, departure scan or Live reroute.",
+    "suggestedChange": "State the preemption rule: any plan, recalc, scan or Live reroute start cooperatively stops a running reach and keeps its partial. A reach never delays or cancels a planning request."
+  },
+  {
+    "id": "C12",
+    "severity": "medium",
+    "finding": "The issue's draft acceptance says 'Origin + departure + maximum duration produces a shaded reachable region'. D3's outline-only map and graft (7)'s default-hidden fill do not meet it as written. D1 §9's cut-first 'boundary pixels in ink' is an in-canvas outline, which 1854 §15 rejects.",
+    "suggestedChange": "Keep a default-on fill with D1's hide/show toggle, or put an acceptance amendment to the maintainer explicitly. Any outline is a vector layer, not canvas pixels."
+  },
+  {
+    "id": "C13",
+    "severity": "medium",
+    "finding": "All three bind departure to the Wetter hour and mark the result stale on hour change. Scrubbing hours, Wetter's main interaction, therefore stales it at once. D1 §11 keeps the fill at full strength while stale, and D2 keeps it at reduced contrast, so one map shows barbs for one hour and a reach region for another. 1854 §6 makes the hour row the only clock.",
+    "suggestedChange": "Either hide or dash the fill when stale (D3 greys rows), or freeze the departure into the result at compute time and label it ('Abfahrt Sa 14:00, berechnet') so scrubbing does not stale it. Do not show a full-strength fill bound to an hour other than the barbs'."
+  },
+  {
+    "id": "C14",
+    "severity": "medium",
+    "finding": "D1 §9 and D2 §3 hide sc-depth-hatch while the fill shows. CLAUDE.md's #455 bullet records that the mask optimism is accepted because #492's per-cell hatch discloses it. The fill labels the gate-crossing cells 'erreichbares Wasser' with the hatch gone. 1854 §6 hides depth for a colour clash with sea state, which does not apply to the black hatch over a reach fill.",
+    "suggestedChange": "Keep sc-depth-hatch visible on Wetter while the reach fill shows, anchored above sc-reach-fill, or hatch gate-crosser pixels inside the reach raster. Add a layerOrder row and a verify-pass check for it."
+  },
+  {
+    "id": "C15",
+    "severity": "medium",
+    "finding": "The issue asks what a tap on a reachable harbour does. 1854 §6's 'on Wetter a harbour tap never edits the planner' is delivered by the popup slice, which the 2026-10-28 ruling defers. D1 does not define harbour taps on Wetter before that slice. D1 §11 clears the result on a Start change, so a tap that still sets Start would wipe it.",
+    "suggestedChange": "State the pre-popup behaviour, for example a harbour tap selects and scrolls to its list row (D3 R4), and pin it with an e2e test."
+  },
+  {
+    "id": "C16",
+    "severity": "medium",
+    "finding": "D1 §10 takes an 'ok' harbour's ETA from its snap's coarse cell and lists it only if that cell is ≤ cap. An unstamped snap cell beside reached water drops the harbour silently. That reads as unreachable without any disclosure, and the probe did not measure the hole rate (grounding 'not measured').",
+    "suggestedChange": "Graft (5)'s arrival tests. As a floor, fall back to the nearest stamped cell within one step, marked 'ca.', and add a unit test with a harbour in an unstamped cell beside reached water (D3 AC-R2)."
+  },
+  {
+    "id": "C17",
+    "severity": "medium",
+    "finding": "No design sets a non-text contrast target for the fill. With sea state and depth hidden, the fill edge is the only boundary between reached and unreached water. D1 uses 0.4 opacity; D2 ramps alpha from 0.45 down to about 0.2. WCAG 1.4.11 asks 3:1 for graphics needed to understand content, and the basemap stays light in both themes.",
+    "suggestedChange": "Require ≥ 3:1 between filled and unfilled water in the verify pass, or add a vector outline (C12)."
+  },
+  {
+    "id": "C18",
+    "severity": "low",
+    "finding": "The probe drops the final partial step. The loop ends when minTMs + 600 s > cap (reach.probe.test.ts:179), and a child with node.tMs + stepMs > cap is skipped without trying a shorter step (:255; substeps run only on a depth block, :239). The outer edge and harbours arriving in the last step are omitted. D1 §7.3 copies the rule; D2 §5.1 stamps the pre-cap prefix for cells only.",
+    "suggestedChange": "At the cap, take the partial step to the cap and stamp its prefix. Run harbour arrival tests with the remaining time."
+  },
+  {
+    "id": "C19",
+    "severity": "low",
+    "finding": "D1 §10 and D2 §5.4 list a shallow-approach harbour if any reached cell lies within APPROACH_RADIUS_M of its snap, taking that cell's ETA. Straight-line proximity can pick water across land that is not on the harbour's approach.",
+    "suggestedChange": "Take the approach ETA from reached cells connected to the snap inside the disc at relaxationFloorM (approachGate plus cellsConnected), as planRoute's relaxation would."
+  },
+  {
+    "id": "C20",
+    "severity": "low",
+    "finding": "Late-lowering magnitude is understated. D1 §7.3 says per-cell times drop 'by over 30 min in some runs'; D3 §5.6 'more than 30 min'. results.json lateTLoweredMaxMs reaches 6 300 000-7 350 000 ms (105-122 min) in three configs. A D3 provisional row or a D1 partial ETA can be about 2 h late.",
+    "suggestedChange": "Cite the measured maximum with its config ids where the designs justify the drain and the partial labels."
+  },
+  {
+    "id": "C21",
+    "severity": "low",
+    "finding": "D2 §5.1 says ring snapshots 'miss 9.8-24.9 % of the cells finally reached by 6 h in three of five configurations'. Grounding M2's figures are excess over the ring-36 snapshot (+9.8, +24.9, +9.3 %), so the three-config range is 9.3-24.9 % and the basis is the snapshot. As a share of the final set Flensburg genoa is 3 072 of 34 417.",
+    "suggestedChange": "Restate as 'the final ≤ 6 h set exceeds the ring-36 snapshot by 9.3-24.9 %'."
+  },
+  {
+    "id": "C22",
+    "severity": "low",
+    "finding": "D1's progress fraction '+{elapsed} von {duration}' runs on the ring clock, which is nonlinear in work. flens-genoa-12 reached its 6 h mark at 8.1 s of 63.8 s (marks.6h.wallMs, wallMs), so a 10 h bar shows 60 % at ~13 % of the run, then pins during the drain.",
+    "suggestedChange": "Use an indeterminate bar with the search-time text, or omit the fraction."
+  },
+  {
+    "id": "C23",
+    "severity": "low",
+    "finding": "D1 disables the compute button for busy, offline and < 1 h states (§11). 1854 §15 rejected a disabled handoff because a disabled button gives no feedback on touch. D1 adds visible reason text; D3 uses enabled-with-message; D2 uses aria-disabled with a note.",
+    "suggestedChange": "Use the enabled-with-reason or aria-disabled pattern so a tap answers on a tablet."
+  },
+  {
+    "id": "C24",
+    "severity": "low",
+    "finding": "D1 §15 scrolls the opened Disclosure with block 'nearest'. With 1854's sticky hour row above, the summary can land under it (WCAG 2.4.11, Focus Not Obscured). CLAUDE.md records sticky versus scrollIntoView offsets as a measured trap.",
+    "suggestedChange": "Give the summary scroll-margin-top equal to the sticky row's height. Pin it with D3 AC-R8's geometry check at 820×1180, with and without a toast."
+  },
+  {
+    "id": "C25",
+    "severity": "low",
+    "finding": "Offline with a held result, D1's [Als Ziel] lands on Planen, where planning cannot run (usePlanFlow plans offline only from storedWindGrid, 1854 §11). 1854 §11 shows conditions.useAsDeparture.offline next to its handoff; D1 has no equivalent. All three designs also supersede 1854 §12's 'can work offline' sentence.",
+    "suggestedChange": "Show an offline note beside [Als Ziel]. Record the §12 amendment as a maintainer question alongside the 'is reach planning' ruling."
+  },
+  {
+    "id": "C26",
+    "severity": "low",
+    "finding": "Handoff focus differs. D1 follows 1854 §11 (#planner-departure when Ziel is set); D2 and D3 focus Route planen. Graft (4) brings in D3's row and could bring its focus target.",
+    "suggestedChange": "Keep 1854 §11's focus rule in the composite."
+  },
+  {
+    "id": "C27",
+    "severity": "low",
+    "finding": "D1 §9 hides sea state while the fill shows without writing persisted toggles. The 1854 card's 'Seegang anzeigen' checkbox then reads checked while sea state is not drawn.",
+    "suggestedChange": "Show the checkbox's suppressed state next to it (for example disabled with reach.suppressed), or make [Reichweite ausblenden] the only control while the fill shows."
+  }
+]

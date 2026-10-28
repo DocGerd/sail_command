@@ -802,6 +802,9 @@ export const en = {
     'This route passes closer than {dist} m to a cardinal or isolated-danger mark. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check it against an official chart.',
   'route.seamarks.proximity.plural':
     'This route passes closer than {dist} m to {count} cardinal or isolated-danger marks. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check them against an official chart.',
+  'route.bridge.notice':
+    'This route passes {name}, a bascule bridge that opens at listed times. Outside those times an opening may be possible on request, and the bridge may be closed. SailCommand does not model openings or closures — check the current times before sailing.',
+  'route.bridge.link': 'Bridge opening times (Danske Havnelods)',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -944,6 +947,13 @@ export const en = {
   'route.waves.toggle': 'Show sea state',
   'route.waves.unavailable': 'Sea-state data not available for this plan.',
   'route.waves.outOfRange': 'No sea-state data for the selected hour.',
+  // #1830: maximum over the leg's hours and path, display only.
+  'route.legs.seaState': 'Sea state',
+  'route.legs.seaStateNote':
+    'Sea state: highest significant wave height on the leg, over its hours and path. A model estimate, not an official figure; "≥" means parts of the leg have no data.',
+  'route.totals.seaState': 'Max sea state',
+  'route.seaState.noData': 'no data',
+  'route.seaState.partial': 'partly no data',
   'route.legend.seaStateHeading': 'Sea state (significant wave height)',
   'route.legend.seaStateBelow': 'below {max} m',
   'route.legend.seaStateRange': '{min} to {max} m',
