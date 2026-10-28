@@ -3,10 +3,11 @@
 10-deg rays must reproduce the stored `omni` column.
 Usage: python3 -I rays.py <repo> <samples.npz> <out.npz>"""
 import json, sys
+from pathlib import Path
 import numpy as np
 R_EARTH = 6371008.8; NM = 1852.0
 repo, src, out = sys.argv[1:4]
-meta = json.load(open(f"{repo}/app/public/data/mask.meta.json"))
+meta = json.loads(Path(f"{repo}/app/public/data/mask.meta.json").read_text())
 mask = np.fromfile(f"{repo}/app/public/data/mask.bin", dtype=np.uint8).reshape(meta["rows"], meta["cols"])
 CPD_LAT = round(meta["rows"] / (meta["north"] - meta["south"]))
 CPD_LON = round(meta["cols"] / (meta["east"] - meta["west"]))

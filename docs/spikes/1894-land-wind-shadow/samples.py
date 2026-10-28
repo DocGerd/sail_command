@@ -8,6 +8,7 @@ Usage: python3 -I samples.py <repo> <npz_dir> <wind_dir> <variant> <out.npz> [st
 import glob
 import os
 import json
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -36,16 +37,16 @@ HALF_WIN = 15.0  # 30 s centred window
 TURN_MIN_DISP_M = 15.0  # both 30 s windows must move >= 15 m (~1 kn) to define a COG
 
 # ---------- static inputs ----------
-meta = json.load(open(f"{repo}/app/public/data/mask.meta.json"))
+meta = json.loads(Path(f"{repo}/app/public/data/mask.meta.json").read_text())
 mask = np.fromfile(f"{repo}/app/public/data/mask.bin", dtype=np.uint8).reshape(meta["rows"], meta["cols"])
 CPD_LAT = round(meta["rows"] / (meta["north"] - meta["south"]))
 CPD_LON = round(meta["cols"] / (meta["east"] - meta["west"]))
-harbours = json.load(open(f"{repo}/app/public/data/harbors.json"))
+harbours = json.loads(Path(f"{repo}/app/public/data/harbors.json").read_text())
 H_LAT = np.array([h["snap"]["lat"] for h in harbours])
 H_LON = np.array([h["snap"]["lon"] for h in harbours])
 SAIL = os.environ.get("SC_SAIL", "fock")  # #1894 §6.1: each trip's own sail
 assert SAIL in ("fock", "genoa")
-pol = json.load(open(f"{repo}/app/public/data/polars/salona-44-easy-go-{SAIL}.json"))
+pol = json.loads(Path(f"{repo}/app/public/data/polars/salona-44-easy-go-{SAIL}.json").read_text())
 P_TWA = np.array(pol["twa"], float)
 P_TWS = np.array(pol["tws"], float)
 P_SPD = np.array(pol["speeds"], float)  # [twa][tws]
@@ -120,7 +121,7 @@ def runs(flag):
 
 # ---------- wind grid (mirrors lib/wind.ts WindField.sample) ----------
 def load_grid(name):
-    man = json.load(open(f"{wind_dir}/MANIFEST.json"))[name]
+    man = json.loads(Path(f"{wind_dir}/MANIFEST.json").read_text())[name]
     lats, lons = man["lats"], man["lons"]
     li = {v: i for i, v in enumerate(lats)}
     oi = {v: j for j, v in enumerate(lons)}
@@ -128,7 +129,7 @@ def load_grid(name):
     sp = dirr = None
     cell = {}
     for path in sorted(glob.glob(f"{wind_dir}/{name}_[0-9][0-9][0-9].json")):
-        ch = json.load(open(path))
+        ch = json.loads(Path(path).read_text())
         for (la, lo), loc in zip(ch["points"], ch["data"]):
             h = loc["hourly"]
             t = np.array(h["time"], float)
@@ -335,9 +336,10 @@ for trip_i, path in enumerate(sorted(glob.glob(f"{npz_dir}/track*.npz"))):
         cols.setdefault(k, []).append(v)
 
 np.savez(out_path, **{k: np.concatenate(v) for k, v in cols.items()})
-json.dump(
-    dict(variant=variant, strict=STRICT, sail=SAIL, leg_r_max=LEG_R_MAX, accounting=acct, water_grid_cells=int(WC.shape[0]), grid_points=len(water_cells)),
-    open(out_path.replace(".npz", ".acct.json"), "w"),
-    indent=1,
-)
+with open(out_path.replace(".npz", ".acct.json"), "w") as acct_f:
+    json.dump(
+        dict(variant=variant, strict=STRICT, sail=SAIL, leg_r_max=LEG_R_MAX, accounting=acct, water_grid_cells=int(WC.shape[0]), grid_points=len(water_cells)),
+        acct_f,
+        indent=1,
+    )
 print(json.dumps(acct, indent=1))

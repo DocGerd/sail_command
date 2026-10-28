@@ -3,16 +3,17 @@ at any of its fixes (before §0.3's exclusions) lacks wind speed or direction, o
 the returned hours. Usage: python3 -I check_coverage.py <wind_dir> <track_npz>   (prints one JSON line)"""
 import glob
 import json
+from pathlib import Path
 import sys
 
 import numpy as np
 
 
 def load_valid(wd):
-    man = json.load(open(f"{wd}/MANIFEST.json"))["full_app"]
+    man = json.loads(Path(f"{wd}/MANIFEST.json").read_text())["full_app"]
     val, times = {}, None
     for p in sorted(glob.glob(f"{wd}/full_app_[0-9][0-9][0-9].json")):
-        ch = json.load(open(p))
+        ch = json.loads(Path(p).read_text())
         for (la, lo), loc in zip(ch["points"], ch["data"]):
             h = loc["hourly"]
             t = np.array(h["time"], float)

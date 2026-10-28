@@ -163,7 +163,7 @@ res["bands"] = bands
 # §0.6 polar check: open-water legs, per table cell
 from pathlib import Path
 
-pol = json.load(open(Path(__file__).resolve().parents[3] / "app/public/data/polars/salona-44-easy-go-fock.json"))
+pol = json.loads(Path(Path(__file__).resolve().parents[3] / "app/public/data/polars/salona-44-easy-go-fock.json").read_text())
 P_TWA, P_TWS = np.array(pol["twa"], float), np.array(pol["tws"], float)
 ow = S["fetch_up"] >= 2.0
 ci = np.searchsorted(P_TWA, S["twa"], side="right") - 1
@@ -211,7 +211,7 @@ def clean(x):
     return x
 
 
-json.dump(clean(res), open(out, "w"), indent=1, allow_nan=False)
+Path(out).write_text(json.dumps(clean(res), indent=1, allow_nan=False))
 p = res["primary"]["contrast"]
 print(f"kept={res['samples_kept']} legs={res['legs']} trips={res['trips']} resolvable={res['resolvable']}")
 print(f"PRIMARY delta={p['delta']} ci={p['ci95']} trips_with_both={p['trips_with_both']} per_trip={p['per_trip_delta']}")

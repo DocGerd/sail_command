@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 s_app, s_str, r_app, r_str, trips_path, out = sys.argv[1:7]
-TRIPS = {int(k): v for k, v in json.load(open(trips_path)).items()}
+TRIPS = {int(k): v for k, v in json.loads(Path(trips_path).read_text()).items()}
 REPO = Path(__file__).resolve().parents[3]
 EDGES = np.array([0, 0.25, 0.5, 1, 2, 4, np.inf])
 NAMES = list("ABCDEF")
@@ -216,7 +216,7 @@ def evaluate(S, rays, trips=None):
 def polar_check(S):
     """§6.1 data assertion: every fix's stored table speed is its own trip's table, and the 1.2 cap held."""
     for t in np.unique(S["trip"]).tolist():
-        pol = json.load(open(REPO / f"app/public/data/polars/salona-44-easy-go-{TRIPS[t]['sail']}.json"))
+        pol = json.loads(Path(REPO / f"app/public/data/polars/salona-44-easy-go-{TRIPS[t]['sail']}.json").read_text())
         P_TWA, P_TWS, P = np.array(pol["twa"], float), np.array(pol["tws"], float), np.array(pol["speeds"], float)
         k = S["trip"] == t
         a = np.clip(S["twa"][k], P_TWA[0], P_TWA[-1])
@@ -282,5 +282,5 @@ def clean(x):
     return x
 
 
-json.dump(clean(res), open(out, "w"), indent=1, allow_nan=False)
+Path(out).write_text(json.dumps(clean(res), indent=1, allow_nan=False))
 print(json.dumps(dict(resolvable=res["resolvable"], option2_rules=res["option2_rules"], option2_this_run=res["option2_this_run"])))

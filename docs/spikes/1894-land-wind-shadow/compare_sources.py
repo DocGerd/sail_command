@@ -2,6 +2,7 @@
 Usage: python3 -I compare_sources.py <hist_root> <pastdays_dir> <track_npz>...   (aggregates only)"""
 import glob
 import json
+from pathlib import Path
 import os
 import sys
 
@@ -16,7 +17,7 @@ root, pd_dir, tracks = sys.argv[1], sys.argv[2], sys.argv[3:]
 def load(paths):
     d = {}
     for p in paths:
-        ch = json.load(open(p))
+        ch = json.loads(Path(p).read_text())
         for (la, lo), loc in zip(ch["points"], ch["data"]):
             h = loc["hourly"]
             for k, t in enumerate(h["time"]):

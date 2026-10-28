@@ -1,6 +1,7 @@
 """Split a multi-track Navionics GPX into per-day segments and validate each (intake only, no analysis).
 Usage: python3 -I intake_multi.py <gpx> <out_dir> <existing_npz_dir>"""
 import glob, json, sys
+from pathlib import Path
 from datetime import datetime, timezone
 import numpy as np
 from defusedxml import ElementTree as ET
@@ -55,6 +56,6 @@ for ti, trk in enumerate(root.iter(f"{G}trk")):
                          moving_share=round(float(np.nanmean(seg[:, 3] > 0.5)), 3) if np.isfinite(seg[:, 3]).any() else None,
                          overlaps_existing=ov))
         k += 1
-json.dump(rows, open(f"{out}/intake6.json", "w"), indent=1)
+Path(f"{out}/intake6.json").write_text(json.dumps(rows, indent=1))
 for r in rows:
     print(r)

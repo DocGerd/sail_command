@@ -4,13 +4,14 @@ start_date..end_date = the trip's UTC day and the next one. One cache dir per tr
 Usage: python3 -I fetch_hist.py <manifest_json> <out_root> <track_npz>...
 """
 import datetime as dt, json, os, sys, time, subprocess, urllib.parse
+from pathlib import Path
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from d_points import d_points
 
 API = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 man_path, out_root, tracks = sys.argv[1], sys.argv[2], sys.argv[3:]
-full = {"full_app": json.load(open(man_path))["full_app"]}
+full = {"full_app": json.loads(Path(man_path).read_text())["full_app"]}
 assert full["full_app"]["model"] == "icon_seamless" and full["full_app"]["cell_selection"] is None
 
 
@@ -40,7 +41,7 @@ for trk in tracks:
     out = f"{out_root}/{name}"
     os.makedirs(out, exist_ok=True)
     tmp = f"{out}/.man.json"
-    json.dump(full, open(tmp, "w"))
+    Path(tmp).write_text(json.dumps(full))
     pts = d_points(tmp, trk)["full_app"]
     os.remove(tmp)
     t = np.load(trk)["t"]
@@ -56,8 +57,8 @@ for trk in tracks:
         url = url_for(chunk, d0, d1)
         data = get(url)
         data = data if isinstance(data, list) else [data]
-        json.dump({"url": url, "points": chunk, "data": data}, open(path, "w"))
+        Path(path).write_text(json.dumps({"url": url, "points": chunk, "data": data}))
         print(f"{name} {c // 8} ok", flush=True)
         time.sleep(8)
-    json.dump({"full_app": dict(full["full_app"], source="historical-forecast-api")}, open(f"{out}/MANIFEST.json", "w"))
+    Path(f"{out}/MANIFEST.json").write_text(json.dumps({"full_app": dict(full["full_app"], source="historical-forecast-api")}))
 print("DONE", flush=True)
