@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
 for a Flensburg boat catalogue (read the boats, their drafts and their
 distinct default depth gates off `app/src/data/boats.ts`'s `BOATS` and
-`defaultSafetyDepthM`, never from a count here)
+`app/src/lib/boatDepth.ts`'s `defaultSafetyDepthM`, never from a count here)
 in the Flensburg Fjord / Danish South Sea area (54.3–55.6°N, 9.4–11.6°E
 since #295 — read the live bounds off `app/public/data/mask.meta.json`),
 using hourly Open-Meteo wind forecasts and an isochrone router that prices
@@ -30,8 +30,8 @@ making design-level decisions; do not silently deviate.
 - `pipeline/` — build-time data preparation (Node/Python scripts). Outputs are
   committed static assets under `app/public/` (`data/`, `icons/`, and `brand/`
   for the social card): land/depth mask (packed binary, ~46 m cells, quantized
-  depth per cell), curated harbor list JSON, PMTiles regional basemap, Salona 45
-  polar tables (main+genoa, main+fock).
+  depth per cell), curated harbor list JSON, PMTiles regional basemap, per-boat
+  polar tables (main+genoa, main+fock each).
   Pipeline runs on demand, never at app runtime.
 - `app/` — the PWA: Vite + React + TypeScript, MapLibre GL + PMTiles,
   routing engine in a Web Worker, IndexedDB persistence, service-worker
@@ -83,8 +83,8 @@ making design-level decisions; do not silently deviate.
   **39 inbound citations of a `docs/spikes/` path across 17 tracked files**
   (`git grep -n 'docs/spikes' -- ':!docs/spikes'` at that commit) —
   including two files already inside the #282 sweep closure
-  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both named in
-  that closure's own listing below), each citing only the
+  (`app/src/lib/depthGate.ts`, `app/sweep/sweepArms.ts:89`, both in
+  `closure.mjs closure`'s output), each citing only the
   `452-local-depth-relaxation.md` spike. That is why #644 shipped as a
   convention-and-cross-link change with **ZERO files moved**: renaming that
   #452 spike path specifically — the one cited inside both closure files —
@@ -159,7 +159,7 @@ making design-level decisions; do not silently deviate.
   read the caps there, never here. PR #1510 set that test's suite-wall
   constant to the max OBSERVED shard, not a bound: the first per-shard
   figure was exceeded by the next dispatch. The shard blob reports live
-  in a non-dot directory because `actions/upload-artifact@v7.0.1` defaults
+  in a non-dot directory because `actions/upload-artifact` defaults
   `include-hidden-files: false`: the default `.vitest-reports/` upload failed
   on every shard with `No files were found`, an error that never names the
   hidden-file default (run 36333125953). A red shard's test step names no test
@@ -358,7 +358,7 @@ making design-level decisions; do not silently deviate.
   threw in every arm) proves the arms reach the lever, not that `compare.mjs`
   flags divergent output; that needs a non-throwing lever.
   **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
-  ZERO routes (33/33 errors each), so their byte-identity would survive any
+  ZERO routes (33/33 error rows each at the 33-harbour sweep), so their byte-identity would survive any
   mask change including a catastrophic one; never count them as evidence.
   **VACUITY IS LEVER-RELATIVE — an arm is never vacuous as a property of
   itself, only with respect to a LEVER.** That pair is the vacuous set for a
@@ -622,11 +622,11 @@ making design-level decisions; do not silently deviate.
   ruff, so a fresh worktree's venv had none at PR #1752; install CI's pin with
   `./pipeline/.venv/bin/pip install --require-hashes -r .github/workflows/python-lint-requirements.txt`.
 - Pipeline: `npm --prefix pipeline run
-  polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the
+  polars|estimate|harbors|seamarks|mask|contours|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the
   non-`hullVerified` boats with tables of their own; a `polarsFrom` borrower
   has none). The basemap has NO npm script —
   `pipeline/extract_basemap.sh [YYYYMMDD]`; per-asset detail and the
-  never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask needs
+  never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask and contours need
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~887 MiB (~930 MB) gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
@@ -676,7 +676,7 @@ making design-level decisions; do not silently deviate.
   stays open after Dependabot AUTO-DISMISSES the same advisory, so a zero
   open-Dependabot count is not "no known vulnerable dependency" (v0.54.0,
   #1695): read open `code-scanning/alerts` too.
-- `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
+- `ci.yml`'s `hook-selftests` job (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
   never a silent pickup) and demands BOTH exit 0 AND the literal `SELFTEST OK`
@@ -843,7 +843,7 @@ making design-level decisions; do not silently deviate.
 - `Plan` is structured-clone-safe (IndexedDB/postMessage) but NOT JSON-safe
   (Float32Array wind grids) — file export needs a dedicated serializer (#3).
 - Tests import vitest APIs explicitly (`import { describe, it, expect, vi }
-  from 'vitest'`).
+  from 'vitest'`) — one file, `i18n/i18n.test.tsx`, relies on `globals: true`.
 - Never transfer the wind grid's buffers to the worker (clone keeps the saved
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
@@ -933,8 +933,8 @@ making design-level decisions; do not silently deviate.
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
   COUPLING now points at `App.tsx`'s `<div className="banner-area">`
-  (rendered unconditionally, ~:1091) and its App-level `useBannerHeight()`
-  call (~:181, kept purely for that write side-effect). Any rule that moves
+  (rendered unconditionally) and its App-level `useBannerHeight()`
+  call (kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
@@ -978,7 +978,7 @@ making design-level decisions; do not silently deviate.
   reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
   their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
   later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
-  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2315) that
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`) that
   sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
   order — media queries add no specificity. It is harmless only because it
   sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
@@ -1013,8 +1013,8 @@ making design-level decisions; do not silently deviate.
   setMaxPitch/setPitch reasoning is in `MapView.tsx`'s #207 comment.
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
   idempotent consumers (RouteLayer's `setFilter`); any network/subscription
-  effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
-  `[plan, rig]` resetKey so plan changes bypass it) — GPS noise flips the
+  effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with
+  `route` (derived from `[plan, rig]`) as resetKey so plan changes bypass it) — GPS noise flips the
   nearest-leg argmin at fix rate near leg boundaries (#158).
 - Camera MODE is DERIVED from the camera, never tracked alongside it (#203,
   #227): every settle re-checks `north` against `map.getBearing()`, and
@@ -1174,8 +1174,8 @@ making design-level decisions; do not silently deviate.
 - E2E: `npm --prefix app run e2e` (the `pree2e` hook regenerates
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
-  commit it). The COMMITTED fixture is stale (last forecast hour 2026-07-22)
-  and reachable ONLY through the `?windFixture=` escape hatch
+  commit it). The COMMITTED fixture is stale (its last forecast hour is in
+  the file's `hourly.time`) and reachable ONLY through the `?windFixture=` escape hatch
   (`usePlanFlow.ts`, its sole consumer) — so a MANUAL browser pass that uses
   that parameter fails 'beyond horizon' until
   `node app/scripts/gen-wind-fixture.mjs` is run; restore it afterwards. An
@@ -1187,16 +1187,16 @@ making design-level decisions; do not silently deviate.
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards); add `--no-deps` (since #1260) to skip
   the `identity` project when it doesn't matter for the spec under test.
-- **`ci.yml`'s `e2e` job capped at `timeout-minutes: 30`** (#605; since
-  #1286 each `e2e-shard` job caps at 35, sized from this PR's measured
-  shard runs) —
+- **`ci.yml`'s `e2e-shard` jobs cap at `timeout-minutes: 35`** (#605
+  capped the then-unsharded `e2e` job at 30; #1286 sharded it and raised the
+  cap, sized in `ci.yml`'s own comment). #605's 30 was
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
   3–4 min this file used to quote; a wedge now reds in 35 min per shard instead of 360.
-  An older **16m43s** outlier sits outside that window and sets the real margin
+  An older **16m43s** outlier sits outside that window and set the 30-min cap's real margin
   at ~1.79x, not 2.06x — size any future change against the outlier, not the
   sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
   queue-blocks later develop pushes until it reds. The PRE-CAP wedges below
-  (32/54/65/90 min) are durations the 30-min cap now forbids — they are the
+  (32/54/65/90 min) are durations the cap now forbids — they are the
   evidence FOR the cap, not observations of current behaviour. FOUR PRs' `e2e` wedged on
   `npx playwright install --with-deps chromium` in one session — step-6 durations
   **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
@@ -1684,7 +1684,6 @@ making design-level decisions; do not silently deviate.
   | v0.18.0 | 2026-09-01 | 109 s | `success` — and BOTH deploy jobs read success, neither run cancelled, unlike every earlier row | **`smoke-probe` FAILED** | merge-push `33561093145` → tag `33561257642` on the same SHA; the tag run's `smoke-probe` 404'd its own entry chunk 10/10 over 4m31s while the merge run's passed. Back-merge `33563513697` then probed green. WHICH mechanism — a same-SHA no-op the back-merge fixed, or propagation later than that probe window — is NOT distinguishable from the end state: the back-merge's prod build produced the SAME entry-chunk name as the tag build (measured), so the end state cannot say which story produced it. Record the measurements, never a cause. |
   | v0.19.0 | 2026-09-02 | 83 s | read as `in_progress`/`null` in the same Bash call that pushed the tag (transcript-only; recorded by the v0.19.0 cut's own session and NOT re-read here — the session applying this row did not run that gate — what IS independently established is that the job ran 20:36:48Z→20:37:10Z, so any read in that 22 s window returned `in_progress`); conclusion `cancelled` at 20:37:10Z, its Pages object `6231355284` reaching `error` at the same second | **`smoke-probe` FAILED** | merge-push `33680204038` → tag `33680338582` on `786c32f1`. The tag run's `deploy` job AND its Pages object `6231383135` BOTH reached `success` (20:38:34Z / 20:38:35Z), yet its own entry chunk `assets/index-Culp-AWd.js` returned 404 on all ten probe attempts, 20:38:53Z → 20:43:23Z, the job failing 20:43:25Z (read off the `smoke-probe` job log, which prints `PROD_ENTRY: /sail_command/assets/index-Culp-AWd.js`; the uat half was never reached, prod being probed first). Back-merge `33683275499` then probed green. Per the v0.19.0 learnings file and NOT re-verified here: prod was serving the MERGE run's chunk `index-BmIaq_PY.js` at 20:44:12Z — one fact v0.18.0 lacked, the served artifact positively IDENTIFIED. It still names NO mechanism: a no-op against an `error`-state deployment object, and an edge-cached `index.html` plus negative-cached 404s, both produce this end state. Record the measurements, never a cause. |
   | v0.20.0 | 2026-09-03 | 1735 s | `success` (MEASURED in the same Bash call that pushed the tag, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33774574960` (created 15:46:00Z, `deploy: success`) → tag `33777477268` (created 16:14:55Z) on `286b280`. The tag run's `build` and `deploy` BOTH succeeded and only `smoke-probe` failed. Back-merge `33780148708` then probed green, and prod was positively identified as serving the clean tag afterwards: the live entry chunk `assets/index-CIpQmfDd.js` contains ``about.version`,{version:`v0.20.0`}`` with ZERO suffixed `vX.Y.Z-N-g<sha>` matches anywhere in it. Unlike v0.19.0 the PREDICTOR here was the durable answer — terminal `success`, which cannot un-succeed — not a volatile `in_progress`. That still names no MECHANISM: a same-SHA no-op and a propagation lag produce this end state alike, and this row does not distinguish them. Record the measurements, never a cause. |
-
   | v0.21.0 | 2026-09-04 | 113 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33879362519` (`deploy: success`) → tag `33879536590` on `dfc80ed`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically — its own prod entry chunk `assets/index-UPcmWly8.js` returned **404 on all 10 attempts over ~4m42s** while the basemap Range probes PASSED for both prod and uat, which is what rules out a CDN regression. The back-merge (`33882094279`, on the different SHA `d30507a3`) then probed green and republished **that same chunk name** — so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped, the one fact v0.18.0 and v0.19.0 could not establish. Prod afterwards served ``about.version`,{version:`v0.21.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0. Still names no MECHANISM. |
   | v0.22.0 | 2026-09-04 | 172 s | `success` (MEASURED immediately before the tag push, and the failure CALLED IN ADVANCE from it) | **`smoke-probe` FAILED** | merge-push `33916366319` -> tag `33916603758` on `3dd7bce`. The tag run's `build` and `deploy` both succeeded; only `smoke-probe` failed, and by the #398 signature specifically -- its own prod entry chunk `assets/index-Cxxioy59.js` returned **404 on all 10 attempts** (20:32:26Z -> 20:36:56Z) while the basemap Range probes PASSED for prod AND uat on attempt 1, which is what rules out a CDN regression. The back-merge (`33919057557`, on the different SHA `11cda98`) then probed green and republished **that same chunk name** -- so the tag run's BUILD was correct all along and only its DEPLOYMENT no-opped. Prod afterwards served ``about.version`,{version:`v0.22.0`}`` with ZERO suffixed matches. Predictor was the durable `success`, as at v0.20.0 and v0.21.0. |
   | v0.23.0 | 2026-09-05 | 92 s | read as **`in_progress`/`null`** immediately before the tag push -- the reading this file calls a NON-ANSWER and whose remedy it records as OPEN | **`smoke-probe` FAILED** | merge-push `33990376950` (created 20:31:41Z) -> tag `33990452597` (created 20:33:13Z) on `0ab001d`. The tag run's `build` AND `deploy` both succeeded; only `smoke-probe` failed, by the #398 signature -- its own prod entry chunk `assets/index-DxZuTLvK.js` returned **404 on all 10 attempts** (20:34:49Z -> 20:39:19Z) while BOTH basemap Range probes passed on attempt 1 for prod and uat, ruling out a CDN regression. Back-merge `33992089618` (different SHA `0afd321`) then probed green and republished **that same chunk name**, which then returned 200 -- so the tag run's BUILD was correct and only its DEPLOYMENT no-opped. Prod afterwards served `v0.23.0` with ZERO suffixed matches. **What is NEW here is about the GATE.** The merge run's `deploy` job ran 20:32:48Z -> **20:32:57Z `success`**, i.e. it was already terminal **16 s BEFORE the tag run was even created** at 20:33:13Z. So the orchestrator's stated reason for pushing on an `in_progress` reading -- that a fast tag push might let the tag run cancel-supersede the merge run -- was UNAVAILABLE at that moment and the push could not have outrun it. `in_progress` was a snapshot of a job about to succeed 9 s later; the volatility is inside the read, exactly as this file says. The remedy for that reading stays OPEN and UNTESTED -- but record that the cancel-supersede escape is only reachable while the merge `deploy` job is genuinely still running, which a gate read cannot tell you from one that is 9 s from done. |
@@ -1812,8 +1811,8 @@ making design-level decisions; do not silently deviate.
   orphan a deployment — no deploy.yml run that day was cancelled at all, and
   no non-terminal Pages deployment existed. Artifact size is flat (~70.75 MB
   against a documented 1 GB Pages limit) and not implicated; both
-  `actions/deploy-pages` and `upload-pages-artifact` are already at v5.0.0,
-  the newest release, so there is nothing to bump.
+  `actions/deploy-pages` and `upload-pages-artifact` were at their newest
+  release when checked, so there was nothing to bump.
   The fix — `continue-on-error` on the first `deploy-pages` step, then a
   `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
   in PR #418. FIRST EXERCISED 2026-08-17 (run `32049360413` — the THIRD-shape
@@ -2489,9 +2488,9 @@ making design-level decisions; do not silently deviate.
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
   (session 30). This route is also one of the app's most expensive inputs —
-  `DEFAULT_PLAN_TIMEOUT_MS` is fixed and un-scaled while the solver has no
-  wall-clock budget, so a slow enough machine can time out on a route that
-  routes correctly (#432). No magnitude is quoted here on purpose: any figure
+  `DEFAULT_PLAN_TIMEOUT_MS` is `PLAN_BUDGET_MS` plus a grace
+  (`workerClient.ts`), so a slow enough machine can exhaust the budget on a
+  route that routes correctly (#432, #1331). No magnitude is quoted here on purpose: any figure
   has to carry its method and environment, and a Node/vitest number cannot be
   compared to a browser worker's budget.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
@@ -3012,7 +3011,7 @@ making design-level decisions; do not silently deviate.
   `routeHitFeatures` on `App.test.tsx`'s own `mapTestHooks`, mirroring the
   existing `harborHitFeatures` there, NOT on `fakeMaplibre.ts`. Pinned in
   `App.test.tsx` by its `'the generic tap handler alone bails on a
-  ROUTE_HIT_LAYER hit while armed — it does not append'` test (~:1881).
+  ROUTE_HIT_LAYER hit while armed — it does not append'` test.
   When one event can reach a setter twice, assert on the HANDLER, never on
   the settled state.
 - **A guard can pass forever for TWO opposite reasons, and both shipped a
@@ -3023,8 +3022,9 @@ making design-level decisions; do not silently deviate.
   measure quantities orthogonal to the defect. For viewport-conditional CSS a
   guard at one viewport is evidence about THAT viewport — pair it with the
   shared `STANDARD_VIEWPORTS`/`EDGE_VIEWPORTS` matrix. (b) CALIBRATED TO THE
-  LIMITATION — #648's hatch pixelation is measured by exactly the right guard
-  (`datalayers.spec.ts`'s z16 stripe-width test), whose threshold is `<= 100px`
+  LIMITATION — #648's hatch pixelation was measured by exactly the right guard
+  (`datalayers.spec.ts`'s z16 stripe-width test, since deleted — see the
+  "WHAT WAS HERE BEFORE" comment there), whose threshold was `<= 100px`
   with an adjacent comment reading "the accepted limit of the per-cell-raster
   approach, not a fix". A guard whose bound was set to tolerate the known
   residual can NEVER fire on it. Ask all three: "what can this not see?", "was
@@ -3035,11 +3035,8 @@ making design-level decisions; do not silently deviate.
   (clearance 16.00px → 41.98px DE / 51.64px EN, measured) and "they still
   pass" cannot
   establish that the change cost no width. A guard that got EASIER is not a
-  control. `app/e2e/layout.spec.ts`'s `RE-MEASURED live at this exact site
-  (2026-08-25)` comment witnesses the EN pair (`179.64px` left edge, `51.64px`
-  clearance); the DE figure has NO twin anywhere in the tracked tree or that
-  file's history (searched for both decimal separators), so treat it as the
-  weaker half.
+  control. (The `layout.spec.ts` comment that witnessed these figures was
+  removed with #813.)
 - **The release ship gate earns its cost — do not optimise it away as
   ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
   Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
@@ -3347,37 +3344,27 @@ making design-level decisions; do not silently deviate.
   false; §2.7.1.1 was correct all along).
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
-  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
-  number in this bullet RE-DERIVED against `maplibre-gl@6.7.0`, 2026-09-08 —
-  **the file was substantially RESTRUCTURED between 6.3.0 and 6.7.0** to add
-  `font-faces`/grapheme-cluster support, so every number below moved and the
-  method now DELEGATES its fetch to a separate `_loadGlyphRange` helper;
-  anchor on the method NAMES, not on any offset carried forward from 6.3.0)
+  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; the file was
+  RESTRUCTURED between 6.3.0 and 6.7.0 and its offsets moved again by
+  6.15.0, so this bullet anchors on method NAMES only — re-derived against
+  the 6.15.0 tarball, 2026-10-28)
   catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
   are real or 100% broken, and `map.on('error')` never fires because nothing
-  re-throws. `_downloadAndCacheRangePromise` is now declared at `:196` and
-  delegates the actual fetch to `_loadGlyphRange` (declared `:226`, its
-  `getArrayBuffer(request, new AbortController())` call at `:235`); its
-  `catch` block (`:215-220`) calls `_warnOnMissingGlyphRange` (`:218`, now a
-  SEPARATE named method declared at `:247`). The only signal is a
-  `console.warn` matching `"Unable to load
-  glyph range"` — the literal `warnOnce(...)` call now sits at
-  `glyph_manager.ts:251` (was `:144` at 6.3.0). Separately,
-  `_getAndCacheGlyphsPromise` (now declared `:155`; the COMPLETELY silent
-  local-font path — no fetch, no warning — is the `if (!this.url ||
-  this._charUsesLocalIdeographFontFamily(codePoint))` block at `:182-185`,
-  was `:104-108` at 6.3.0) takes a
-  COMPLETELY silent
-  local-font path — no fetch, no warning — whenever the style's `glyphs` URL
-  is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
-  field at two sites in `style.ts` — `_load` (declared `:473` at 6.7.0, was
-  `~:491` at 6.3.0 / `~:488` at 6.5.0; its `setURL` call is at `:494`),
+  re-throws. `_downloadAndCacheRangePromise` delegates the actual fetch to
+  `_loadGlyphRange` (its `getArrayBuffer(request, new AbortController())`
+  call); its `catch` block calls the separate `_warnOnMissingGlyphRange`
+  method. The only signal is a `console.warn` matching `"Unable to load
+  glyph range"`, from that method's literal `warnOnce(...)` call.
+  Separately, `_getAndCacheGlyphsPromise` takes a COMPLETELY silent
+  local-font path — no fetch, no warning — through its `if (!this.url || …)`
+  block (6.15.0 adds an `isCluster(id)` term to that condition), i.e.
+  whenever the style's `glyphs` URL is falsy, and `glyphManager.setURL()` is
+  fed from the style's `glyphs` field at two sites in `style.ts` — `_load`,
   which is what a `map.setStyle()` reaches and therefore what
-  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs` (declared
-  `:1973`, was `~:1953` / `~:1933`; its `setURL` call is at `:1984`), the
+  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs`, the
   style-DIFF path. Anchor on the METHOD NAMES: an earlier
   revision here called `_load` "the style-DIFF path", which named the wrong
   method for the right site. `glyphs` is
@@ -3389,8 +3376,8 @@ making design-level decisions; do not silently deviate.
   check LICENSES the zero-warnings assertion (an absence assertion carries
   no information until the evidence-generating process is established to
   have run) and must not be deleted as redundant. `sc-maneuver-labels`
-  (`app/src/components/RouteLayer.tsx`'s `sc-maneuver-labels` addLayer block,
-  ~:335-347) is the one symbol layer that
+  (`app/src/components/RouteLayer.tsx`'s `sc-maneuver-labels` addLayer block)
+  is the one symbol layer that
   sets a `text-field` but no `text-font`, so it requests MapLibre's default
   `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
   not ship — and silently renders via TinySDF. Pre-existing (dates to the
@@ -3443,9 +3430,10 @@ making design-level decisions; do not silently deviate.
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
   cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
-  (~:1091): the name is the identity, the number is a hint — and note this
-  very example's hint read `~:989` until 2026-08-26, drifting 102 lines while
-  the symbol stayed exact, which is the rule demonstrating itself. A citation to a
+  (~:1917): the name is the identity, the number is a hint — and note this
+  very example's hint read `~:989` until 2026-08-26 and `~:1091` until
+  2026-10-28, drifting while the symbol stayed exact, which is the rule
+  demonstrating itself. A citation to a
   never-merged diff gets no line number at all. Validated same-day: hints
   written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
   them — the symbol anchor still found the site where a bare number would
@@ -3599,12 +3587,13 @@ making design-level decisions; do not silently deviate.
 - **A guard can cover the A11Y surface while the VISUAL surface is the gap.**
   #846's `ViaMarkers` guard asserted the marker's `aria-label` and
   mutation-checked correctly (reverting `p.name ??` reds it) — but
-  `ViaMarkers.tsx` sets ONLY `aria-label`: no text content, no `title`. A
+  `ViaMarkers.tsx` set ONLY `aria-label` until #947 added a visible label:
+  no text content, no `title`. A
   screen-reader user heard the name; a sighted user saw an unlabelled dot.
   Every gate passed. Found by maintainer UAT (#947, 2026-09-04), and it had
   already turned a CHANGELOG entry into an over-claim — corrected hours before
-  that section froze at the tag. The repo's "guard the rendering, not the data"
-  rule lands one level deeper here: ask WHICH rendering surface the guard reads.
+  that section froze at the tag. The "guard the rendering, not the data" lesson
+  (`docs/spikes/1022-whole-journey-ux.md`) lands one level deeper here: ask WHICH rendering surface the guard reads.
 - **A guard with an APERTURE needs something testing the aperture itself.**
   `i18nPlaceholderParity.test.ts` (#524) extracted `/\{([a-zA-Z]+)\}/g` while
   `t()`'s
@@ -3824,8 +3813,8 @@ making design-level decisions; do not silently deviate.
   `[role="region"][aria-label="Origin"]`, which never matches — but NOT for the
   mechanism first recorded here, which was fabricated: those sections carry
   `aria-label` DIRECTLY (`PlannerPanel.tsx`'s Origin/Destination
-  `<section aria-label={…}>`, ~:376 / ~:417; `aria-labelledby` has never
-  appeared in that file's history). `[role="region"]` is a CSS ATTRIBUTE
+  `<section aria-label={…}>`; `aria-labelledby` has never appeared on
+  those sections). `[role="region"]` is a CSS ATTRIBUTE
   selector needing a literal `role` attribute, which a bare `<section>` never
   has, so only `getByRole('region', { name })` resolves them and the CSS form
   silently does not — so the route never actually changed;
@@ -3951,9 +3940,8 @@ making design-level decisions; do not silently deviate.
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
   invented "CLAUDE.md's documented 6-10x runner-speed ratio" (no such phrase
-  exists; the real measured figures are ~2.1x plain / ~2.5x coverage
-  documented above, and are separate multipliers for the vitest UNIT suite,
-  not Playwright), and a test header misattributed a `symbol_bucket.ts:391`
+  exists; the measured ratios live in `app/src/test/timeouts.ts`'s
+  derivation and apply to the vitest UNIT suite, not Playwright), and a test header misattributed a `symbol_bucket.ts:391`
   claim to CLAUDE.md when it came from that PR's own review. Both were found
   only because the reviewer was asked to ENUMERATE every citation in the diff
   and name where it looked, not to fix the one instance flagged — patching
@@ -4113,9 +4101,10 @@ making design-level decisions; do not silently deviate.
   premise this session (#649). Note the bare form closes even after a
   conventional-commit prefix, unlike the measured bracketed `fix(#54):`.
 - **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
-  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true). All three `flagShallowLegs` call sites (`planRoute.ts`
-  ~:713/:723/:738) sit inside `if (relaxed !== null)`; every non-relaxed
-  success returns `assemble(tierN, null)` (~:603/:614/:630). So the banner,
+  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true). Every `flagShallowLegs` call site in `planRoute.ts` sits
+  inside `if (relaxed !== null)` or, in the pass-2 salvage replay, behind
+  `tier.usedDepthM === null ? null : …`; every non-relaxed success returns
+  `assemble(tierN, null)`. So the banner,
   the cautious chip and the exposure sentence — four PRs of depth UI
   (#504/#509/#518/#523) — render for NO ordinary route, while ~10,746
   gate-crossing cells produce no per-route signal. NO test caught this: every
@@ -4200,7 +4189,8 @@ making design-level decisions; do not silently deviate.
   post-hoc "tack reducer" that can violate wind/depth constraints; the only
   allowed post-processing is merging near-collinear legs with re-validation.
   `backtrack`'s own step merge checks `segmentNavigable` on the merged chord
-  since #1705; at that fix it did not apply `postprocess.ts`'s comfort check (#1754).
+  since #1705 and, when a comfort preference is set, applies
+  `postprocess.ts`'s clearance rule via `mergeKeepsClearance` (#1754).
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible. Since #1793 the two rigs can
   solve in parallel: `workerClient.ts` spawns a solve-only sibling worker
@@ -4326,10 +4316,10 @@ making design-level decisions; do not silently deviate.
   `mask-blocked` and `horizon-exceeded`, the latter for relaxation since
   #1258), deliberately
   kept OUT of `types.ts` so it cannot leak into UI code. The public
-  `NoRouteReason` is unchanged, derived from the cause at exactly three
+  `NoRouteReason` is unchanged, derived from the cause at exactly four
   presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for
-  the per-sail result, the #432 budget guard immediately before the relaxation
-  BFS probes, and the final tier-4 return. A LABELLING change
+  the per-sail result, the #432/#1280 budget guards immediately before and
+  after the relaxation BFS probes, and the final return. A LABELLING change
   is now safe — free to reword or re-granularise with zero routing effect. A
   CLASSIFICATION change is NOT: the cause is still DERIVED from
   `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
@@ -4383,8 +4373,9 @@ making design-level decisions; do not silently deviate.
   NEVER infer a cause by matching a message string (the #282 label-as-control
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
   exactly as `SolveFailureCause` is.
-  `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
-  (360_000 since #1331, 2026-09-21; 240_000 from #1147, 2026-09-10; 120_000
+  The solve NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
+  (`workerClient.ts`; `isochrone.ts` enforces it through `SolveDeadline`;
+  360_000 since #1331, 2026-09-21; 240_000 from #1147, 2026-09-10; 120_000
   before that) checked at ring ENTRY, mid-ring every
   `DEADLINE_CHECK_NODES` nodes, before AND after the #53 BFS probes, and
   between individual probes inside `findRelaxedGate` (the last three added by
@@ -4405,7 +4396,8 @@ making design-level decisions; do not silently deviate.
   (`replan.ts` — read its members off that predicate; at #295 they are
   `boat-not-in-catalogue` and `wind-grid-coverage`, both raised client-side
   before anything is posted, so the worker never saw the request; the same
-  guard is at `reroute.ts` and `usePlanFlow.ts`, and must
+  guard is at `reroute.ts`, `usePlanFlow.ts`, `useDepartureConfirm.ts` and
+  `useDepartureScan.ts`, and must
   never be made unconditional — `dispose()` calls `failAll()` on a singleton
   shared by three consumers). The two wrapping `save()` deliberately do NOT,
   and their comments say why: routing SUCCEEDED and only the write failed, so
@@ -4630,8 +4622,9 @@ making design-level decisions; do not silently deviate.
   verdict as a prior. Measured at the v0.18.0 docs sweep — the auditor found
   dangling anaphors and a claim contradicted inside its own hunk, while the
   reviewer found an acceptance check UNREACHABLE from inside the runbook;
-  neither could have found the other's. It has no mutating tools, so brief it
-  to write a review JSON that the orchestrator posts.
+  neither could have found the other's. It has no Edit or Write tool (Bash only),
+  so brief it to write a review JSON via a Bash heredoc that the orchestrator
+  posts.
 - If a session's OWN directives contradict that orchestrate-first mode, NAME the
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
@@ -4667,7 +4660,8 @@ making design-level decisions; do not silently deviate.
   place of it.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
   (high/medium/low) + `area:` + optional `status:` — and a milestone
-  (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`); apply type+area+priority to every new
+  (the open release milestone, `Backlog` or `Icebox`;
+  `gh api repos/DocGerd/sail_command/milestones` is the fact); apply type+area+priority to every new
   issue. Taxonomy documented in CONTRIBUTING.md (#167/#168); its label
   section is the authoritative copy of the `area:` member list, including the
   deliberate bare-`area:` residual for user-facing copy / i18n / UI-structure
@@ -4713,8 +4707,9 @@ making design-level decisions; do not silently deviate.
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
 - **The Bash arm ADVISES now** (#478, 2026-08-09); since #1021 (v0.25.0) only
-  `docs/superpowers/specs/`, a plans+specs-mixed command, and a tree-level or
-  `..`-traversing write still ASK — a write confined to
+  `docs/superpowers/specs/`, a plans+specs-mixed command, a tree-level or
+  `..`-traversing write, and an rm/rmdir/mv naming the `plans/` directory
+  itself (#1041) still ASK — a write confined to
   `docs/superpowers/plans/` advises, on BOTH the Bash and Edit/Write arms.
   `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
   `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
@@ -4856,7 +4851,7 @@ making design-level decisions; do not silently deviate.
   same shape, are recorded in PR #233's body for the maintainer to apply —
   it's their global config, not something a repo PR can change. Two more
   observed false positives (2026-08-03), both on ordinary text rather than
-  any force operation: the repo's own new `.claude/hooks/wind-fixture-guard.sh`
+  any force operation: the repo's own `.claude/hooks/wind-fixture-guard.sh`
   (a literal `-f` at the `wind-`/`fixture` junction) and flags like
   `cut -d= -f2`. Both blocked a read-only agent twice. These are a narrower
   shape than the heredoc-prose case — `-f` inside a longer word or a longer
@@ -5500,7 +5495,7 @@ making design-level decisions; do not silently deviate.
   `POST …/actions/runs/<id>/rerun` (#119). `mergeable_state: unstable` = only
   OPTIONAL checks red — mergeable;
   scorecard (`.github/workflows/scorecard.yml`) push-triggers on `develop`
-  ONLY — plus a weekly `schedule` and a `branch_protection_rule` trigger, both
+  ONLY (path-scoped since #883) — plus a weekly `schedule` and a `branch_protection_rule` trigger, both
   of which run on the default branch. #124 (`80cd5bf`, 2026-07-23) moved it OFF
   `main` precisely because a default-branch-only action went red on every
   release merge, so a `main` release commit now carries NO scorecard check-run
@@ -5526,8 +5521,8 @@ making design-level decisions; do not silently deviate.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
-- A committed change to the always-dirty `.claude/settings.json` blocks `git
-  switch` between branches until both sides hold the same blob — `git fetch
+- A local edit to `.claude/settings.json` that differs from the target
+  branch's blob blocks `git switch` until both sides hold the same blob — `git fetch
   origin develop:develop` (ref update without checkout), then switch. That
   ref-update trick REFUSES while `develop` is itself the checked-out branch —
   branch straight off the remote instead (`git switch -c <b> origin/develop`).
