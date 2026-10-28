@@ -6,7 +6,8 @@
 - **Verdict:** Not resolvable from these tracks (three of four trips hold
   both groups, five required). Disclose now; defer any routing change
   behind a rerun (§4). The app's default Open-Meteo cell selection goes to
-  the maintainer as a separate question (§2).
+  the maintainer as a separate question (§2). §6 pre-registers a pooled
+  rerun with four 2025 trips.
 
 ## 0. Pre-registration (written before any Phase 3 result)
 
@@ -377,13 +378,13 @@ single-trip −14.7 %).
 
 ### 1.9 Fourth trip (added 2026-10-28)
 
-A fourth track arrived later; the maintainer reported no further tracks
-(#1894). It ran through the unchanged §0 pipeline. Its wind comes from a
-second `past_days` fetch from the same endpoint, in which the trip's hours
-are past hours (§0.7.3). Hours that are past in both fetches agree exactly
-over 12,576 point-hours (the six paired winds plus the 0.1° ICON-D2 check
-lattice). The first three trips' samples are identical in all 19 sample sets
-(§1.3's 18 cells plus strict without the fast leg).
+A fourth track arrived later (#1894). It ran through the unchanged §0
+pipeline. Its wind comes from a second `past_days` fetch from the same
+endpoint, in which the trip's hours are past hours (§0.7.3). Hours that are
+past in both fetches agree exactly over 12,576 point-hours (the six paired
+winds plus the 0.1° ICON-D2 check lattice). The first three trips' samples
+are identical in all 19 sample sets (§1.3's 18 cells plus strict without the
+fast leg).
 
 - Exclusions (§0.3, sequential, share of its 9,610 fixes): harbour zone and
   track ends 61.4 %, turn window 5.2 %, waiting 0 %, motoring (pinching,
@@ -397,8 +398,7 @@ lattice). The first three trips' samples are identical in all 19 sample sets
   The resamples now take 22 distinct values in every cell (10 with three
   trips, §1.3), and every interval keeps its ends. In the bin curve only C
   and D move (0.675, 15 legs; 0.692, 20 legs; each now from 4 trips). The
-  verdict stands, and the five trips §0.5 requires cannot come from these
-  tracks (§4).
+  verdict stands; §6 pre-registers a rerun that adds four 2025 trips.
 - Polar check (§1.7): the trip has no open-water fix, so nothing changes.
 - ICON-D2 equals `icon_seamless` at every lattice point-hour the track reads
   (32 of 32; the kept fixes read 14 of them), as for the first three trips
@@ -534,9 +534,9 @@ ICON-D2, so there option 3 means a denser lattice, which must first fit the
 free-tier request budget (one app fetch costs 322 weighted calls).
 
 Data that would help: at least five trips with both near-shore and
-open-water legs, outside October, with engine on/off noted per leg. The four
-trips here are all the tracks available (§1.9), so these would have to come
-from other logs.
+open-water legs, outside October, with engine on/off noted per leg. Four
+genoa trips from 2025 have since been supplied; §6 pre-registers their
+rerun.
 
 ## 5. Evidence
 
@@ -550,3 +550,65 @@ from other logs.
   not committed (§0.1). §0 and §1.2 specify the pipeline, so a rerun
   re-implements it; §1.4 states each view's definitions but not every
   implementation detail.
+
+## 6. Rerun pre-registration: 2025 trips
+
+Written before any wind was fetched or any result computed for the 2025
+trips; their intake read only point counts, time spans and the share inside
+the mask. §0 stays frozen. This section adds to it, and its first commit
+freezes it.
+
+### 6.1 Data
+
+- Four trips from October–November 2025 in one export, one per day (a
+  segment split at a change of UTC day or a gap over 30 min), all at 1 Hz
+  inside the mask. With the four 2026 trips (§1.1, §1.9): eight trips.
+- The maintainer reports that all four 2025 trips were sailed with the
+  genoa and that no engine notes exist (#1894). Each trip's `R` uses its own
+  sail's table: the fock table for 2026, `salona-44-easy-go-genoa.json`
+  (tier C) for 2025. That table is the fock table times 1.00–1.05 per cell
+  (1.05 at 4 kn, 1.00 from 16 kn), so a trip's `R` differs by at most 5 %
+  between the two. §0.1–§0.4 are otherwise unchanged.
+
+### 6.2 Wind
+
+- One source for all eight trips: Open-Meteo's Historical Forecast API
+  (`historical-forecast-api.open-meteo.com`), `icon_seamless`, with §0.1's
+  variables, units, 0.1° lattice and omitted `cell_selection`, at the
+  lattice points each trip reads. `past_days` reaches back only 92 days.
+- Before pairing, the 2026 trips' point-hours are compared between this
+  source and the `past_days` cache, and the agreement is reported. The
+  rerun uses the historical values either way.
+- A trip for whose hours the endpoint returns no `icon_seamless` value is
+  dropped and reported; no other model substitutes without a new amendment.
+- The §1.3 cell-selection and finer-model views are not repeated.
+
+### 6.3 Rules
+
+All rules apply to the eight trips, on the primary and strict sets of §0.3.
+
+- Added motoring rule (§4): a leg whose median `R` exceeds 1.2 is excluded
+  in both sets. It targets legs like §1.3's fast leg (`R` 1.26).
+- Resolvable and option 2: §0.5 as written. Option 2 also needs every §4
+  addition, tested as follows:
+  - `Δ` ≥ 0.10 after dropping any single leg, in both sets;
+  - the strict interval excludes 0;
+  - within legs, on 120 s blocks whose median water width is ≥ 1 nm (width
+    as §1.2), using each block's median `R`: a regression with leg fixed
+    effects on two indicators, upwind fetch < 0.5 nm and downwind
+    fetch < 0.5 nm. The upwind coefficient is below the downwind one, and
+    their 95 % intervals (leg-cluster bootstrap, 2,000 draws, seed 1894) do
+    not overlap;
+  - between legs at land within 0.25 nm (§1.4's classes), lee minus
+    windward-shore mean `R` is negative in every trip holding both classes,
+    and at least three trips hold both;
+  - the −90° placebo, computed on fixes with upwind fetch ≥ 0.5 nm only,
+    meets §0.5's placebo clause.
+- "Trips span more than one month" (§4) is met only literally: October and
+  November of two years, one season. Any result is scoped to autumn.
+- Option 1: §0.5's curve criterion plus §4's implementation conditions.
+- Reported alongside, without deciding: the same figures per sail cohort,
+  and the 2026 trips under the historical wind against §1.3. Sail, year and
+  wind source coincide by cohort and are not adjusted for.
+- Polar check (§0.6): fock-only as before; the 2025 trips get a report-only
+  level against the genoa table.
