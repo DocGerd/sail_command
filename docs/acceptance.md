@@ -604,9 +604,9 @@ apply here too, with the same expected outcomes.
       openings or closures
       ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). With
       Sønderborg as origin and the Als Fjord point as destination the route
-      can still go around Als: that is
-      [#1879](https://github.com/DocGerd/sail_command/issues/1879), not a
-      new defect. About's depth caveat now says its tolerance bound does
+      should also go through Alssund
+      ([#1879](https://github.com/DocGerd/sail_command/issues/1879)), with
+      the same live-wind caveat. About's depth caveat now says its tolerance bound does
       not hold on the Alssund cells whose depth comes from a published
       harbour plan.
 

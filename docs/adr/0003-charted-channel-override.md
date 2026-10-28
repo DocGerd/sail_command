@@ -46,7 +46,8 @@ the plan's 6 m contour, read off the image; the entry records how.
   reach Als Fjord inside 9.55-9.86 E. It runs in the advisory
   `Mask integrity` job, not a required check.
 - The mask does not model the bridge's opening times or closures.
-- Plans leaving Sønderborg northwards can still go around Als (#1879).
+- Plans leaving Sønderborg northwards still went around Als until #1879 let
+  the solver's blocked-step retry shorten to the same floor at every ring.
 - Sønderborg's approach note now states the bridge's announced closure. #1880
   removes that dated clause; #1881 is a route-level bridge notice.
 

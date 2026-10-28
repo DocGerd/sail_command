@@ -206,6 +206,10 @@ interface Node {
 
 const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
+// The shortest blocked-step retry: the near-destination ring's dtS/8. Without
+// it a 600 s ring's shortest retry is 5-6 cells and cannot follow a one-cell
+// channel such as Alssund (#1879).
+const MIN_SUBSTEP_S = 150 / 8;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
 // Perf safeguard, not a correctness bound: when the frontier exceeds the cap,
@@ -813,14 +817,15 @@ export function solve(p: SolveParams): SolveResult {
           // A full step can be far longer than the local channel is straight
           // (issue #20: harbor arms are ~200-400 m wide while steps run
           // 0.5-2 km, so every heading died on the first expansion out of
-          // Flensburg). Retry the same heading over dtS/2, dtS/4, dtS/8 and
-          // take the largest substep that fits; the child keeps the honest
-          // (shorter) clock, which better()/the loop guards account for.
+          // Flensburg). Retry the same heading over dtS/2, dtS/4, ... down to
+          // MIN_SUBSTEP_S and take the largest substep that fits; the child
+          // keeps the honest (shorter) clock, which better()/the loop guards
+          // account for.
           // Clearance is re-measured on whichever segment the fit test
           // actually accepts (#243 §D.3: "measured on the segment the fit
           // test accepted"), never on the rejected full step.
           let fitted: number | null = null;
-          for (const div of [2, 4, 8]) {
+          for (let div = 2; dtS / div >= MIN_SUBSTEP_S; div *= 2) {
             const subDtS = dtS / div;
             const subEffS = maneuver ? Math.max(subDtS - settings.maneuverPenaltyS, 0) : subDtS;
             const d = (speed * subEffS) / 3600;
@@ -943,8 +948,9 @@ export function solve(p: SolveParams): SolveResult {
     frontier = next;
     tMs += dtS * 1000;
     // Report the true frontier clock: substepped nodes lag the ring clock by
-    // up to 7/8 dtS, so the ring clock alone can overstate progress. Equal to
-    // tMs when no substeps occurred; empty frontier falls back to the ring.
+    // up to dtS - MIN_SUBSTEP_S, so the ring clock alone can overstate
+    // progress. Equal to tMs when no substeps occurred; empty frontier falls
+    // back to the ring.
     let frontierTMs = tMs;
     for (const n of frontier) if (n.tMs < frontierTMs) frontierTMs = n.tMs;
     p.onProgress?.({ tMs: frontierTMs, frontierSize: frontier.length });
