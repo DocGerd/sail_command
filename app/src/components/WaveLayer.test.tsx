@@ -348,22 +348,12 @@ describe('WaveLayer setup (#1699, #1854)', () => {
   });
 });
 
+// The pixel rule itself is pinned in waveMap.test.ts; this pins the wiring.
 describe('WaveLayer land clipping (#1854)', () => {
-  it('paints no land pixel and gives a land point no marker, whatever its Hs', () => {
+  it('gives a land point no marker, whatever its Hs', () => {
     const coast = (lat: number, lon: number) => (lon > 10.08 && lat > 54.55 ? 0 : 50);
-    const m = mask(coast);
-    const g = grid();
     const map = waveMap();
-    renderWaves(map, { grid: g, mask: m });
-    const painted = hoisted.puts[0]!;
-    const raster = seaStateRasterIndex(m, g);
-    let landPixels = 0;
-    for (let p = 0; p < raster.cells.length; p++) {
-      if (raster.cells[p] !== 0) continue;
-      landPixels++;
-      expect(painted[p * 4 + 3]).toBe(0);
-    }
-    expect(landPixels).toBeGreaterThan(0);
+    renderWaves(map, { grid: grid(), mask: mask(coast) });
     const coords = lastData(map, WAVE_ARROW_SOURCE).features.map((f) =>
       (f.geometry as GeoJSON.Point).coordinates.join(),
     );

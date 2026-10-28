@@ -401,7 +401,7 @@ test.describe('sea-state overlay (#1699)', () => {
         },
         [pairs, { x: box.x, y: box.y }] as const,
       );
-      expect(inView.length, 'pairs in the zoomed view').toBeGreaterThan(0);
+      expect(inView.length, `pairs in the zoomed view, of ${pairs.length}`).toBeGreaterThan(0);
 
       await waveToggle(page).uncheck();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('none');
@@ -418,9 +418,10 @@ test.describe('sea-state overlay (#1699)', () => {
       const landChanged = landPts.filter((_, i) => lOn[i] !== lOff[i]);
       const waterChanged = water.filter((_, i) => wOn[i] !== wOff[i]).length;
       expect(landChanged, 'land pixels tinted by sea state').toEqual([]);
-      expect(waterChanged * 2, `water pixels shaded (of ${water.length})`).toBeGreaterThanOrEqual(
-        water.length,
-      );
+      expect(
+        waterChanged * 2,
+        `water pixels shaded: ${waterChanged} of ${water.length}`,
+      ).toBeGreaterThanOrEqual(water.length);
     } finally {
       server.kill();
     }
