@@ -1,0 +1,825 @@
+# Spike #1894 — land blocking or disturbing the wind (lee, shadow, channelling)
+
+- **Issue:** #1894
+- **Date:** 2026-10-26 to 2026-10-28
+- **Status:** Decision / Recommendation. Maintainer decision pending.
+- **Verdict:** The §6 rerun with eight trips is resolvable: six hold both
+  groups on the primary set (§7). Option 2 is not justified under either
+  sail table. Recommends a wind caveat now and no routing change (§2). The
+  app's default Open-Meteo cell selection goes to the maintainer as a
+  separate question (§2).
+
+## 0. Pre-registration (written before any Phase 3 result)
+
+Fixed before the track analysis runs. A later section may report extra
+views, but the verdict is decided only by the rules below.
+
+### 0.1 Data
+
+- EASY GO! tracks exported from Navionics: position and time at 1 Hz, no
+  wind, no instruments, no sail or engine state. All sailed with the fock;
+  only `salona-44-easy-go-fock.json` (tier B, #1660) is used. Reefing is
+  unknown.
+- Privacy: no raw track, position or time is committed. Scripts and
+  intermediate data stay in the session scratchpad; this document carries
+  aggregates only.
+- Wind: Open-Meteo `icon_seamless` 10 m wind on the app's own 0.1° lattice,
+  requested with the app's parameters (`services/openMeteo.ts`, including the
+  omitted `cell_selection`), from `api.open-meteo.com` with `past_days`.
+  Paired to samples by the same trilinear u/v interpolation as
+  `lib/wind.ts`'s `WindField.sample`. This is model wind, not observed wind:
+  the comparison is boat against the wind the router would see.
+
+### 0.2 Derived quantities
+
+- SOG and COG from the displacement over a centred 30 s window.
+- TWA from COG and the model TWD. TWS and TWA bracket the fock table; samples
+  with TWA < 45° or TWS outside 4–25 kn are dropped, never extrapolated.
+- Polar ratio `R = SOG / table speed`, with the table bilinear in TWA and TWS
+  and performance factor 1.0 (the app's default 0.9 is a level offset,
+  reported separately).
+- Upwind fetch: distance along the ray toward the model TWD (where the wind
+  comes from) to the first land cell (byte 0) of the committed `mask.bin`,
+  marched in steps of at most half a cell, capped at 10 nm. Downwind fetch
+  and fetch at TWD ± 90° use the same march on the other rays.
+
+### 0.3 Exclusions (each reported with the share of samples it removes)
+
+1. Within 1 nm of any `harbors.json` snap point, and within 1 nm of each
+   track's start and end.
+2. Within ± 60 s of a COG change > 30° (measured between the 30 s windows
+   either side).
+3. Waiting or drifting: SOG < 1.0 kn sustained ≥ 60 s.
+4. Motoring, any of: TWA < 35° sustained ≥ 120 s (no sailing boat holds
+   it); a leg whose median `R` > 1.6 (faster than the sails can drive);
+   model TWS < 4 kn with SOG > 3 kn.
+5. TWA < 45° or TWS outside 4–25 kn (§0.2).
+
+Sensitivity rerun ("strict"): 1.5 nm harbour radius, ± 90 s turn window,
+motoring at median `R` > 1.4 or TWA < 40°.
+
+### 0.4 Legs, bins, aggregation
+
+- Leg: a maximal run of kept samples between exclusions, at least 180 s long.
+- Upwind-fetch bins (nm): A < 0.25, B 0.25–0.5, C 0.5–1, D 1–2, E 2–4,
+  F ≥ 4. **Short fetch** = A + B (< 0.5 nm). **Open water** = E + F
+  (≥ 2 nm).
+- One value per leg per bin: the median `R` of that leg's samples in the
+  bin, kept if it has ≥ 60 samples. Group values are means of leg-bin
+  values. Leg and trip counts are reported with every bin.
+- Interval: trip-level bootstrap, 2000 resamples of trips with replacement,
+  fixed seed, 95 % percentile interval.
+- Reported per TWA band (45–80, 80–120, 120–180°) and TWS band (4–8, 8–14,
+  ≥ 14 kn), with each bin's TWA/TWS mix shown. The verdict uses the pooled
+  contrast only.
+
+### 0.5 Decision rules
+
+Effect `Δ = R(open water) − R(short fetch)`.
+
+- **Resolvable** only if ≥ 5 distinct trips each contribute at least one
+  leg-bin value to both the short-fetch and the open-water group. With fewer
+  trips the verdict is **"not resolvable from these tracks"**, not "no
+  effect"; per-trip signs of `Δ` are reported descriptively only. Five is a
+  judgment: below it, a trip-level bootstrap interval is set mostly by which
+  trips are drawn.
+- **Justifies option 2** (soft cost away from a lee shore) if resolvable and
+  all of: `Δ ≥ 0.10`; its interval excludes 0; the direction placebo does
+  not show the same effect (downwind-fetch `Δ` and the ± 90° `Δ` each below
+  half the upwind `Δ`, or their intervals include 0); and the strict rerun
+  keeps `Δ ≥ 0.10`.
+- **Justifies option 1** (a TWS penalty with coefficients) if option 2 is
+  justified and, in addition, at least three of bins A–F each have ≥ 5 trips
+  and an interval half-width ≤ 0.05, so a curve can be fitted.
+- **Credit to option 3** (finer model): if a finer model, on the same sample
+  set, shrinks `Δ` by ≥ 50 %, it resolves most of the effect.
+- Why 0.10: the fock table's own uncertainty is −5 % to +9 % per cell against
+  a sister hull's VPP (its `source` note). A lee effect smaller than that is
+  not worth a solver change.
+
+### 0.6 Separate: polar check (report only)
+
+Open-water (≥ 2 nm upwind fetch) sailing legs, per fock-table TWA × TWS
+cell: level (median `R`) and shape (cell median ÷ overall median), with leg
+and trip counts; cells with < 3 trips are "insufficient". A level offset
+cannot be told from model-wind bias or current. A new issue is filed only
+for a shape deviation > 15 % in the same direction in ≥ 3 trips
+individually. Polars are not edited.
+
+### 0.7 Amendment (2026-10-26, still before any track result)
+
+Prompted by Phase 2 research, not by data. The §0.5 verdict rules are
+unchanged; these views are report-only.
+
+1. The app omits `cell_selection`, so Open-Meteo answers in `land` mode
+   (server source, `ForecastapiController.swift`), which can return an
+   adjacent land cell for a water point. That would pair short-fetch samples
+   with lower TWS and inflate `R` there, biasing `Δ` toward zero. The §0.4
+   contrast is therefore also reported with wind fetched with
+   `cell_selection=sea` and `nearest`, on the §0.3 sample set.
+2. Model-only check, no tracks: on the app's full 0.1° lattice, the per-point
+   TWS difference between `land`, `sea` and `nearest`; and whether modelled
+   TWS at water lattice points rises with their own upwind fetch.
+3. `past_days` hours come from the newest runs' first hours, so the pairing
+   tests the model's spatial structure, not its multi-day forecast error.
+4. All trips fall in one month, so one stability regime; any result is
+   scoped to it.
+
+## 1. Findings
+
+§0 stands as committed (`e9dfc95`, amended `0e89f82`). Deviations and
+corrections found later are disclosed here, not edited into §0.
+
+### 1.1 Data
+
+Five uploads, three byte-identical (same sha256): three distinct trips, all
+October 2026, Als / Flensburg Fjord area, 75,746 fixes at 1 Hz, about
+83 nm. The kept fixes fall in 16 distinct clock hours, so the analysis rests
+on few model hours as well as few trips. Wind was fetched with `past_days`
+(§0.7.3); a first attempt hit Open-Meteo's daily quota on the session's
+outbound IP. A fourth trip, supplied later, is reported in §1.9; §1.2–§1.8
+cover the first three.
+
+### 1.2 Exclusions (§0.3, sequential, share of all 75,746 fixes)
+
+| Rule | Removed | Standalone |
+|---|---|---|
+| 1 harbour zone, track start/end | 38.9 % | 38.9 % |
+| 2 turn window | 5.6 % | 10.3 % |
+| 3 waiting / drifting | 0.0 % | 21.9 % |
+| 4 motoring (pinching, light air) | 0.6 % | 1.8 % |
+| 5 polar domain, window coverage | 1.9 % | 8.0 % |
+| leg shorter than 180 s | 2.1 % | 2.1 % |
+| 4 motoring (leg median `R` > 1.6) | 0 legs | 0 legs |
+
+Kept: 38,497 fixes (50.8 %) in 24 legs, every trip contributing. Strict
+rerun: 32,085 (42.4 %), 20 legs. No waiting remained after rules 1 and 2.
+
+Implementation choices §0 does not fix. The window guard, the turn-event
+displacement and the polar-check convention were varied for effect (§1.6,
+§1.7); the "sustained" run rule, the omnidirectional ray set and the
+water width were not:
+
+- A window must span ≥ 24 s. A first guard of ≥ 28 s cut runs on
+  millisecond timestamp jitter (3–5 % of full windows read just under
+  28 s); it was relaxed before any result was read.
+- A turn event compares the 30 s windows before and after a fix, each moving
+  ≥ 15 m; ± 60 s is excluded around every event.
+- "Sustained" means an unbroken per-fix run; legs split at gaps > 2 s (never
+  fired: no gap exceeds 1.2 s).
+- Omnidirectional distance to land: 36 bearings, capped at 2 nm.
+- Water width (§1.4, §4): the minimum over 36 axes of the summed distance
+  to land in both directions (72 bearings at 5°, each capped at 2 nm, the
+  mask edge counted as land).
+- Polar-check cells are the fock table's bracket cells; a leg-cell needs
+  ≥ 60 fixes; the level is the median of leg-cell medians.
+
+### 1.3 Result
+
+**Verdict (§0.5): not resolvable from these tracks.** Three trips contribute
+to both the short-fetch and the open-water group; five are required.
+
+Descriptive only, `R = SOG / table speed`, one value per leg per bin:
+
+| Upwind fetch | Mean `R` | Legs | Trips |
+|---|---|---|---|
+| A < 0.25 nm | 0.596 | 6 | 3 |
+| B 0.25–0.5 nm | 0.610 | 8 | 3 |
+| C 0.5–1 nm | 0.666 | 14 | 3 |
+| D 1–2 nm | 0.720 | 15 | 3 |
+| E 2–4 nm | 0.724 | 7 | 3 |
+| F ≥ 4 nm | 0.791 | 5 | 2 |
+
+`Δ` (open water minus short fetch). Each row re-pairs the app-wind §0.3
+sample set with that wind; fixes that leave the polar domain under it drop
+out (at most 348, 0.9 % of the kept set, under DMI). The strict and
+fast-leg columns are their own sets.
+
+| Wind paired | All legs | Strict rerun | Without the fast leg |
+|---|---|---|---|
+| App request (`land` cells) | 0.148 | 0.143 | 0.102 |
+| `cell_selection=sea` | 0.140 | 0.135 | 0.109 |
+| `cell_selection=nearest` | 0.138 | 0.128 | 0.099 |
+| ICON-D2, 0.025° lattice, `land` | 0.125 | 0.124 | 0.087 |
+| ICON-D2, 0.025° lattice, `sea` | 0.149 | 0.136 | 0.122 |
+| DMI HARMONIE, 0.025° lattice | 0.096 | 0.068 | 0.068 |
+
+- Per trip, the app row reads 0.079 / 0.093 / 0.232. Two trips are below
+  §0.5's 0.10 on their own; the pooled 0.148 clears it through the third,
+  which holds the fast leg. Every per-trip value under every row stays
+  positive (0.03–0.26).
+- The fast leg: one open-water leg of 1,115 fixes sails at `R` 1.26 (SOG
+  about 8.8 kn on a broad reach in about 11 kn of model wind). Engine,
+  current or model under-reading; neither cap in rule 4 reaches it. It is a
+  gap in the rule, shown as a sensitivity, not excluded after the fact. Its
+  removal and the land-mode effect in §1.5 may overlap: every open-water fix
+  of that trip is land-answered.
+- ICON-D2 requested at 36 points of the app's own lattice equals
+  `icon_seamless` there over all 120 past-day hours of the fetch, which
+  include every hour the pairing reads, so the 0.025° ICON-D2 rows test
+  lattice density, not another model: −15 % in `land` mode, +6 % in `sea`
+  mode (all legs, against the `sea` row). DMI HARMONIE is a different 2 km
+  model: −35 % on the primary set, −34 % without the fast leg, −52 % on the
+  strict set (where its set keeps 32,062 fixes against 32,085, and one trip
+  reads 0.026).
+- §0.5's option-3 credit (≥ 50 % "on the same sample set") does not name
+  the set. This spike reads the primary set as binding, since §0.3 calls the
+  strict rerun a sensitivity check; on that reading the credit is not met,
+  on the strict set it is. The recommendation does not rest on it (§3).
+- With three trips each holding both groups, the bootstrap "95 % interval"
+  is the minimum and maximum of the 10 distinct resample values; for the
+  app row those are the per-trip values.
+- Open-water level: `R` 0.77 against model wind (§1.7); per §0.6 it cannot
+  be told apart from model-wind bias or current.
+
+### 1.4 Is the deficit a lee effect?
+
+Not shown. `Δ` compares different legs: 8 legs supply short-fetch values and
+8 open-water values, one leg both, so fetch is confounded with each leg's
+place, hour and trim. The controls disagree:
+
+- Direction placebo (§0.5): downwind `Δ` 0.067 and +90° `Δ` 0.054 are below
+  half the upwind `Δ`. The −90° `Δ` is 0.115 with interval
+  [−0.0015, 0.351], so §0.5's clause is met literally, but it is not
+  credited: 87 % of its short-fetch fixes are the upwind-short fixes again,
+  its interval rests on two trips, and 73 of its 2,000 bootstrap draws are
+  undefined (strict: 0.085, [−0.003, 0.218]).
+- Between legs, at equal proximity (land within 0.25 nm in any direction),
+  land-upwind legs (upwind fetch < 0.5 nm) average `R` 0.607 against 0.731
+  for land-downwind legs (downwind fetch < 0.5 nm, upwind ≥ 0.5 nm; each leg
+  ≥ 60 fixes in the class; 7 legs each), lower in all three trips
+  (−0.126 / −0.090 / −0.191; strict −0.105). At 0.25–0.5 nm the gap is
+  −0.013 and mixed in sign by trip (−0.015 / +0.024 / −0.019). This favours
+  a lee effect only at the closest range.
+- Within legs (leg fixed effects on 120 s block medians; ranges over the
+  specifications holding each term, alone or with downwind, any-direction,
+  TWA/TWS or water-width terms), land within 0.5 nm upwind costs `R`
+  0.035–0.054 and land within 0.5 nm downwind 0.034–0.048, so the
+  regression shows no direction dependence; on the strict set the upwind
+  cost is 0.011–0.026 with intervals including 0. A paired within-leg
+  comparison of nearest land upwind (within ±45° of the wind direction)
+  against nearest land in any other direction, each side ≥ 60 fixes per
+  leg, reads −0.153 under 0.25 nm (4 legs, 2 trips) and +0.037 at 0.25–0.5 nm
+  (8 legs, 3 trips).
+- In a paired split by water width, the within-leg deficit appears only in
+  narrow water: −0.081 under 0.5 nm
+  wide (2 legs, 1 trip), −0.104 at 0.5–1 nm (4 legs, 2 trips), +0.011 at
+  ≥ 1 nm (5 legs, 2 trips); 58 % of upwind-short fixes are in water under
+  0.5 nm wide. There, current (#18's spike quotes the harbour pilot on up to
+  3 kn in Alssund), traffic and caution are alternative causes. Between
+  legs the deficit does not vanish outside narrow water: in water ≥ 1 nm
+  wide the upwind `Δ` is 0.143, and 0.097 without the fast leg.
+- In the TWA and TWS bands where some trip has both groups, the deficit
+  stays positive in every trip: 0.068 at 45–80° and 0.133 at 80–120° TWA,
+  0.154 at 8–14 kn TWS. No trip has both groups in the other bands. So the
+  TWA mix does not explain it.
+- Removing it would take a large wind error: true short-fetch wind about a
+  third below the model's. Scaling short-fetch model TWS by 0.8 gives a `Δ`
+  of 0.076, by 0.7 gives 0.019, and by 0.6 gives −0.061. No sampling variant
+  tested removes it: on the 4 × denser lattice the app's own model moves `Δ`
+  by −15 % in `land` mode and +6 % in `sea` mode (all legs), and `land`
+  against `sea` there moves it by −9 % to −29 % across the three columns
+  (§1.3). Every deterministic 10–20° TWD
+  rotation tested leaves `Δ` ≥ 0.11; random per-leg errors of 20° give a 5th
+  percentile of 0.117 and a minimum of 0.072 over 300 draws. A combined worst
+  case was not computed.
+
+### 1.5 The wind the router sees
+
+Model-only check on the app's own 322-point lattice, over the 144 hours of
+one fetch in October 2026 (§0.7.2):
+
+- The app omits `cell_selection`, so Open-Meteo answers in `land` mode. At
+  water lattice points with land within 2 km (44 points), 75 % are answered
+  from a land cell, and the 44 points' TWS is a median 0.861 of the `sea`
+  answer (10th percentile 0.771; 0.877 against `nearest`). Far from land the
+  ratio is 1.000.
+- Correction to §0.7.1, which expected the land mode to bias `Δ` toward
+  zero. On the app lattice with all legs it did not: land-answered corners
+  sat mostly under open-water fixes (all four corners land-answered for
+  61 % of open-water fixes, 2 % of short-fetch fixes), and `land` exceeds
+  `sea` by 0.007 (strict 0.008) and `nearest` by 0.009 (strict 0.015).
+  Without the fast leg it did against `sea` (−0.007) but not against
+  `nearest` (+0.003); on the 0.025° ICON-D2 lattice it did against `sea` in
+  every column (−0.012 to −0.035).
+- The model already carries a fetch gradient: at water lattice points of
+  the app request, TWS divided by that hour's median is 0.68–0.86 with under
+  2 nm of upwind fetch (lowest at 0.5–1 nm, not monotone), 0.98 at 4–10 nm
+  and 1.09 beyond 10 nm (Spearman ρ ≈ 0.67); `sea` mode shows the same
+  shape. 11 % of these fetches are cut short by the mask edge. This is the
+  regional, kilometre-scale gradient. Sub-kilometre obstacle lee (§1.6) is
+  resolved nowhere in the pipeline.
+- Over this area `icon_seamless` serves ICON-D2 (0.02°, 0–48 h) and its
+  rapid-update run at the highest priority, ICON-EU (7 km) to 5 days, then
+  ICON global. A 6-day plan spans all three; the track analysis saw only
+  ICON-D2 hours, while the lattice check's last 24 hours (the fetch's
+  forecast day) were not shown to be ICON-D2. Open-Meteo applies no
+  downscaling
+  to 10 m wind. Answers come from native-grid cells a median 0.8–0.9 km from
+  the requested point, and 1.7 km at water points within 2 km of land in
+  `land` mode. (Open-Meteo server source, `ForecastapiController.swift` and
+  `Icon.swift`.)
+- Finer models whose grids reach the area: DMI HARMONIE 2 km and MET Nordic
+  1 km; only partly KNMI 2 km (ends at 11.28° E) and AROME France HD 1.5 km
+  (ends at 55.4° N); UKMO 2 km, unverified over Denmark. Requested by their
+  own id, all stop at 2.5 days or less, against the app's 6-day horizon.
+
+### 1.6 Physics, terrain, verification
+
+- Lee physics, from search summaries only (every literature host was blocked
+  by the session's network policy): porous windbreaks shelter to about 10
+  obstacle heights (design) and 25–30 (maximum); offshore flow recovers over
+  tens of kilometres. Sailing rules of thumb (10–20 × height) have no traced
+  source. No channelling figure for a Danish strait was found; candidate
+  sources (for example the DTU Sprogø mast data in the Great Belt) were
+  unreachable.
+- Terrain (Copernicus GLO-30 DSM, 9.4–11.0° E): the highest land within 500 m
+  of the coast is 4.3 / 17.1 / 38.8 m at the 10th / 50th / 90th percentile,
+  so 10–30 height lee lengths run from about 40 m to 1.2 km (1.4 km at the
+  90th percentile of the Flensburg Fjord / Als sub-box, 45.7 m): below the
+  0.1° lattice, but 1–30 mask cells. Height varies 4–9 × along the coast,
+  so a constant-height rule would be off by that factor.
+- Adversarial verification of the app (`land`) pairing: the Python pairing
+  matches `WindField.sample` and `Polar.speedKn` to Float32 precision on all
+  kept fixes; an independent exact-grid recompute of the upwind fetch moves
+  `Δ` from 0.148 to 0.146; an independent kinematics recompute on 1,000
+  fixes agrees to 2.5e-10 kn SOG (an alternative window-endpoint convention
+  moves SOG by ≤ 0.061 kn); the statistics reproduce exactly. Varying the
+  window guard (20–27 s) and the turn-event displacement (0–30 m) leaves `Δ`
+  at 0.148; varying §0's harbour radius (0.75–1.25 nm), turn threshold
+  (25–40°) and minimum leg (120–300 s) keeps it at 0.140–0.161 (0.098–0.107
+  without the fast leg); dropping three motor-suspect steady legs as well as
+  the fast leg gives 0.088. Every per-trip value stays positive. Of the
+  other wind rows, only the `sea` all-legs value was independently
+  recomputed (0.1406).
+
+### 1.7 Polar check (report only, §0.6)
+
+Posted on #1894: open-water level `R` 0.77 (per trip 0.75 / 0.72 / 0.78),
+the fast leg included. Every table cell has fewer than three trips, so no
+shape finding qualifies for an issue. Other readings of the convention put
+the level at 0.73–0.77 and let up to three cells reach three trips (nearest
+table node); none shows a qualifying shape deviation (in those cells, largest
+single-trip −14.7 %).
+
+### 1.8 Corrections to §0
+
+- §0.5 names option 2 "soft cost away from a lee shore". In this spike
+  "lee" means land upwind of the boat, which seamanship calls a weather
+  shore; a lee shore is land downwind. Option 2 means a cost away from land
+  upwind.
+- §0.5 calls −5 % to +9 % "the fock table's own uncertainty". Its `source`
+  note says that range compares two sister-hull VPP runs and is not an error
+  bound for this boat; 0.10 stays a judgment.
+- §0.7.1 expected the land-mode bias to push `Δ` toward zero. On the app
+  lattice with all legs it did not; without the fast leg it did against
+  `sea` but not against `nearest`, and on the 0.025° ICON-D2 lattice it did
+  against `sea` (§1.5).
+
+### 1.9 Fourth trip (added 2026-10-28)
+
+A fourth track arrived later (#1894). It ran through the unchanged §0
+pipeline. Its wind comes from a second `past_days` fetch from the same
+endpoint, in which the trip's hours are past hours (§0.7.3). Hours that are
+past in both fetches agree exactly over 12,576 point-hours (the six paired
+winds plus the 0.1° ICON-D2 check lattice). The first three trips' samples
+are identical in all 19 sample sets (§1.3's 18 cells plus strict without the
+fast leg).
+
+- Exclusions (§0.3, sequential, share of its 9,610 fixes): harbour zone and
+  track ends 61.4 %, turn window 5.2 %, waiting 0 %, motoring (pinching,
+  light air) 13.7 %, polar domain and window coverage 3.6 %, short legs
+  0.5 %, leg median `R` 0 legs. Kept: 1,505 fixes in 5 legs. Strict: 729
+  in 3 legs.
+- Every kept fix has upwind fetch 0.67–1.63 nm under the app wind, and falls
+  in bins C and D under each of the six paired winds, so the trip adds to
+  neither group. `Δ`, its interval and the per-trip values are unchanged in
+  every cell of §1.3's `Δ` table, and three trips still hold both groups.
+  The resamples now take 22 distinct values in every cell (10 with three
+  trips, §1.3), and every interval keeps its ends. In the bin curve only C
+  and D move (0.675, 15 legs; 0.692, 20 legs; each now from 4 trips). The
+  verdict stands; §6 pre-registers a rerun that adds four 2025 trips,
+  and §7 reports it.
+- Polar check (§1.7): the trip has no open-water fix, so nothing changes.
+- ICON-D2 equals `icon_seamless` at every lattice point-hour the track reads
+  (32 of 32; the kept fixes read 14 of them), as for the first three trips
+  (§1.3).
+- §0.5's placebo clause now fails on downwind, by 0.0003. The trip adds two
+  downwind-short leg-bins (primary set: `R` 0.47 and 0.69) and no
+  downwind-open one, which lifts the downwind `Δ` to 0.0741 against half the
+  upwind `Δ`, 0.0738, with interval [0.041, 0.295] (strict: 0.0769 against
+  0.0715, [0.045, 0.532]). With three trips it passed (0.067, §1.4). The
+  ± 90° placebos still meet the clause: +90° is 0.051, and −90° keeps 0.115
+  with its interval including 0, still not credited (§1.4; 117 undefined
+  draws, was 73).
+- Between legs at land within 0.25 nm, land-downwind legs average 0.727
+  (8 legs, 4 trips) against 0.607 for land-upwind legs (unchanged); the gap
+  (upwind minus downwind) is −0.121, strict −0.102 (was −0.124 and −0.105).
+  At 0.25–0.5 nm it becomes +0.005 (was −0.013).
+- Within legs, the land-downwind cost becomes 0.036–0.051 (was 0.034–0.048).
+  The land-upwind cost ranges and the paired figures §1.4 quotes are
+  unchanged.
+
+## 2. Recommendation
+
+**Disclose now; change no routing.**
+
+1. Add a wind caveat: a new `about.caveats.wind` key in both dicts, its
+   About list item and test row, a README Known-limitations bullet and a
+   `changelog.d/` fragment. None of these is in the #282 closure, so no
+   sweep is owed. The copy rests on verified pipeline facts, not on the
+   track verdict:
+   - the wind is a forecast-model value on a 0.1° lattice, from model cells
+     of 2 km or more, with no terrain correction;
+   - nothing in the pipeline resolves shelter behind land at sub-kilometre
+     scale or channelling in narrow sounds;
+   - gusts do not enter routing;
+   - real wind near land and in narrow water can differ from the forecast.
+
+   It states no effect size, does not attribute anything to a lee effect
+   (§1.4), does not claim the forecast over-reads near every coast (the model
+   carries the regional gradient, §1.5), and claims no chart authority. Both
+   languages get a claim audit. If the land-cell default stays (question
+   below), the caveat may add that near-coast wind can come from an adjacent
+   land model cell and then tends to read lower.
+2. Defer options 1 and 2. The §6 rerun did not justify option 2 (§7); §4
+   states what would reopen them.
+3. Separate question for the maintainer: keep Open-Meteo's `land` cell
+   default or request `cell_selection=sea`? The default reads near-coast
+   water TWS at a median 0.861 of `sea` (§1.5). That is the conservative
+   error only for ETAs with the motor off, or while sail speed stays above
+   the sail-speed floor; with the motor on, a lower TWS can flip a leg to
+   motor at the wind-independent motor speed (6.5 kn by default) and make
+   the plan faster. It also feeds
+   `leg.twsKn`, which the reef suggestion reads, adding to the
+   under-reefing bias the README already states for gusts. A switch needs
+   a provenance marker (the stored `model` string would not change) and a
+   choice between sending the parameter only and storing the returned cell
+   coordinates (the latter changes `WindGrid` and owes a sweep). Either
+   way, sending `cell_selection` explicitly would stop an upstream default
+   change from silently changing the wind.
+
+## 3. Considered and rejected
+
+- **1a/1b/1c lee TWS penalty** (precomputed layer, per-node ray, lazy
+  layer): needs option 2 justified first (§0.5), which the §6 rerun does
+  not give (§7.4); a fetch-keyed
+  penalty double-counts the regional gradient the model already carries;
+  with the motor on, a cut below the sail-speed floor can make a plan faster.
+  1a's full-resolution layer is 9.4 MB per direction bin, over the
+  per-file precache cap once combined; 1b adds a mask ray per expanded node
+  at unmeasured cost; 1c holds about 9.4 MB per used bin per worker.
+- **2 soft cost away from land upwind, now:** the gate is unmet (§1.3,
+  §7.4). Within legs §1.4 showed no direction dependence, and the rerun
+  shows land downwind costing `R` while land upwind does not (§7.4 rule
+  5), so a cost keyed on land upwind may target the wrong variable.
+  Deferred, not discarded.
+- **3 finer model or denser lattice:** finer models requested by their own
+  id stop at 2.5 days or less, against the 6-day horizon; `dmi_seamless`
+  continues on ECMWF IFS, which would replace ICON-EU for days 3–6, a model
+  choice this spike did not evaluate. A 0.05° lattice is 1,215 points, more
+  weighted calls in one request than the free tier's 600 per minute, and the
+  app has no request splitting. The measured gains do not settle it either:
+  the app's own model on a 4 × denser lattice changes `Δ` by −15 % in `land`
+  mode and +6 % in `sea` mode; DMI HARMONIE by −35 % (−52 % on the strict
+  set, §1.3).
+- **5 `cell_selection=sea` inside #1894:** it barely moves `Δ` (by 0.007)
+  and changes the wind the router sees near land, against keeping near-coast
+  TWS low, which §2 finds conservative only for motor-off ETAs or above the
+  sail-speed floor; that is the maintainer's call (§2).
+- **6 interpolate only from water lattice points, or move points onto
+  water:** unmeasured; in `land` mode water points would still be answered
+  from land cells; owes a sweep that uniform-wind arms cannot exercise.
+- **Do nothing:** no caveat about near-coast wind exists today (the only
+  near-coast caveat is the waves legend's "coarse near coasts"), and one
+  costs no sweep, asset or request.
+- **Defer alone:** right for 1 and 2, but ships no disclosure meanwhile.
+- **A sail-only option-2 factor:** would make motor edges rank cheaper
+  wherever land is upwind.
+- **A constant-height shelter rule:** coastal barrier height varies 4–9 ×
+  (§1.6).
+- **Caveat copy naming a lee effect, an effect size, or a near-coast
+  over-read:** not supported (§1.4, §1.5).
+- **Fitting any coefficient before the wind source is fixed:** the wind
+  request (`services/openMeteo.ts`) is outside the #282 closure, so a later
+  change of model, lattice or cell selection would stale a coefficient with
+  no gate firing.
+
+## 4. What would reopen this
+
+Option 2, then option 1, reopens only if a rerun passes §0.5 as committed,
+with these additions committed to this spike before any new track is read
+(the §6 rerun did not pass, §7):
+
+- a motoring rule that catches a leg like the `R` 1.26 one, and `Δ` ≥ 0.10
+  after dropping any single leg (on §1.3's three trips, strict without
+  the fast leg, it was 0.095; §7.4 gives the rerun's);
+- the strict rerun's interval also excludes 0;
+- within legs, land upwind costs more than land downwind, with separate
+  intervals, outside water under 1 nm wide (if this fails while the gate
+  holds, the follow-up is a narrow-water or current disclosure, not a lee
+  model);
+- the between-leg equal-proximity control has the same sign in every trip;
+- the −90° placebo's overlap with upwind-short fixes is resolved;
+- trips span more than one month;
+- the wind source (model, lattice, cell selection) is fixed before any fit.
+
+Option 1 must also show an effect beyond the regional gradient the model
+carries, and ship with a test that it cannot make a motor-on plan faster
+through the sail-speed floor; it must handle the reef suggestion, the
+motor-off `calm-without-motor` reclassification (#282) and the polars'
+non-monotone 20 → 25 kn columns (the genoa
+tables especially). Option 2 must use a geometry-only factor on
+all edge kinds, guard against steering toward land downwind, and add a
+sweep arm with the setting on.
+
+Option 3 reopens if a model covering the full 6-day horizon shrinks `Δ` by
+≥ 50 % on the same sample set. Within 0–48 h `icon_seamless` already serves
+ICON-D2, so there option 3 means a denser lattice, which must first fit the
+free-tier request budget (one app fetch costs 322 weighted calls).
+
+Data that would help: at least five trips with both near-shore and
+open-water legs, outside October, with engine on/off noted per leg. Four
+genoa trips from 2025 have since been supplied; §6 pre-registers their
+rerun and §7 reports it.
+
+## 5. Evidence
+
+- Open-Meteo behaviour: its server source (`open-meteo/open-meteo` at
+  `03d62919`, `ForecastapiController.swift`, `Icon.swift`) and website docs
+  (`open-meteo/open-meteo-website` at `eae13874`), both read 2026-10-26.
+- App pipeline: `services/openMeteo.ts`, `lib/wind.ts`, `lib/polar.ts`,
+  `routing/isochrone.ts`, `lib/reefSuggestion.ts`, and the #282 closure
+  (`closure.mjs files`, run 2026-10-26).
+- Tracks and per-fix tables stay in the session scratchpad and are not
+  committed (§0.1). For §1, §0 and §1.2 specify the pipeline, so a rerun
+  re-implements it; §1.4 states each view's definitions but not every
+  implementation detail. The §6 rerun's scripts are committed in
+  [`1894-land-wind-shadow/`](1894-land-wind-shadow/) and hold no track
+  data.
+
+## 6. Rerun pre-registration: 2025 trips
+
+Written before the rerun fetched any wind (Historical Forecast API wind for
+any trip, or any wind for a 2025 trip) and before any result was computed
+for the 2025 trips. The 2025 intake parsed each fix's position, time,
+exported speed and horizontal accuracy, and recorded only each track's GPX
+name and, per segment, its UTC date, point count, time span, sampling
+interval and gaps, path length, the share of fixes whose exported speed
+exceeds 0.5, time-span overlap with the earlier tracks and the share inside
+the mask's bounds; no `R`, fetch or wind. The 2026 trips' results under the
+`past_days` wind (§1.3–§1.9) were known when these rules were written. §4's
+additions were committed (9b21f32) before the fourth 2026 trip was read.
+
+§0 stays frozen; this section amends it for the rerun. The implementation
+is the scripts in [`1894-land-wind-shadow/`](1894-land-wind-shadow/) at the
+freeze commit: the last commit before the rerun's first wind request, which
+`run.sh` records before it fetches and checks before it analyses. The first
+complete run on that commit binds. A later change to this section, the
+scripts, the static inputs or the track and wind data is disclosed with the
+findings and reported alongside, never substituted. The track and wind
+inputs are pinned by `inputs.sha256`; no track is trimmed, re-split or
+excluded after the freeze except by §6.2's drop rule.
+
+### 6.1 Data
+
+- Four trips from October–November 2025 in one export, one per day (a
+  segment split at a change of UTC day or a gap over 30 min), all at 1 Hz
+  inside the mask's bounds. With the four 2026 trips (§1.1, §1.9): eight
+  trips.
+- The maintainer reports that all four 2025 trips were sailed with the
+  genoa and that no engine notes exist (#1894). Each trip's `R` uses its own
+  sail's table: the fock table for 2026, `salona-44-easy-go-genoa.json`
+  (tier C) for 2025. That table is the fock table times 1.000–1.053 per
+  cell (1.035–1.053 at 4 kn, 1.000 from 16 kn). The factor falls with TWS,
+  and the model's TWS rises with upwind fetch (§1.5), so the table can move
+  a 2025 trip's `Δ`, not only its level; §6.3 therefore decides under both
+  tables.
+- Apart from §6, §0.1–§0.4 and §1.2's implementation choices are unchanged.
+  Static inputs (mask, harbours, polars) are those at the freeze commit.
+
+### 6.2 Wind
+
+- One source for all eight trips: Open-Meteo's Historical Forecast API
+  (`historical-forecast-api.open-meteo.com`), `icon_seamless`, with the wind
+  request of `services/openMeteo.ts` (`buildUrl`) at 10b23fc, the 0.1°
+  lattice and omitted `cell_selection`, at the lattice points each trip
+  reads, for the trip's UTC day and the next. `past_days` does not reach
+  2025. Where its ICON-D2 member has no value, `icon_seamless` fills from
+  coarser ICON members; that is accepted, as it is the app's own source.
+- A trip is dropped and reported if any lattice point-hour read with
+  non-zero weight at any of its fixes, before §0.3's exclusions, lacks a
+  wind speed or direction, or if any fix lies outside the returned hours.
+  No other model substitutes without a new amendment.
+- Reported, not deciding: agreement between this source and the
+  `past_days` cache at the 2026 trips' read point-hours.
+- The §1.3 cell-selection and finer-model views are not repeated.
+
+### 6.3 Rules
+
+- Every rule passes on both the primary and the strict set of §0.3, each
+  statistic computed within its own set, except the resolvable test, which
+  is decided on the primary set.
+- Added motoring rule (§4): a leg whose median `R` exceeds 1.2 is excluded.
+  It targets legs like §1.3's fast leg (`R` 1.26).
+- Resolvable: §0.5, at least five trips holding both the short-fetch and
+  the open-water group.
+- Option 2 passes only if all of the following hold, once with the 2025
+  trips' `R` under the genoa table and once under the fock table (each run
+  recomputing the 1.2 rule):
+  1. `Δ` ≥ 0.10 and its interval excludes 0 (§0.5; on the strict set too,
+     §4);
+  2. `Δ` ≥ 0.10 after dropping any single leg; a drop that leaves `Δ`
+     undefined fails (§4);
+  3. each cohort's own `Δ` (2026 trips, 2025 trips) is defined and above 0;
+  4. §0.5's placebo clause, read per term: the downwind, +90° and −90°
+     terms are each met if their `Δ` is below half the same set's upwind
+     `Δ` or their interval includes 0. The −90° term uses only fixes with
+     upwind fetch ≥ 0.5 nm, in place of §0.5's unrestricted term; this is
+     §4's resolution of its overlap with the upwind-short fixes, and §4's
+     "passes §0.5 as committed" is read with it;
+  5. within legs (§6.4's regression), the upwind coefficient is below the
+     downwind one, their intervals do not overlap and the upwind interval
+     lies below 0 (§4);
+  6. between legs at land within 0.25 nm, land-upwind minus land-downwind
+     `R` (§1.4's classes; per trip, the mean of leg medians, each leg ≥ 60
+     fixes in the class) is negative in every trip holding both classes,
+     and at least three trips hold both (§4);
+  7. the trips kept after §6.2 fall in more than one calendar month, year
+     and month counted together (§4). One season either way: any result is
+     scoped to autumn;
+  8. the wind source is the one §6.2 fixes (§4). No option-1 coefficient is
+     fitted while §2's cell-selection question is open.
+- Five-trip floor: a trip-bootstrap interval rule or placebo term whose
+  statistic has fewer than five trips holding both its groups on that set,
+  or an undefined `Δ`, is not evaluable. It does not count as met, and it is reported as not
+  evaluable, not as evidence for or against a lee effect. Under the
+  `past_days` wind and before the 1.2 rule, the 2026 trips supply one trip
+  holding both groups of the restricted −90° term on each set, and three
+  (primary) and two (strict) for the +90° term. Unless the historical wind
+  changes that, option 2 needs every 2025 trip to hold both −90° groups.
+- Option 1: not decided by this rerun. §4's regional-gradient condition has
+  no pre-registered test, and a test written now could not be blind to
+  these eight trips. The curve criterion is reported.
+- Reported alongside, without deciding: per-cohort figures; the 2026 trips
+  under the historical wind with §0's own rules, against §1.3 and §1.9; and
+  per ray kind, the share of kept fixes whose ray ends at the mask edge.
+- Polar check (§0.6): fock cells from the 2026 trips as before; the 2025
+  trips get a report-only level against the genoa table.
+
+### 6.4 Mechanics
+
+The scripts implement these; they are listed so the rules can be read
+without them.
+
+- Every interval is a 95 % percentile bootstrap of 2,000 draws, with
+  `numpy.random.default_rng(1894)` created afresh per interval and
+  `numpy.percentile`'s default method. The pool is the sorted units holding
+  at least one row of that statistic: trips for leg-bin statistics (a trip
+  with only C/D values included), the trips holding the bin for a curve
+  bin, legs for the leg-cluster bootstrap. Each draw takes as many units as
+  the pool holds, with replacement. Draws where a statistic is undefined
+  are dropped and counted.
+- Within-leg regression: blocks of 120 consecutive kept fixes from each
+  leg's start (a shorter remainder dropped), kept if their median water
+  width is ≥ 1 nm. Block median `R` is regressed with leg fixed effects
+  (least squares on leg-demeaned values) on two indicators, block median
+  upwind fetch < 0.5 nm and block median downwind fetch < 0.5 nm. The rule
+  fails if fewer than five legs vary in the upwind indicator or fewer than
+  five in the downwind one (a leg varies when its kept blocks hold both
+  values), or if the leg-demeaned indicators have rank below two; a draw
+  with rank below two is undefined.
+- A curve bin's interval half-width is half the distance between its
+  interval's ends.
+- Rays: fetch as §0.2; §1.2's omnidirectional distance and water width in
+  20 m steps with a 2 nm cap. Every ray that leaves the mask's bounds ends
+  there, the edge counted as land.
+
+## 7. Rerun results
+
+The §6 rerun, decided by §6.3. Changes since the freeze are disclosed in
+§7.7. Track and wind artifacts stay uncommitted (§0.1).
+
+### 7.1 Run and data
+
+- Binding run: the first complete run at the freeze commit `e1705c2`. All
+  18 wind chunks were fetched from the Historical Forecast API under that
+  commit. `inputs.sha256`: 13 of 13 entries verified.
+- §6.2 drop rule: no trip dropped (0 missing point-hours, 0 fixes outside
+  the returned hours).
+- The shortest 2025 trip keeps no fix on either set: §0.3's harbour,
+  track-end and motoring exclusions remove all of them. 7 of 8 trips
+  contribute kept fixes, 4 from 2026 and 3 from 2025.
+- The §6.3 1.2 rule removed §1.3's fast leg (`R` 1.26).
+- Rays ending at the mask edge: 0 % of kept fixes for every ray kind.
+
+### 7.2 Source agreement
+
+- Historical Forecast API against the `past_days` cache, at the 2026
+  trips' read point-hours: 206 of 206 identical (per trip 54, 72, 48, 32).
+- The 2026 trips under the historical wind with §0's own rules reproduce
+  §1.3: `Δ` 0.1477 [0.0788, 0.2319], strict 0.1431, 3 trips holding both
+  groups.
+
+### 7.3 Resolvable
+
+**Resolvable.** 6 trips hold both groups on the primary set (5 on the
+strict set). It is the first resolvable result of this spike.
+
+### 7.4 Option 2
+
+**Not justified, under either table.** Rules 1–6 of §6.3 are not met;
+rule 7 is met (more than one month); rule 8 holds by construction (§7.7).
+
+"Table" is the one applied to the 2025 trips; the 2026 trips always use
+the fock table (§6.1). "Both": trips holding both groups. "2026 / 2025":
+each cohort's own `Δ`.
+
+| Table, set | `Δ` [interval] | Both | Leave-one-leg-out min | 2026 / 2025 |
+|---|---|---|---|---|
+| genoa, primary | 0.040 [−0.042, 0.093] | 6 | 0.029 | +0.102 / −0.042 |
+| genoa, strict | 0.043 [−0.062, 0.119] | 5 | 0.026 | +0.095 / −0.051 |
+| fock, primary | 0.040 [−0.044, 0.092] | 6 | 0.028 | +0.102 / −0.043 |
+| fock, strict | 0.044 [−0.060, 0.119] | 5 | 0.027 | +0.095 / −0.052 |
+
+- Rule 1: every `Δ` is below 0.10 and every interval includes 0.
+- Rule 2: every leave-one-leg-out minimum is below 0.10.
+- Rule 3: the 2025 cohort's own `Δ` is negative in every run.
+- Genoa, primary: 17 legs supply short-fetch values and 19 open-water
+  values. Per-trip `Δ`: 2026 trips 0.079, 0.093 and 0.126, the fourth
+  holding neither group; 2025 trips 0.035, −0.104 and −0.087. The 0.126
+  differs from §1.3's 0.232 only because the 1.2 rule removed that trip's
+  fast leg.
+
+Rule 4, placebo, genoa (fock within 0.004):
+
+- Downwind: primary 0.037 [0.006, 0.077], strict 0.048 [0.010, 0.090].
+  Each is at least half the same set's upwind `Δ`, and each interval
+  excludes 0. Not met.
+- +90°: primary −0.012, strict −0.005. Met.
+- −90°, upwind fetch ≥ 0.5 nm only: 4 trips hold both groups, so the term
+  is not evaluable under the five-trip floor (`Δ` 0.024, primary set).
+
+Rule 5, within legs (§6.4), genoa (fock within 0.002):
+
+- Primary set, 453 blocks in 45 legs; 8 legs vary in the upwind indicator
+  and 13 in the downwind one. Upwind 0.000 [−0.039, 0.060], downwind
+  −0.063 [−0.096, −0.032]. Upwind is not below downwind, and the upwind
+  interval includes 0. Not met.
+- Strict set: 5 and 12 legs vary. Upwind −0.031 [−0.110, 0.022], downwind
+  −0.058. Not met.
+
+Rule 6, genoa (fock within 0.005), between legs at land within 0.25 nm,
+primary set, 13 land-upwind and 13 land-downwind legs. Per trip, upwind
+minus downwind is negative in all three 2026 trips (−0.126, −0.090,
+−0.191) and positive in all three 2025 trips holding both classes
+(+0.129, +0.031, +0.271). Not met. Strict: 9 and 13 legs, 5 trips;
+−0.109, −0.069, −0.181 against +0.121, +0.179. Not met.
+
+### 7.5 Option 1
+
+Not decided by this rerun (§6.3). Curve report, genoa, primary set: bins
+C, D and E meet the ≥ 5 trips and half-width ≤ 0.05 criterion. Bin mean
+`R`: A 0.728, B 0.695, C 0.690, D 0.722, E 0.751, F 0.747. The means span
+about 0.06; no short-to-open rise exceeds B to E (0.056).
+
+### 7.6 Polar check (report only, §0.6)
+
+- Open-water level, 2026 trips under fock: 0.761 (per trip 0.747, 0.721,
+  0.771). It differs from §1.7's 0.77 because the 1.2 rule removed the
+  fast leg.
+- 2025 trips under genoa: 0.796 (per trip 0.823, 0.780, 0.821).
+- No cell reaches 3 trips in either cohort (11 and 25 cells), so there is
+  no shape flag and no new issue.
+
+### 7.7 Disclosures
+
+- Rule 8 is not evaluated in the scripts' output. It holds by
+  construction: §6.2 fixes one source, and no coefficient was fitted.
+- §0.4's "short fetch = A + B" and "open water = E + F" are implemented
+  as separate leg-bin values per bin. Merging A + B and E + F each into
+  one value per leg gives `Δ` 0.029 / 0.038 under genoa (primary /
+  strict) and 0.030 / 0.040 under fock, with the same verdict.
+- `run.sh analyse` re-checks the scripts and static inputs against
+  `FROZEN_AT`, not the doc blob it records. The doc's §6 did not change
+  after the freeze (§7.1); the gap is disclosed, not fixed, since the
+  scripts are frozen.
+- §6, the scripts and the inputs did not change after the freeze. Before
+  it, the pipeline was rebuilt on a second machine: tracks re-parsed from
+  the original exports and the `past_days` cache refetched. The rebuild
+  reproduced every compared §1 figure exactly before any 2025 wind was
+  fetched.
+
+### 7.8 Interpretation
+
+- These eight trips do not support a lee penalty. The effect is not shown
+  at the pre-registered size, with intervals that include 0; it is not
+  shown absent.
+- The near-shore deficit in the 2026 trips does not replicate in the 2025
+  trips: their own `Δ` is −0.042 (two of three trips negative), and the
+  between-leg sign reverses in all three.
+- Sail and year coincide by cohort and are not adjusted for, so the
+  reversal is not attributed to either. Both cohorts are autumn (§6.3
+  rule 7), and the one October 2025 trip reverses as well (`Δ` −0.087).
+- §2's recommendation (a wind caveat now, no routing change) stands.
+- §2's open cell-selection question is unaffected.
