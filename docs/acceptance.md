@@ -600,7 +600,11 @@ apply here too, with the same expected outcomes.
       westerly; live wind can still send it around Als, so note which way it
       went rather than failing the check on that alone. Sønderborg's approach
       note under the destination names the bridge's announced closure from
-      2 November to 18 December 2026; the route does not model the bridge's
+      2 November to 18 December 2026. A route through the sound also shows a
+      notice under the result naming Kong Christian X's Bro, with a link to
+      its Danske Havnelods page, and saying the bridge may be closed and that
+      openings outside the listed times may be possible on request; a route
+      that does not pass the bridge shows none. The route does not model
       openings or closures
       ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). With
       Sønderborg as origin and the Als Fjord point as destination the route

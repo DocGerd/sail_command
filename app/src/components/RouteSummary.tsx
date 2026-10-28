@@ -37,6 +37,7 @@ import {
   roundExposureNm,
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
+import { OpeningBridgeNotice } from './OpeningBridgeNotice';
 import {
   reefSuggestionsForLegs,
   REEF1_AWS_KN,
@@ -816,6 +817,7 @@ export default function RouteSummary({
           the component. Per-rig for the same reason: the count is over the
           ACTIVE rig's own legs, so the two rig tabs can honestly differ. */}
       <SeamarkProximityNotice legs={result?.legs ?? null} />
+      <OpeningBridgeNotice legs={result?.legs ?? null} />
 
       {/* #704: the tabpanel half of the rig tablist's ARIA association — a
           plain wrapper div (no class, no CSS) around the existing per-rig

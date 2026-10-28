@@ -229,8 +229,8 @@ data; the code license is covered in the [License](#license) section below.
   the destination" message.
 - Plans through Alssund pass under the Kong Christian X bascule bridge at
   Sønderborg. The app does not model the bridge's opening times
-  or closures. In the planner, only Sønderborg's approach note mentions them, and a plan
-  that passes the bridge on the way to another harbour does not show it
+  or closures. A route summary whose active rig passes the bridge says so and
+  links the Danske Havnelods bridge page for the current times
   ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). Plans
   leaving Sønderborg northward can still go around Als
   ([#1879](https://github.com/DocGerd/sail_command/issues/1879)).
