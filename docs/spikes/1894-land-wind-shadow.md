@@ -3,11 +3,11 @@
 - **Issue:** #1894
 - **Date:** 2026-10-26 to 2026-10-28
 - **Status:** Decision / Recommendation. Maintainer decision pending.
-- **Verdict:** Not resolvable from these tracks (three of four trips hold
-  both groups, five required). Disclose now; defer any routing change
-  behind a rerun (§4). The app's default Open-Meteo cell selection goes to
-  the maintainer as a separate question (§2). §6 pre-registers a pooled
-  rerun with four 2025 trips.
+- **Verdict:** The §6 rerun with eight trips is resolvable: six hold both
+  groups on the primary set (§7). Option 2 is not justified under either
+  sail table. Recommends a wind caveat now and no routing change (§2). The
+  app's default Open-Meteo cell selection goes to the maintainer as a
+  separate question (§2).
 
 ## 0. Pre-registration (written before any Phase 3 result)
 
@@ -398,7 +398,8 @@ fast leg).
   The resamples now take 22 distinct values in every cell (10 with three
   trips, §1.3), and every interval keeps its ends. In the bin curve only C
   and D move (0.675, 15 legs; 0.692, 20 legs; each now from 4 trips). The
-  verdict stands; §6 pre-registers a rerun that adds four 2025 trips.
+  verdict stands; §6 pre-registers a rerun that adds four 2025 trips,
+  and §7 reports it.
 - Polar check (§1.7): the trip has no open-water fix, so nothing changes.
 - ICON-D2 equals `icon_seamless` at every lattice point-hour the track reads
   (32 of 32; the kept fixes read 14 of them), as for the first three trips
@@ -441,7 +442,8 @@ fast leg).
    languages get a claim audit. If the land-cell default stays (question
    below), the caveat may add that near-coast wind can come from an adjacent
    land model cell and then tends to read lower.
-2. Defer options 1 and 2 behind the rerun in §4.
+2. Defer options 1 and 2. The §6 rerun did not justify option 2 (§7); §4
+   states what would reopen them.
 3. Separate question for the maintainer: keep Open-Meteo's `land` cell
    default or request `cell_selection=sea`? The default reads near-coast
    water TWS at a median 0.861 of `sea` (§1.5). That is the conservative
@@ -504,7 +506,8 @@ fast leg).
 ## 4. What would reopen this
 
 Option 2, then option 1, reopens only if a rerun passes §0.5 as committed,
-with these additions committed to this spike before any new track is read:
+with these additions committed to this spike before any new track is read
+(the §6 rerun did not pass, §7):
 
 - a motoring rule that catches a leg like the `R` 1.26 one, and `Δ` ≥ 0.10
   after dropping any single leg (strict, without the fast leg, it is 0.095
@@ -536,7 +539,7 @@ free-tier request budget (one app fetch costs 322 weighted calls).
 Data that would help: at least five trips with both near-shore and
 open-water legs, outside October, with engine on/off noted per leg. Four
 genoa trips from 2025 have since been supplied; §6 pre-registers their
-rerun.
+rerun and §7 reports it.
 
 ## 5. Evidence
 
@@ -689,3 +692,124 @@ without them.
 - Rays: fetch as §0.2; §1.2's omnidirectional distance and water width in
   20 m steps with a 2 nm cap. Every ray that leaves the mask's bounds ends
   there, the edge counted as land.
+
+## 7. Rerun results
+
+The §6 rerun, decided by §6.3. Changes since the freeze are disclosed in
+§7.7. Track and wind artifacts stay uncommitted (§0.1).
+
+### 7.1 Run and data
+
+- Binding run: the first complete run at the freeze commit `e1705c2`. All
+  18 wind chunks were fetched from the Historical Forecast API under that
+  commit. `inputs.sha256`: 13 of 13 entries verified.
+- §6.2 drop rule: no trip dropped (0 missing point-hours, 0 fixes outside
+  the returned hours).
+- The shortest 2025 trip keeps no fix on either set: §0.3's harbour,
+  track-end and motoring exclusions remove all of them. 7 of 8 trips
+  contribute kept fixes, 4 from 2026 and 3 from 2025.
+- The §6.3 1.2 rule removed §1.3's fast leg (`R` 1.26).
+- Rays ending at the mask edge: 0 % of kept fixes for every ray kind.
+
+### 7.2 Source agreement
+
+- Historical Forecast API against the `past_days` cache, at the 2026
+  trips' read point-hours: 206 of 206 identical (per trip 54, 72, 48, 32).
+- The 2026 trips under the historical wind with §0's own rules reproduce
+  §1.3: `Δ` 0.1477 [0.0788, 0.2319], strict 0.1431, 3 trips holding both
+  groups.
+
+### 7.3 Resolvable
+
+**Resolvable.** 6 trips hold both groups on the primary set (5 on the
+strict set). It is the first resolvable result of this spike.
+
+### 7.4 Option 2
+
+**Not justified, under either table.** Rules 1–6 of §6.3 are not met;
+rule 7 is met (more than one month); rule 8 holds by construction (§7.7).
+
+"Table" is the one applied to the 2025 trips; the 2026 trips always use
+the fock table (§6.1). "Both": trips holding both groups. "2026 / 2025":
+each cohort's own `Δ`.
+
+| Table, set | `Δ` [interval] | Both | Leave-one-leg-out min | 2026 / 2025 |
+|---|---|---|---|---|
+| genoa, primary | 0.040 [−0.042, 0.093] | 6 | 0.029 | +0.102 / −0.042 |
+| genoa, strict | 0.043 [−0.062, 0.119] | 5 | 0.026 | +0.095 / −0.051 |
+| fock, primary | 0.040 [−0.044, 0.092] | 6 | 0.028 | +0.102 / −0.043 |
+| fock, strict | 0.044 [−0.060, 0.119] | 5 | 0.027 | +0.095 / −0.052 |
+
+- Rule 1: every `Δ` is below 0.10 and every interval includes 0.
+- Rule 2: every leave-one-leg-out minimum is below 0.10.
+- Rule 3: the 2025 cohort's own `Δ` is negative in every run.
+- Genoa, primary: 17 legs supply short-fetch values and 19 open-water
+  values. Per-trip `Δ`: 2026 trips 0.079, 0.093 and 0.126, the fourth
+  holding neither group; 2025 trips 0.035, −0.104 and −0.087. The 0.126
+  differs from §1.3's 0.232 only because the 1.2 rule removed that trip's
+  fast leg.
+
+Rule 4, placebo, genoa (fock within 0.002):
+
+- Downwind: primary 0.037 [0.006, 0.077], strict 0.048 [0.010, 0.090].
+  Each is at least half the same set's upwind `Δ`, and each interval
+  excludes 0. Not met.
+- +90°: primary −0.012, strict −0.005. Met.
+- −90°, upwind fetch ≥ 0.5 nm only: 4 trips hold both groups, so the term
+  is not evaluable under the five-trip floor (`Δ` 0.024, primary set).
+
+Rule 5, within legs (§6.4):
+
+- Primary set, 453 blocks in 45 legs; 8 legs vary in the upwind indicator
+  and 13 in the downwind one. Upwind 0.000 [−0.039, 0.060], downwind
+  −0.063 [−0.096, −0.032]. Upwind is not below downwind, and the upwind
+  interval includes 0. Not met.
+- Strict set: 5 and 12 legs vary. Upwind −0.031 [−0.110, 0.022], downwind
+  −0.058. Not met.
+
+Rule 6, between legs at land within 0.25 nm, primary set, 13 land-upwind
+and 13 land-downwind legs. Per trip, upwind minus downwind is negative in
+all three 2026 trips (−0.126, −0.090, −0.191) and positive in all three
+2025 trips holding both classes (+0.129, +0.031, +0.271). Not met.
+
+### 7.5 Option 1
+
+Not decided by this rerun (§6.3). Curve report, genoa, primary set: bins
+C, D and E meet the ≥ 5 trips and half-width ≤ 0.05 criterion. Bin mean
+`R`: A 0.728, B 0.695, C 0.690, D 0.722, E 0.751, F 0.747. The means span
+about 0.06; no short-to-open rise exceeds B to E (0.056).
+
+### 7.6 Polar check (report only, §0.6)
+
+- Open-water level, 2026 trips under fock: 0.761 (per trip 0.747, 0.721,
+  0.771). It differs from §1.7's 0.77 because the 1.2 rule removed the
+  fast leg.
+- 2025 trips under genoa: 0.796 (per trip 0.823, 0.780, 0.821).
+- No cell reaches 3 trips in either cohort (11 and 25 cells), so there is
+  no shape flag and no new issue.
+
+### 7.7 Disclosures
+
+- Rule 8 is not evaluated in the scripts' output. It holds by
+  construction: §6.2 fixes one source, and no coefficient was fitted.
+- §0.4's "short fetch = A + B" is implemented as separate A and B leg-bin
+  values per leg. Merging A and B into one value per leg gives `Δ`
+  0.030 / 0.038 under genoa (primary / strict) and 0.030 / 0.040 under
+  fock, with the same verdict.
+- §6, the scripts and the inputs did not change after the freeze. Before
+  it, the pipeline was rebuilt on a second machine: tracks re-parsed from
+  the original exports and the `past_days` cache refetched. The rebuild
+  reproduced every compared §1 figure exactly before any 2025 wind was
+  fetched.
+
+### 7.8 Interpretation
+
+- These eight trips do not support a lee penalty. The effect is not shown
+  at the pre-registered size, with intervals that include 0; it is not
+  shown absent.
+- The near-shore deficit in the 2026 trips does not replicate in the 2025
+  trips; its sign reverses by cohort.
+- Sail, year and season coincide by cohort and are not adjusted for
+  (§6.3), so the reversal is not attributed to any one of them.
+- §2's recommendation (a wind caveat now, no routing change) stands.
+- §2's open cell-selection question is unaffected.
