@@ -6,7 +6,7 @@ import type { Leg } from '../types';
 // #1881: quiet advisory per opening bridge the active rig passes. Memoised on
 // `legs` alone: a #114 recalculate-and-replace or a rig-tab switch hands this
 // a different array, as for SeamarkProximityNotice (RouteSummary.tsx).
-export function OpeningBridgeNotice({ legs }: { legs?: readonly Leg[] | null }) {
+export function OpeningBridgeNotice({ legs }: { legs: readonly Leg[] | null | undefined }) {
   const t = useT();
   const bridges = useMemo(() => bridgesPassed(legs), [legs]);
   if (bridges.length === 0) return null;
