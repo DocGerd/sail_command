@@ -96,7 +96,7 @@ function planThrough(start: LatLon, end: LatLon): Plan {
   };
 }
 
-function renderPanel(plan: Plan): HTMLElement {
+function renderPanel(plan: Plan, rig: 'genoa' | 'fock' = 'genoa'): HTMLElement {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
@@ -131,7 +131,7 @@ function renderPanel(plan: Plan): HTMLElement {
         onCancelPlan={vi.fn()}
         planning={{ phase: 'idle' } as PlannerStatus}
         plan={plan}
-        rig="genoa"
+        rig={rig}
         formDirty={false}
         onViewDetails={vi.fn()}
         onOpenBoatSettings={vi.fn()}
@@ -155,5 +155,34 @@ describe('#1881: PlannerPanel mounts the opening-bridge notice', () => {
     expect(notice, 'control: a crossing plan must render the notice').not.toBeNull();
     expect(notice?.textContent).toContain("Kong Christian X's Bro");
     expect(notice?.getAttribute('role')).toBeNull();
+  });
+
+  it('is per rig: genoa crosses the bridge, the fock tab shows nothing', () => {
+    const base = planThrough(NORTH, SOUTH);
+    if (base.result.status !== 'ok') throw new Error('fixture must be ok');
+    const [genoa] = base.result.sails;
+    if (!genoa?.result) throw new Error('fixture must carry a genoa result');
+    const plan: Plan = {
+      ...base,
+      result: {
+        ...base.result,
+        sails: [
+          genoa,
+          {
+            sailId: 'fock',
+            result: {
+              ...genoa.result,
+              sailId: 'fock',
+              legs: [legBetween(ELSEWHERE_A, ELSEWHERE_B)],
+            },
+            reason: null,
+          },
+        ],
+      },
+    };
+    const onGenoa = renderPanel(plan, 'genoa');
+    expect(onGenoa.querySelector('.opening-bridge-notice')).not.toBeNull();
+    cleanup();
+    expect(renderPanel(plan, 'fock').querySelector('.opening-bridge-notice')).toBeNull();
   });
 });

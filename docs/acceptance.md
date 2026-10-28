@@ -601,7 +601,7 @@ apply here too, with the same expected outcomes.
       went rather than failing the check on that alone. Sønderborg's approach
       note under the destination names the bridge's announced closure from
       2 November to 18 December 2026. A route through the sound also shows a
-      notice under the result naming Kong Christian X's Bro, with a link to
+      notice on the Plan tab and in the Routes tab summary naming Kong Christian X's Bro, with a link to
       its Danske Havnelods page, and saying the bridge may be closed and that
       openings outside the listed times may be possible on request; a route
       that does not pass the bridge shows none. The route does not model
