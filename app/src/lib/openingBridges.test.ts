@@ -119,7 +119,7 @@ describe('#1881 bridgesPassed', () => {
     expect(bridgesPassed([leg({ lat: 54.9046, lon: 9.7833 }, SOUTH_OF_SPAN)])).toEqual([]);
   });
 
-  it('skips a leg with a non-finite coordinate without throwing', () => {
+  it('ignores a non-finite coordinate without throwing', () => {
     const bad = leg({ lat: Number.NaN, lon: 9.7830141 }, SOUTH_OF_SPAN);
     expect(bridgesPassed([bad])).toEqual([]);
     expect(bridgesPassed([bad, crossing()])).toEqual([KC]);

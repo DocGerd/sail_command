@@ -64,13 +64,11 @@ export function segmentDistanceM(a1: LatLon, a2: LatLon, b1: LatLon, b2: LatLon)
   );
 }
 
-const isFinitePoint = (p: LatLon): boolean => Number.isFinite(p.lat) && Number.isFinite(p.lon);
-
 /**
  * Bridges whose passage line lies within BRIDGE_PASS_M of any leg, ordered by
  * the first leg that reaches them, one entry per bridge. Fails OPEN to []: a
- * missing leg list or a leg with a non-finite coordinate is skipped, never
- * thrown on.
+ * missing leg list is empty, and a non-finite coordinate yields a NaN
+ * distance, which never compares below the threshold.
  */
 export function bridgesPassed(
   legs: readonly Leg[] | null | undefined,
@@ -79,7 +77,6 @@ export function bridgesPassed(
   if (!legs) return [];
   const found: OpeningBridge[] = [];
   for (const leg of legs) {
-    if (!isFinitePoint(leg.start) || !isFinitePoint(leg.end)) continue;
     for (const bridge of bridges) {
       if (found.includes(bridge)) continue;
       const { a, b } = bridge.passageLine;
