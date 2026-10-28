@@ -657,7 +657,9 @@ making design-level decisions; do not silently deviate.
   **280 chars**, so a dismissal must point at a linked evidence record (#600).
   Moving the flagged code closes the dismissed alert as fixed and opens a NEW
   one under a new number (#13 -> #52, #15 -> #51 after #1793): re-dismiss
-  citing the original.
+  citing the original. It also scans committed Python under `docs/`: PR
+  #1905 drew 25 `py/file-not-closed` alerts for bare `json.load(open(p))`;
+  use `with open` or `Path.read_text`.
 - **`code-scanning/alerts` returns Scorecard alerts ALONGSIDE CodeQL's, and
   they look alike until you read `.tool.name`.** Measured 2026-09-02: both
   alerts open that day were `tool.name: Scorecard`, each with `rule.severity`
@@ -1723,6 +1725,8 @@ making design-level decisions; do not silently deviate.
   | v0.56.0 | 2026-10-19 | 25 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 08:21:18Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39222126524` (created 08:20:56Z) -> tag `39222174944` (created 08:21:21Z) on `607a4c8`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7169026595`, `ref: v0.56.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-DMwoztuW.js` at ``version:`v0.56.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.57.0 | 2026-10-21 | 61 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 15:59:04Z, ten seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39630498595` (created 15:58:13Z) -> tag `39630650653` (created 15:59:14Z) on `fb4fa6d`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7230717657`, `ref: v0.57.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-jOtH7t_r.js` at ``version:`v0.57.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `30177e5` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.58.0 | 2026-10-21 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:09:02Z, eight seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39667697615` (created 20:08:25Z) -> tag `39667801625` (created 20:09:10Z) on `93441cb`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7236186642`, `ref: v0.58.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ByTpDzGk.js` at ``version:`v0.58.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `493006a` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.59.0 | 2026-10-28 | 429178 s | `success`, `steps=6` (the cloud cut could not sign, so the tag followed days later, #1848) | **tag run cancelled** | merge-push `39993775630` (`deploy` success 17:18:44Z on 2026-10-23) -> tag `40726528067` on `578949f`, cancel-superseded by the `v0.60.0` tag run before its `deploy` started (`steps: 0`). Release created by run `40726528041`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.60.0 | 2026-10-28 | 263315 s | `success`, `steps=6` (tag delayed as at v0.59.0, #1888) | **`smoke-probe` FAILED** | merge-push `40206598600` -> tag `40726671974` on `fe9c5b9`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-D3OW1GZs.js` returned 404 on all 10 attempts while the basemap Range probes passed on attempt 1. Remedy: the develop push of PR #1909 (different SHA); outcome not recorded here. Release `isLatest: true` (run `40726671968`); tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -4552,6 +4556,9 @@ making design-level decisions; do not silently deviate.
   `429 "Too many concurrent requests"` during the 2026-10-17 outage, which can
   also block their browser. Probe with one tiny single-point request, never the app's grid.
   A release-gate walkthrough plans offline too: run `gen-wind-fixture.mjs`, then load `?windFixture=test-fixtures/wind-sw12.json`.
+  The Historical Forecast API and `past_days` returned
+  identical `icon_seamless` values for the same past hours (206 of 206 read
+  point-hours, #1894 spike §7.2).
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
@@ -4947,6 +4954,10 @@ making design-level decisions; do not silently deviate.
   keeps no output path (sweep-closure `SKILL.md` says to omit it).
   `run-sharded.mjs` refuses a non-empty `--out` (stale part files), so it cannot
   resume a killed run.
+- **`/teleport` to a local machine carries the transcript, not the cloud
+  scratchpad**: its uncommitted inputs and caches are gone (#1894,
+  2026-10-28). Committed scripts plus an input hash list let the local
+  rebuild be checked; #1894's reproduced every compared spike §1 figure.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
