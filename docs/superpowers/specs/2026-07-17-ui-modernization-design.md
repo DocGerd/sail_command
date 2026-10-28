@@ -38,10 +38,14 @@ These come from the #34 identity (`docs/brand/identity-rationale.md`) and CLAUDE
   `satisfies Record<MsgKey, string>` parity — both dicts, always.
 - **Two sampling clocks stay separate:** map barbs sample the plan grid at the SLIDER hour;
   the depth profile samples each instant's own hour. Visual changes must not unify them.
+  On the Wetter tab (#1854, maintainer ruling 2026-10-24) barbs instead sample the area
+  forecast at the card's hour; choosing that hour never writes the departure.
 - **Both layouts preserved:** wide (`>=1024px`) two-column side-panel and narrow bottom-sheet
   (the primary on-boat, cockpit-portrait mode). Touch targets stay `>=44px` for gloved use.
-- **No backend, offline-first:** only planning needs network; everything else keeps working
-  offline. No new runtime network dependency.
+- **No backend, offline-first:** only planning and the Wetter tab's area forecast (#1854,
+  maintainer ruling 2026-10-24) need network; offline, Wetter shows only a forecast held
+  in memory, with its age. Everything else keeps working offline. No new runtime network
+  dependency.
 
 ## 3. Design decisions
 
@@ -174,8 +178,13 @@ wait). Phases are ordered so each ships value and de-risks the next.
 ## 6. Non-goals
 
 - No change to the visual identity, palette, typography, or map semantics (§2).
-- No change to routing, sampling, persistence, offline behavior, or the worker protocol.
+- No change to routing, sampling, persistence, offline behavior, or the worker protocol
+  under #64. #1854 (maintainer rulings 2026-10-24 and 2026-10-28) changes sampling and
+  offline behavior for the Wetter tab; see the amendments in §2.
 - No new IA (tabs stay Plan / Routes / Live); no map-first / floating-panel restructure.
+  Amended: the app has since added a Boat tab, and #1854 (maintainer ruling 2026-10-24)
+  adds Weather ("Wetter") second, so the tabs are Plan / Weather / Routes / Live / Boat;
+  Plan stays first and the default.
 - No new runtime network dependency; no backend.
 
 ## 7. Open questions

@@ -1,8 +1,8 @@
 # Next passage from a planned route — design (#19 slice 1)
 
 Status: maintainer-approved scope decisions 2026-10-17 (v0.55.0 cycle). Umbrella: #19 (multi-day
-trips). This addendum is slice 1 only; the trip store, timeline and arrival windows are a
-separate v0.56.0 issue.
+trips). This addendum is slice 1 only; the trip store, timeline and arrival windows are #1708,
+designed in `2026-10-28-multi-day-trips-design.md`.
 
 ## Intent
 
@@ -66,7 +66,8 @@ names the source route and that fetch time.
 3. **Focus.** The destination harbour picker gets focus. From the Routes tab the action switches to
    the Plan tab first. „Route planen" stays disabled with the existing missing-destination reason
    until a destination is picked.
-4. **Seed state.** Ephemeral `{ sourcePlanId, sourceName, windGrid }`. Cleared when the start is
+4. **Seed state.** Ephemeral `{ sourcePlanId, origin }`. The trips work (#1708) adds `departureMs`,
+   the seeded departure, compared at save time to detect a hand edit. Cleared when the start is
    edited or a different plan becomes active. The existing "result is stale" chip keeps its current
    rule (it fires once a destination is picked).
 5. **Offline.** The plan action is enabled offline only when seed state is set, the start is
@@ -82,13 +83,19 @@ names the source route and that fetch time.
 ## Non-goals
 
 Trip record linking passages, layover setting, timeline, arrival windows, undo, a saved-plans-list
-row action, a Live-view entry point, chaining across more than one stored forecast.
+row action, a Live-view entry point, chaining across more than one stored forecast. The trip
+record, layover, timeline, arrival windows and the saved-plans-list row action are now covered by
+`2026-10-28-multi-day-trips-design.md` (#1708); undo and the Live-view entry point are split to
+their own issues there.
 
 ## Builder's calls
 
 - Helper names and placement (e.g. a next-passage departure helper beside `departureSeedMs` in
   `lib/planForm.ts`, `lib/trip.ts` if a home for seed logic is wanted).
-- Which rig's ETA seeds the departure: the displayed rig, falling back to the other.
+- Not a builder's call since the maintainer ruling 2026-10-28 on #1708: with the trips work, the
+  departure is seeded from the recommended rig's ETA (`recommendedResult`), matching the trip
+  layover rule (`2026-10-28-multi-day-trips-design.md`). Slice 1 as shipped uses the displayed
+  rig, falling back to the other.
 - Exact grid-reach check and where it lives, as long as it reads the grid's own times.
 - Tests: unit for the departure rule (incl. DST and after-midnight ETA), the seed, the offline
   gate both ways; e2e at `tabletPortrait` and `desktopHd` for seed + focus, and an offline case
