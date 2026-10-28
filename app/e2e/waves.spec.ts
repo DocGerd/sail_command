@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import {
   STANDARD_VIEWPORTS,
   localDatetimeValue,
@@ -11,14 +11,16 @@ import {
 // by the gitignored `wave-bands.json` fixture (scripts/wave-fixture.mjs, built
 // by `pree2e`): Hs cycles through all five WMO bands by latitude row, five
 // points are all-null, and every series is constant over time. Waits on map
-// state poll VALUES (feature counts, band sets, layer ids) and re-sample the
-// map on every call.
+// state poll VALUES (feature counts, band sets, layer ids, raster pixels) and
+// re-sample the map on every call. #1854: the fill is a canvas raster, which
+// queryRenderedFeatures cannot see, so shading is read off the source canvas
+// and the composited map; bands come from the markers.
 
 const WIND = 'test-fixtures/wind-sw12.json';
 const WAVE = 'test-fixtures/wave-bands.json';
 const FILL = 'sc-waves-fill';
 const ARROWS = 'sc-waves-arrows';
-const EDGE = 'sc-waves-edge';
+const RASTER = 'sc-waves-raster';
 // wave-fixture.mjs's E2E_NULL_POINT [1, 20]: an all-null point that, with its
 // four neighbours, is water in the mask (waveFixtureMask.test.ts), so land
 // culling cannot stand in for its null-ness.
@@ -32,11 +34,12 @@ interface ScTestMap {
     geometry: unknown,
     opts: { layers: string[] },
   ): Array<{ properties: Record<string, unknown> }>;
-  project(lngLat: [number, number]): unknown;
+  project(lngLat: [number, number]): { x: number; y: number };
   jumpTo(opts: { center: [number, number]; zoom: number }): void;
   getLayer(id: string): unknown;
   getLayoutProperty(id: string, name: string): unknown;
   getStyle(): { layers: Array<{ id: string }> };
+  getSource(id: string): unknown;
 }
 type MapWindow = { __scMap?: ScTestMap };
 
@@ -87,7 +90,7 @@ function featureCount(page: Page, layer: string): Promise<number> {
   }, layer);
 }
 
-/** Distinct `band` values of the fill features currently rendered. */
+/** Distinct `band` values of the sea-state markers currently rendered. */
 function renderedBands(page: Page): Promise<string[]> {
   return page.evaluate((id) => {
     const map = (window as MapWindow).__scMap;
@@ -97,23 +100,69 @@ function renderedBands(page: Page): Promise<string[]> {
       return typeof b === 'string' ? b : '?';
     });
     return [...new Set(bands)].sort();
-  }, FILL);
+  }, ARROWS);
 }
 
-/** Fill features under the pixel of each lng/lat. */
-function fillHitsAt(page: Page, points: Record<string, [number, number]>) {
+/** Markers within a few pixels of each lng/lat, and the raster's alpha there. */
+function cellsAt(page: Page, points: Record<string, [number, number]>) {
   return page.evaluate(
-    ([id, pts]) => {
+    ([arrows, raster, pts]) => {
       const map = (window as MapWindow).__scMap;
-      const out: Record<string, number> = {};
-      for (const [name, lngLat] of Object.entries(pts)) {
-        out[name] = map
-          ? map.queryRenderedFeatures(map.project(lngLat), { layers: [id] }).length
-          : -1;
+      const src = map?.getSource(raster) as
+        { getCanvas(): HTMLCanvasElement; coordinates: [number, number][] } | undefined;
+      const out: Record<string, { markers: number; alpha: number }> = {};
+      if (!map || !src) return out;
+      const canvas = src.getCanvas();
+      const ctx = canvas.getContext('2d')!;
+      const [[west, north], [east], , [, south]] = src.coordinates;
+      const my = (lat: number) => {
+        const s = Math.sin((lat * Math.PI) / 180);
+        return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+      };
+      for (const [name, [lng, lat]] of Object.entries(pts)) {
+        const { x, y } = map.project([lng, lat]);
+        const markers = map.queryRenderedFeatures(
+          [
+            [x - 4, y - 4],
+            [x + 4, y + 4],
+          ],
+          { layers: [arrows] },
+        ).length;
+        const px = Math.floor(((lng - west!) / (east! - west!)) * canvas.width);
+        const py = Math.floor(((my(lat) - my(north!)) / (my(south!) - my(north!))) * canvas.height);
+        out[name] = { markers, alpha: ctx.getImageData(px, py, 1, 1).data[3]! };
       }
       return out;
     },
-    [FILL, points] as const,
+    [ARROWS, RASTER, points] as const,
+  );
+}
+
+// Polls until two consecutive map-canvas screenshots are byte-equal.
+async function settledCanvas(page: Page, canvas: Locator): Promise<Buffer> {
+  let prev = await canvas.screenshot();
+  for (let i = 0; i < 60; i++) {
+    await page.waitForTimeout(250);
+    const next = await canvas.screenshot();
+    if (next.equals(prev)) return next;
+    prev = next;
+  }
+  return prev;
+}
+
+/** RGBA at each screen point of a PNG screenshot, decoded in-page (img-src allows data:). */
+function pixelsAt(page: Page, shot: Buffer, points: Array<{ x: number; y: number }>) {
+  return page.evaluate(
+    async ([b64, pts]) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
+      const g = c.getContext('2d')!;
+      g.drawImage(img, 0, 0);
+      return pts.map(({ x, y }) => Array.from(g.getImageData(x, y, 1, 1).data).join());
+    },
+    [shot.toString('base64'), points] as const,
   );
 }
 
@@ -152,16 +201,16 @@ test.describe('sea-state overlay (#1699)', () => {
 
       await expect.poll(() => layerVisibility(page, FILL), { timeout: 30_000 }).toBe('visible');
       await expect.poll(() => layerVisibility(page, ARROWS)).toBe('visible');
-      await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       // Centre the map on the null point: its four water neighbours (S is a
-      // real calm cell) each have a feature, the null point itself has none.
+      // real calm cell) are shaded and carry a marker; the null point has neither.
       await page.evaluate(
         ({ lng, lat }) => (window as MapWindow).__scMap?.jumpTo({ center: [lng, lat], zoom: 9 }),
         NULL_CELL,
       );
-      const hits = () =>
-        fillHitsAt(page, {
+      const cells = () =>
+        cellsAt(page, {
           nullCell: [NULL_CELL.lng, NULL_CELL.lat],
           north: [NULL_CELL.lng, NULL_CELL.lat + STEP_DEG],
           south: [NULL_CELL.lng, NULL_CELL.lat - STEP_DEG],
@@ -171,15 +220,16 @@ test.describe('sea-state overlay (#1699)', () => {
       await expect
         .poll(
           async () => {
-            const h = await hits();
-            return { ...h, neighbours: [h.north, h.south, h.east, h.west].every((n) => n > 0) };
+            const c = await cells();
+            const nb = [c.north, c.south, c.east, c.west];
+            return {
+              nullCell: c.nullCell,
+              neighbours: nb.every((n) => n !== undefined && n.markers > 0 && n.alpha === 255),
+            };
           },
           { timeout: 30_000 },
         )
-        .toMatchObject({ nullCell: 0, neighbours: true });
-      // Arrows checked here, not at the route fit: land culling leaves that
-      // close-in view with no lattice point, so no arrow anchor, in it.
-      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
+        .toEqual({ nullCell: { markers: 0, alpha: 0 }, neighbours: true });
 
       expect(openMeteoRequests, 'fixtures must keep the run off the live APIs').toEqual([]);
     } finally {
@@ -195,13 +245,11 @@ test.describe('sea-state overlay (#1699)', () => {
       const toggle = waveToggle(page);
       await expect(toggle).toBeEnabled();
       await expect(toggle).toBeChecked();
-      await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       await toggle.uncheck();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('none');
-      await expect.poll(() => layerVisibility(page, EDGE)).toBe('none');
       await expect.poll(() => layerVisibility(page, ARROWS)).toBe('none');
-      await expect.poll(() => featureCount(page, FILL)).toBe(0);
       await expect.poll(() => featureCount(page, ARROWS)).toBe(0);
 
       // The reload restores the saved plan (with its stored wave grid), so
@@ -218,7 +266,124 @@ test.describe('sea-state overlay (#1699)', () => {
 
       await waveToggle(page).check();
       await expect.poll(() => layerVisibility(page, FILL)).toBe('visible');
-      await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
+    } finally {
+      server.kill();
+    }
+  });
+
+  // #1854 AC-3: in-cell pixel pairs where a shaded raster pixel sits beside an
+  // unshaded one whose mask cell is land in the SAME lattice cell (so the old
+  // cell rectangle tinted it). Toggling sea state must change the water pixel
+  // on screen and leave the land pixel byte-identical.
+  test('shades water only: a toggle changes coastal water, never the land beside it', async ({
+    page,
+  }) => {
+    const server = await startPreview(page);
+    try {
+      await planRoute(page, server, `windFixture=${WIND}&waveFixture=${WAVE}`);
+      await openControls(page);
+      await page.getByRole('checkbox', { name: 'Windpfeile anzeigen', exact: true }).uncheck();
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
+
+      const pairs = await page.evaluate(async (raster) => {
+        const map = (window as MapWindow).__scMap!;
+        const src = map.getSource(raster) as {
+          getCanvas(): HTMLCanvasElement;
+          coordinates: [number, number][];
+        };
+        const canvas = src.getCanvas();
+        const { width: W, height: H } = canvas;
+        const alpha = canvas.getContext('2d')!.getImageData(0, 0, W, H).data;
+        const meta = (await (await fetch('data/mask.meta.json')).json()) as {
+          south: number;
+          north: number;
+          west: number;
+          east: number;
+          rows: number;
+          cols: number;
+        };
+        const bytes = new Uint8Array(await (await fetch('data/mask.bin')).arrayBuffer());
+        const [[west, north], [east], , [, south]] = src.coordinates;
+        const my = (lat: number) => {
+          const s = Math.sin((lat * Math.PI) / 180);
+          return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+        };
+        const yN = my(north!);
+        const span = my(south!) - yN;
+        const latAt = (y: number) =>
+          (360 / Math.PI) * Math.atan(Math.exp((0.5 - y) * 2 * Math.PI)) - 90;
+        const centre = (i: number, j: number) => ({
+          lat: latAt(yN + ((i + 0.5) / H) * span),
+          lon: west! + ((j + 0.5) / W) * (east! - west!),
+        });
+        const land = (p: { lat: number; lon: number }) => {
+          const r = Math.floor(((p.lat - meta.south) / (meta.north - meta.south)) * meta.rows);
+          const c = Math.floor(((p.lon - meta.west) / (meta.east - meta.west)) * meta.cols);
+          return bytes[r * meta.cols + c] === 0;
+        };
+        const cell = (p: { lat: number; lon: number }) =>
+          `${Math.round((p.lat - 54.3) * 10)},${Math.round((p.lon - 9.4) * 10)}`;
+        const out: Array<{
+          water: { lat: number; lon: number };
+          land: { lat: number; lon: number };
+        }> = [];
+        for (let i = 0; i < H; i++)
+          for (let j = 1; j < W - 1; j++) {
+            if (alpha[(i * W + j) * 4 + 3] !== 255) continue;
+            for (const dj of [-1, 1]) {
+              if (alpha[(i * W + j + dj) * 4 + 3] !== 0) continue;
+              const w = centre(i, j);
+              const l = centre(i, j + dj);
+              if (land(l) && !land(w) && cell(l) === cell(w)) out.push({ water: w, land: l });
+            }
+          }
+        return out;
+      }, RASTER);
+      expect(pairs.length, 'coastal pairs on the real mask').toBeGreaterThan(20);
+
+      // Zoom in on one pair so a raster pixel spans many screen pixels.
+      const anchor = pairs[Math.floor(pairs.length / 2)]!;
+      await page.evaluate(
+        ({ lon, lat }) => (window as MapWindow).__scMap?.jumpTo({ center: [lon, lat], zoom: 12 }),
+        anchor.water,
+      );
+      const canvas = page.locator('.maplibregl-canvas');
+      const box = (await canvas.boundingBox())!;
+      const on = await settledCanvas(page, canvas);
+      const screen = await page.evaluate((ps) => {
+        const map = (window as MapWindow).__scMap!;
+        const at = (p: { lat: number; lon: number }) => {
+          const { x, y } = map.project([p.lon, p.lat]);
+          return { x: Math.round(x), y: Math.round(y) };
+        };
+        return ps.map((p) => ({ water: at(p.water), land: at(p.land) }));
+      }, pairs);
+      const inView = screen.filter((s) =>
+        [s.water, s.land].every(
+          (q) => q.x > 20 && q.y > 20 && q.x < box.width - 20 && q.y < box.height - 20,
+        ),
+      );
+      expect(inView.length, 'pairs in the zoomed view').toBeGreaterThan(0);
+
+      await waveToggle(page).uncheck();
+      await expect.poll(() => layerVisibility(page, FILL)).toBe('none');
+      const off = await settledCanvas(page, canvas);
+
+      const water = inView.map((s) => s.water);
+      const landPts = inView.map((s) => s.land);
+      const [wOn, wOff, lOn, lOff] = await Promise.all([
+        pixelsAt(page, on, water),
+        pixelsAt(page, off, water),
+        pixelsAt(page, on, landPts),
+        pixelsAt(page, off, landPts),
+      ]);
+      const landChanged = landPts.filter((_, i) => lOn[i] !== lOff[i]);
+      const waterChanged = water.filter((_, i) => wOn[i] !== wOff[i]).length;
+      expect(landChanged, 'land pixels tinted by sea state').toEqual([]);
+      expect(waterChanged * 2, `water pixels shaded (of ${water.length})`).toBeGreaterThanOrEqual(
+        water.length,
+      );
     } finally {
       server.kill();
     }
@@ -248,11 +413,11 @@ test.describe('sea-state overlay (#1699)', () => {
             );
             const at = (id: string) => ids.indexOf(id);
             const problems: string[] = [];
-            for (const id of [FILL, EDGE, ARROWS, ...required]) {
+            for (const id of [FILL, ARROWS, ...required]) {
               if (at(id) < 0) problems.push(`missing ${id}`);
             }
-            if (at(FILL) >= at(EDGE)) problems.push(`${FILL} not below ${EDGE}`);
-            if (at(EDGE) >= at(ARROWS)) problems.push(`${EDGE} not below ${ARROWS}`);
+            if (at('sc-waves-edge') >= 0) problems.push('sc-waves-edge still present');
+            if (at(FILL) >= at(ARROWS)) problems.push(`${FILL} not below ${ARROWS}`);
             for (const id of below) {
               if (at(id) >= 0 && at(id) > at(FILL)) problems.push(`${id} above ${FILL}`);
             }
@@ -343,7 +508,7 @@ test.describe('sea-state overlay follows the slider (#1699)', () => {
         ({ lng, lat }) => (window as MapWindow).__scMap?.jumpTo({ center: [lng, lat], zoom: 8 }),
         NULL_CELL,
       );
-      await expect.poll(() => featureCount(page, FILL), { timeout: 30_000 }).toBeGreaterThan(0);
+      await expect.poll(() => featureCount(page, ARROWS), { timeout: 30_000 }).toBeGreaterThan(0);
 
       const slider = page.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
       await expect(slider).toBeVisible();
