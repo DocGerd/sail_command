@@ -456,8 +456,8 @@ making design-level decisions; do not silently deviate.
   itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
   30805575220: 10:26:31Z→~10:30:26Z). Those two runs stand as past events,
   but that range is SUPERSEDED for planning — the #605 bullet under
-  PWA/E2E/deploy re-measured a wider one, and that is what `ci.yml`'s cap was
-  sized from; read the figure there rather than restating it here. The older
+  PWA/E2E/deploy re-measured a wider one, and that sized #605's original 30-min
+  cap (`ci.yml`'s current shard cap is sized in its own comment); read the figure there rather than restating it here. The older
   ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
 - **Since #1286 the required `app` and `e2e` checks are FAN-IN jobs** that
@@ -3361,7 +3361,8 @@ making design-level decisions; do not silently deviate.
   glyph range"`, from that method's literal `warnOnce(...)` call.
   Separately, `_getAndCacheGlyphsPromise` takes a COMPLETELY silent
   local-font path — no fetch, no warning — through its `if (!this.url || …)`
-  block (6.15.0 adds an `isCluster(id)` term to that condition), e.g.
+  block (by 6.15.0 that condition also tests `isCluster(id)` and
+  `codePointIsInComplexShapingScript(codePoint)`), e.g.
   whenever the style's `glyphs` URL is falsy, and `glyphManager.setURL()` is
   fed from the style's `glyphs` field at two sites in `style.ts` — `_load`,
   which is what a `map.setStyle()` reaches and therefore what
@@ -3588,8 +3589,8 @@ making design-level decisions; do not silently deviate.
 - **A guard can cover the A11Y surface while the VISUAL surface is the gap.**
   #846's `ViaMarkers` guard asserted the marker's `aria-label` and
   mutation-checked correctly (reverting `p.name ??` reds it) — but
-  `ViaMarkers.tsx` set ONLY `aria-label` until #947 added a visible label:
-  no text content, no `title`. A
+  `ViaMarkers.tsx` set ONLY `aria-label` (no text content, no `title`)
+  until #947 added a visible label. A
   screen-reader user heard the name; a sighted user saw an unlabelled dot.
   Every gate passed. Found by maintainer UAT (#947, 2026-09-04), and it had
   already turned a CHANGELOG entry into an over-claim — corrected hours before
@@ -4102,7 +4103,8 @@ making design-level decisions; do not silently deviate.
   premise this session (#649). Note the bare form closes even after a
   conventional-commit prefix, unlike the measured bracketed `fix(#54):`.
 - **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
-  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true). Every `flagShallowLegs` call site in `planRoute.ts` sits
+  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true; call sites re-read
+  2026-10-28). Every `flagShallowLegs` call site in `planRoute.ts` sits
   inside `if (relaxed !== null)` or, in the pass-2 salvage replay, behind
   `tier.usedDepthM === null ? null : …`; every non-relaxed success returns
   `assemble(tierN, null)`. So the banner,
