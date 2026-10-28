@@ -2004,8 +2004,12 @@ making design-level decisions; do not silently deviate.
   empty file, so §5a's `git tag -v` before the push is the test. That cut
   skipped §5a–5d, tracked the tag in the shipped milestone (#1848) and left
   that milestone open until the maintainer tags; its back-merge and learnings
-  PR still ran. Production serves the release meanwhile; #1848 lists what
-  waits on the tag.
+  PR still ran. v0.60.0 did the same (#1888); both were tagged locally on
+  2026-10-28. Late-tagging lessons: tag an older release by its explicit merge
+  SHA, since §5a's `main == MERGE_SHA` assert holds only for the newest; push
+  oldest first and wait for its `release.yml` run, as each Release is created
+  `--latest`; and every late tag run hits the #398 no-op (its commit was
+  already deployed), so a later `develop` push is the remedy.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
