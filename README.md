@@ -227,8 +227,8 @@ data; the code license is covered in the [License](#license) section below.
   destination, and a plan that fails as unreachable against one names that
   same limit in place of the generic "the search could not find a way to
   the destination" message.
-- Plans through Alssund pass under the Kong Christian X bascule bridge at
-  Sønderborg. The app does not model the bridge's opening times
+- Plans through Alssund pass under the bascule bridge Kong Christian X's
+  Bro at Sønderborg. The app does not model the bridge's opening times
   or closures. In the planner, only Sønderborg's approach note mentions them, and a plan
   that passes the bridge on the way to another harbour does not show it
   ([#1881](https://github.com/DocGerd/sail_command/issues/1881)). Plans
