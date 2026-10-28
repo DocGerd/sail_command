@@ -802,6 +802,9 @@ export const en = {
     'This route passes closer than {dist} m to a cardinal or isolated-danger mark. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check it against an official chart.',
   'route.seamarks.proximity.plural':
     'This route passes closer than {dist} m to {count} cardinal or isolated-danger marks. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check them against an official chart.',
+  'route.bridge.notice':
+    'This route passes {name}, a bascule bridge that opens at listed times. Outside those times an opening may be possible on request, and the bridge may be closed. SailCommand does not model openings or closures — check the current times before sailing.',
+  'route.bridge.link': 'Bridge opening times (Danske Havnelods)',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',

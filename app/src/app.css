@@ -3457,6 +3457,21 @@ select {
   font-weight: 400;
 }
 
+/* #1881: the opening-bridge advisory. Same quiet shape and info colour as
+   .seamark-proximity-notice; a flat single class, no modifier. */
+.opening-bridge-notice {
+  margin: 0;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-banner-info-fg);
+  color: var(--sc-banner-info-fg);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.opening-bridge-notice a {
+  color: inherit;
+}
+
 /* #1398a: the affirmative "no shallow water flagged" line — a THIRD sibling
    of .marginal-depth-notice (a hazard, --sc-depth-warning-*) and
    .seamark-proximity-notice above (an advisory, --sc-banner-info-fg): this

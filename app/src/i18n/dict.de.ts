@@ -724,6 +724,9 @@ export const de = {
     'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.seamarks.proximity.plural':
     'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+  'route.bridge.notice':
+    'Diese Route passiert {name}, eine Klappbrücke, die zu bestimmten Zeiten öffnet. Außerhalb dieser Zeiten kann eine Öffnung auf Anfrage möglich sein, und die Brücke kann gesperrt sein. SailCommand bildet Öffnungen und Sperrungen nicht ab — die aktuellen Zeiten vor der Fahrt prüfen.',
+  'route.bridge.link': 'Öffnungszeiten der Brücke (Danske Havnelods)',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
