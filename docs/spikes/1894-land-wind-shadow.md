@@ -380,25 +380,32 @@ single-trip −14.7 %).
 A fourth track arrived after the decision question was first put, and no
 further tracks are available. It ran through the unchanged §0 pipeline. Its
 wind is a second `past_days` fetch from the same endpoint, made after the
-trip, so its hours are past hours there too. Where both fetches cover an
-hour (12,576 point-hours over the seven wind variants) they agree exactly,
-and the first three trips' samples are identical in all 19 sample sets.
+trip, so its hours are past hours there too. The day before it, past in
+both fetches, agrees exactly over 12,576 point-hours (the seven fetched
+wind variants, ICON-D2 control lattice included); the first fetch's
+forecast for the trip's day, which the merge drops, does not. The first
+three trips' samples are identical in all 19 sample sets.
 
-- Kept: 1,505 of 9,610 fixes in 5 legs (strict: 729 in 3 legs). The
-  harbour/start/end rule removes 5,898.
-- Every kept fix has upwind fetch 0.67–1.63 nm (bins C and D), so the trip
-  adds to neither group: `Δ`, its interval and the per-trip values are
-  unchanged in every row and column of §1.3, and three trips still hold
-  both groups. The verdict stands, and the five trips §0.5 requires cannot
+- Kept (primary set): 1,505 of 9,610 fixes in 5 legs; the
+  harbour/start/end rule removes 5,898. Strict: 729 fixes in 3 legs.
+- Every kept fix has upwind fetch 0.67–1.63 nm under the app wind, and
+  falls in bins C and D under every wind variant, so the trip adds to
+  neither group. `Δ`, its interval and the per-trip values are unchanged
+  in every row and column of §1.3's `Δ` table, and three trips still hold
+  both groups. In the bin curve only C and D move (0.675, 15 legs; 0.692,
+  20 legs). The verdict stands, and the five trips §0.5 requires cannot
   come from these tracks (§4).
 - Polar check (§1.7): the trip has no open-water fix, so nothing changes.
-- ICON-D2 equals `icon_seamless` at the trip's lattice points over the
-  hours it reads (30 of 30 point-hours), as for the first three (§1.3).
-- §0.5's placebo clause now fails on downwind. The trip adds two
-  downwind-short leg-bins (`R` 0.48 and 0.69) and no downwind-open one,
-  which lifts the downwind `Δ` to 0.0741 against half the upwind `Δ`,
-  0.0738, with interval [0.041, 0.295] (strict: 0.0769 against 0.0715,
-  [0.045, 0.532]). With three trips it passed (0.067, §1.4).
+- ICON-D2 equals `icon_seamless` at the 10 lattice points the track reads,
+  over the 3 hourly steps its kept fixes bracket (30 of 30 point-hours), as
+  for the first three trips (§1.3).
+- §0.5's placebo clause now fails on downwind, by 0.0003. The trip adds
+  two downwind-short leg-bins (primary set: `R` 0.47 and 0.69) and no
+  downwind-open one, which lifts the downwind `Δ` to 0.0741 against half
+  the upwind `Δ`, 0.0738, with interval [0.041, 0.295] (strict: 0.0769
+  against 0.0715, [0.045, 0.532]). With three trips it passed (0.067,
+  §1.4). The ± 90° placebos still pass: +90° is 0.051, and −90° keeps
+  0.115 with its interval including 0 (117 undefined draws, was 73).
 - Between legs at land within 0.25 nm, land-downwind legs average 0.727
   (8 legs, 4 trips) against 0.607 for land-upwind legs (unchanged). At
   0.25–0.5 nm the gap becomes +0.005 (was −0.013).
