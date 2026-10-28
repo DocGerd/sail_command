@@ -2518,7 +2518,11 @@ describe('#1776 bounded start-up and cancel during it', () => {
     return { save: vi.fn<(plan: Plan) => Promise<void>>(() => promise), resolve, reject };
   }
 
-  function renderSlowSave(save: (plan: Plan) => Promise<void>, w = fakeWorker()) {
+  function renderSlowSave(
+    save: (plan: Plan) => Promise<void>,
+    w = fakeWorker(),
+    onLateAdopted?: (plan: Plan) => void,
+  ) {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
     const pinRegions = vi.fn();
     const hook = renderHook(
@@ -2528,6 +2532,7 @@ describe('#1776 bounded start-up and cancel during it', () => {
           fetchWave: fetchWave(),
           pinRegions,
           save,
+          ...(onLateAdopted ? { onLateAdopted } : {}),
           makeClient: () => new RoutingClient(() => w as unknown as Worker),
         }),
         active: useActivePlan(),
@@ -2579,6 +2584,58 @@ describe('#1776 bounded start-up and cancel during it', () => {
     expect(result.current.active.plan?.id).toBe(saved?.id);
     expect(pinRegions).toHaveBeenCalledTimes(1);
     expect(result.current.flow.planning).toEqual({ phase: 'idle' });
+  });
+
+  it('#1867: onLateAdopted fires once with the plan a late save adopts, never before it lands', async () => {
+    const d = deferredSave();
+    const onLateAdopted = vi.fn();
+    const { result, w } = renderSlowSave(d.save, fakeWorker(), onLateAdopted);
+    await runPastSaveTimeout(result, w, 'Late save');
+    expect(onLateAdopted).not.toHaveBeenCalled();
+
+    await act(async () => {
+      d.resolve();
+      await tick();
+    });
+    expect(onLateAdopted).toHaveBeenCalledTimes(1);
+    expect(onLateAdopted.mock.calls[0]![0]).toBe(result.current.active.plan);
+  });
+
+  it('#1867: onLateAdopted does not fire when the user opened another plan after the timeout', async () => {
+    const d = deferredSave();
+    const onLateAdopted = vi.fn();
+    const { result, w } = renderSlowSave(d.save, fakeWorker(), onLateAdopted);
+    await runPastSaveTimeout(result, w, 'Late save');
+    act(() =>
+      result.current.active.setPlan({ ...d.save.mock.calls[0]![0], id: 'opened-meanwhile' }),
+    );
+
+    await act(async () => {
+      d.resolve();
+      await tick();
+    });
+    expect(onLateAdopted).not.toHaveBeenCalled();
+  });
+
+  it('#1867: onLateAdopted does not fire for a late save whose run a newer run superseded', async () => {
+    const first = deferredSave();
+    const save = vi
+      .fn<(plan: Plan) => Promise<void>>()
+      .mockImplementationOnce(first.save)
+      .mockResolvedValue(undefined);
+    const onLateAdopted = vi.fn();
+    const { result, w } = renderSlowSave(save, fakeWorker(), onLateAdopted);
+    await runPastSaveTimeout(result, w, 'Late save');
+    await act(async () => {
+      void result.current.flow.run(REQ, 'Newer');
+      await tick();
+    });
+
+    await act(async () => {
+      first.resolve();
+      await tick();
+    });
+    expect(onLateAdopted).not.toHaveBeenCalled();
   });
 
   it('a save rejected after the timeout settles to error.planSaveFailed', async () => {
