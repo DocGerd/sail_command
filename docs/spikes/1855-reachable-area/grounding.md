@@ -1,6 +1,6 @@
 # #1855 reachable area — spike grounding
 
-Base: develop `32f67af0`. Code anchors are `file:symbol`, paths under `app/src/` unless stated. Probe source, config and `results.json` are in `/tmp/s1855/probe/`.
+Base: develop `32f67af0`. Code anchors are `file:symbol`, paths under `app/src/` unless stated. Probe source, config and `results.json` are in `docs/spikes/1855-reachable-area/`.
 
 ## 1. The issue
 
@@ -52,12 +52,12 @@ Base: develop `32f67af0`. Code anchors are `file:symbol`, paths under `app/src/`
 ## 4. Probe measurements
 
 ### Method
-- **Harness.** `reach.probe.test.ts` with its own `vitest.config.ts` (root = its directory, `environment: 'node'`, no setup file), run from a detached worktree at `32f67af0` with a `node_modules` symlink to `app/node_modules`. Artefacts: `/tmp/s1855/probe/{reach.probe.test.ts,vitest.config.ts,results.json,run1.log,run2.log}`.
+- **Harness.** `reach.probe.test.ts` with its own `vitest.config.ts` (root = its directory, `environment: 'node'`, no setup file), run from a detached worktree at `32f67af0` with a `node_modules` symlink to `app/node_modules`. Artefacts: `docs/spikes/1855-reachable-area/{reach.probe.test.ts,vitest.config.ts,results.json}`.
 - **`reach()`** re-implements `solve()`'s ring loop without the destination terms, reusing the exports listed in §3. It keeps `dtS` at 600 s, drops the direct-TWA candidate (it passes `+beat` as `directTwa`, which `sailCandidates` dedupes), and treats the duration cap as the horizon (children past it are dropped; the loop ends when the earliest frontier node cannot take one more step).
 - **Fidelity control.** With a `towards` point (Marstal) restoring the direct-TWA candidate and the distance tie-break, `reach()` gave frontier sizes identical to `solve()`'s `onProgress` over 12 rings from Flensburg (14, 72, 213, 692, 1026, 1121, 1104, 1156, 1113, 1012, 1005, 1255). The destination-free form differs by a few nodes per ring (14, 71, 221, 708, …).
 - **Inputs.** Committed `mask.bin`/`mask.meta.json`, `harbors.json`, Salona 45 genoa/fock polars; `DEFAULT_SETTINGS` (gate 3.0 m, comfort depth 5.0 m, motor on, 6.5 kn) unless noted; uniform wind `uniformWindGrid(tws, 225°, { hours: 48 })` (the sweep `breeze` aperture at 12 kn); departure = grid start; origin = harbour `snap` passed through `snapToNavigable(p, 3.0)`.
 - **Area unit.** A coarse prune cell (0.002° x 0.003°, board-agnostic) holds the minimum true `tMs` of any surviving frontier node in it. "Area" sums those cells' areas; "sector reach" is the furthest such cell per 10° bearing from the origin.
-- **Timing basis.** One wall clock per configuration, one thread, this WSL machine (32 logical cores), `/proc/loadavg` 2.1–2.4 during the runs, with another session's solver test running concurrently. These are not tablet figures.
+- **Timing basis.** One wall clock per configuration, one thread, this WSL machine (32 logical cores), per-run `/proc/loadavg` is in `results.json`, with another session's solver test running concurrently. These are not tablet figures.
 
 ### M1 — cost of a 6 h and 10 h front (12 kn, 225°, motor on)
 
