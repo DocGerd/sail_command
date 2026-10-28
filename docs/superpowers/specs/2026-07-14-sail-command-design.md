@@ -71,7 +71,8 @@ app runtime.
 
 - **Map view** — MapLibre GL + PMTiles protocol. Route overlay: legs colored
   by type (sail port/starboard, motor), maneuver markers, wind barbs overlay
-  (from the plan's stored wind grid), boat position marker.
+  (from the plan's stored wind grid), boat position marker. On the Wetter tab
+  (#1854, maintainer ruling 2026-10-24) the barbs show the Wetter forecast at the card's hour.
   *Addendum (2026-07-16, user-requested — #38/#39):* curated harbor markers
   (always visible, click-to-pick feeds the planner's origin/destination with
   the curated snap point) and a user-toggleable depth overlay rendered

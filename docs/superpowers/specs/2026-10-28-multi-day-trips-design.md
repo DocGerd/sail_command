@@ -83,7 +83,7 @@ One record per trip in the `trips` store, keyed by `id`.
 - `layover` — `{ earliestDepartureHour, minRestH }`, defaults 10 and 0 (D4).
 - `stops` — one entry per stop, index-aligned: stop 0 is the first passage's start, stop *i*
   (*i* ≥ 1) is passage *i*−1's destination. Each entry may hold:
-  - `fixedDepartureMs` — the D4 override; meaningless on the last stop, and ignored on stop 0 (the first passage re-plans from its own stored departure).
+  - `fixedDepartureMs` — the D4 override; meaningless on the last stop, and ignored on stop 0 (the first passage re-plans from its own stored departure). Limiting D4's "any stop" this way is derived, not ruled.
   - `arrivalWindow` — `{ startMs, endMs }` (D5); meaningless on stop 0.
 - A `by-passageId` multiEntry index on `passageIds` answers "which trip holds this plan".
 
@@ -92,7 +92,8 @@ window status) is read from the member plans at display time.
 
 ## Creating, extending, detaching (D3)
 
-1. **Hook.** Slice 1's seed state is ephemeral `{ sourcePlanId, origin }` and is never persisted.
+1. **Hook.** Slice 1's seed state is ephemeral `{ sourcePlanId, origin }` and is never persisted;
+   this slice adds the seeded `departureMs` (step 6).
    A run started while the seed is active
    (`activeNextPassageSeed`: source active, start unmoved) carries `sourcePlanId` and the seeded departure to `run()` (new `RunOptions` fields), and the trip write happens at `run()`'s save step. A seeded plan whose
    start was moved before saving is saved detached; v1 has no manual attach (maintainer ruling 2026-10-28 on #1708).
@@ -105,7 +106,7 @@ window status) is read from the member plans at display time.
    default layover, no per-stop data.
 4. **Source is a trip's last passage.** The new plan is appended to that trip.
 5. **Source is a non-last passage.** A new trip is started holding only the new plan (maintainer ruling 2026-10-28 on #1708).
-6. **Hand-edited departure.** The seed state also records the departure it seeded. When the saved departure differs from it, it is stored as the `fixedDepartureMs` of the stop the new passage leaves (maintainer ruling 2026-10-28 on #1708).
+6. **Hand-edited departure.** The seed state also records the departure it seeded. When the saved departure differs from it, it is stored as the `fixedDepartureMs` of the stop the new passage leaves (maintainer ruling 2026-10-28 on #1708). When step 5 started the trip, the new passage leaves stop 0 and nothing is stored: its departure is the plan's own (see `stops` above).
 7. **Detach.** Removes the plan from its trip; the plan itself is untouched. Detaching a first or
    last passage shortens the trip. Detaching a middle passage splits the trip in two (maintainer ruling 2026-10-28 on #1708): the passages before it and the passages after it, each keeping the layover rule and its own stops' data. A trip left with zero passages is deleted (same ruling).
 8. **Delete.** `deletePlan` widens its transaction to `['plans', 'pins', 'trips']` and applies the

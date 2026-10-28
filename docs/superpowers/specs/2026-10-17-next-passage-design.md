@@ -66,8 +66,8 @@ names the source route and that fetch time.
 3. **Focus.** The destination harbour picker gets focus. From the Routes tab the action switches to
    the Plan tab first. „Route planen" stays disabled with the existing missing-destination reason
    until a destination is picked.
-4. **Seed state.** Ephemeral `{ sourcePlanId, origin, departureMs }`; `departureMs` is the seeded
-   departure, compared at save time to detect a hand edit (#1708). Cleared when the start is
+4. **Seed state.** Ephemeral `{ sourcePlanId, origin }`. The trips work (#1708) adds `departureMs`,
+   the seeded departure, compared at save time to detect a hand edit. Cleared when the start is
    edited or a different plan becomes active. The existing "result is stale" chip keeps its current
    rule (it fires once a destination is picked).
 5. **Offline.** The plan action is enabled offline only when seed state is set, the start is
@@ -92,9 +92,10 @@ their own issues there.
 
 - Helper names and placement (e.g. a next-passage departure helper beside `departureSeedMs` in
   `lib/planForm.ts`, `lib/trip.ts` if a home for seed logic is wanted).
-- The departure is seeded from the recommended rig's ETA (`recommendedResult`), not the displayed
-  rig's, so it matches the trip layover rule (`2026-10-28-multi-day-trips-design.md`, maintainer
-  ruling 2026-10-28 on #1708).
+- Not a builder's call since the maintainer ruling 2026-10-28 on #1708: with the trips work, the
+  departure is seeded from the recommended rig's ETA (`recommendedResult`), matching the trip
+  layover rule (`2026-10-28-multi-day-trips-design.md`). Slice 1 as shipped uses the displayed
+  rig, falling back to the other.
 - Exact grid-reach check and where it lives, as long as it reads the grid's own times.
 - Tests: unit for the departure rule (incl. DST and after-midnight ETA), the seed, the offline
   gate both ways; e2e at `tabletPortrait` and `desktopHd` for seed + focus, and an offline case
