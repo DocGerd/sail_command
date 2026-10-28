@@ -153,7 +153,7 @@ instead of here.
 - [1854-forecast-view-ux.md](1854-forecast-view-ux.md) — #1854: wind and
   sea state before a destination exists. Recommends a "Wetter" tab and a
   water-clipped sea-state raster that can ship alone; design only, direction
-  approved 2026-10-24 (screenshots, measurement scripts and their output, and
+  approved 2026-10-24 (screenshots, measurement scripts, `measure.json`, and
   the judging, critique and revision records in `1854-forecast-view-ux/`)
 - [1894-land-wind-shadow.md](1894-land-wind-shadow.md) — #1894: should
   routing model land blocking or disturbing the wind? A pre-registered
