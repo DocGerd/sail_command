@@ -947,6 +947,13 @@ export const en = {
   'route.waves.toggle': 'Show sea state',
   'route.waves.unavailable': 'Sea-state data not available for this plan.',
   'route.waves.outOfRange': 'No sea-state data for the selected hour.',
+  // #1830: maximum over the leg's hours and path, display only.
+  'route.legs.seaState': 'Sea state',
+  'route.legs.seaStateNote':
+    'Sea state: highest significant wave height on the leg, over its hours and path. A model estimate, not an official figure; "≥" means parts of the leg have no data.',
+  'route.totals.seaState': 'Max sea state',
+  'route.seaState.noData': 'no data',
+  'route.seaState.partial': 'partly no data',
   'route.legend.seaStateHeading': 'Sea state (significant wave height)',
   'route.legend.seaStateBelow': 'below {max} m',
   'route.legend.seaStateRange': '{min} to {max} m',
