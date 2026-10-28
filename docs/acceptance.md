@@ -596,11 +596,11 @@ apply here too, with the same expected outcomes.
       open water in Als Fjord (e.g. near 55.01 N 9.68 E), keep Sønderborg as
       the destination and press "Plan route" ("Route planen").
       `realmask.repro.alssund.test.ts` pins a route south through Alssund,
-      under the Kong Christian X bridge, for that boat in a uniform 12 kn
-      westerly; live wind can still send it around Als, so note which way it
-      went rather than failing the check on that alone. Sønderborg's approach
-      note under the destination names the bridge's announced closure from
-      2 November to 18 December 2026. A route through the sound also shows a
+      under the bascule bridge Kong Christian X's Bro, for that boat in a
+      uniform 12 kn westerly; live wind can still send it around Als, so note
+      which way it went rather than failing the check on that alone.
+      Sønderborg's approach note under the destination names the bridge's
+      announced closure from 2 November to 18 December 2026. A route through the sound also shows a
       notice on the Plan tab and in the Routes tab summary naming Kong Christian X's Bro, with a link to
       its Danske Havnelods page, and saying the bridge may be closed and that
       openings outside the listed times may be possible on request; a route
