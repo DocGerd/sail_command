@@ -252,6 +252,8 @@
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
     "src/**/chipPolarTierFill.test.ts",
+    // chipCompanionCascade.test.ts (#1884) reads app.css via `node:fs`, like chipShallowFill.test.ts.
+    "src/**/chipCompanionCascade.test.ts",
     "src/**/boatPickerNoticeLiveRegion.test.ts",
     "src/**/polarProvenance.test.ts",
     // easyGoTables.test.ts (#1660) reads the shipped public/data/polars/*.json via `node:fs`.
