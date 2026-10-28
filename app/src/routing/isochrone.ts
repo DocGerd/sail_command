@@ -207,8 +207,8 @@ interface Node {
 const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
 // The shortest blocked-step retry: the near-destination ring's dtS/8. Without
-// it a 600 s ring's shortest retry is 5-6 cells and cannot follow a one-cell
-// channel such as Alssund (#1879).
+// it a 600 s ring's shortest retry is 5-6 mask cells, too long for the pinches
+// in Alssund's corridor (#1879).
 const MIN_SUBSTEP_S = 150 / 8;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
