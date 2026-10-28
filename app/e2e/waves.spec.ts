@@ -351,18 +351,24 @@ test.describe('sea-state overlay (#1699)', () => {
       const canvas = page.locator('.maplibregl-canvas');
       const box = (await canvas.boundingBox())!;
       const on = await settledCanvas(page, canvas);
-      const screen = await page.evaluate((ps) => {
-        const map = (window as MapWindow).__scMap!;
-        const at = (p: { lat: number; lon: number }) => {
-          const { x, y } = map.project([p.lon, p.lat]);
-          return { x: Math.round(x), y: Math.round(y) };
-        };
-        return ps.map((p) => ({ water: at(p.water), land: at(p.land) }));
-      }, pairs);
-      const inView = screen.filter((s) =>
-        [s.water, s.land].every(
-          (q) => q.x > 20 && q.y > 20 && q.x < box.width - 20 && q.y < box.height - 20,
-        ),
+      // Map coordinates, kept only where the map canvas itself is topmost: the
+      // screenshot includes any panel over it, whose contents the toggle changes.
+      const inView = await page.evaluate(
+        ([ps, origin]) => {
+          const map = (window as MapWindow).__scMap!;
+          const at = (p: { lat: number; lon: number }) => {
+            const { x, y } = map.project([p.lon, p.lat]);
+            return { x: Math.round(x), y: Math.round(y) };
+          };
+          const bare = (q: { x: number; y: number }) =>
+            document
+              .elementFromPoint(origin.x + q.x, origin.y + q.y)
+              ?.classList.contains('maplibregl-canvas') ?? false;
+          return ps
+            .map((p) => ({ water: at(p.water), land: at(p.land) }))
+            .filter((s) => bare(s.water) && bare(s.land));
+        },
+        [pairs, { x: box.x, y: box.y }] as const,
       );
       expect(inView.length, 'pairs in the zoomed view').toBeGreaterThan(0);
 
