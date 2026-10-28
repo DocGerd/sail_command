@@ -1,5 +1,5 @@
 import type { Map as MaplibreMap } from 'maplibre-gl';
-import { INK_COLOR } from './mapColors';
+import { HALO_COLOR, INK_COLOR } from './mapColors';
 
 // Testing: barbSegments() (the WMO geometry) is pure and unit-tested, and
 // windBarbs.test.ts also replays registerBarbImages() through a recording 2d
@@ -9,6 +9,11 @@ import { INK_COLOR } from './mapColors';
 // MapLibre GL map is still browser-only (manual/Playwright verification).
 
 const IMAGE_SIZE = 32;
+// #1854: the halo would clip at the glyph box's edge (the calm circle reaches
+// it), so the canvas is padded on every side; the glyph stays centred.
+const PAD = 2;
+const CANVAS_SIZE = IMAGE_SIZE + 2 * PAD;
+const HALO_WIDTH = 3.5;
 const CENTER_X = IMAGE_SIZE / 2;
 const TAIL_Y = IMAGE_SIZE - 4; // station end (near the anchor point)
 const TIP_Y = 4; // barb/feather end
@@ -116,29 +121,38 @@ export function barbSegments(speedKn: number): BarbSegment[] {
  * wind's FROM direction — the standard barb convention.
  */
 function drawBarb(ctx: CanvasRenderingContext2D, speedKn: number): void {
-  ctx.clearRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const segments = barbSegments(speedKn);
+  const trace = (seg: BarbSegment) => {
+    ctx.beginPath();
+    if (seg.kind === 'circle') {
+      ctx.arc(seg.cx + PAD, seg.cy + PAD, seg.r, 0, Math.PI * 2);
+      return;
+    }
+    seg.points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x + PAD, pt.y + PAD);
+      else ctx.lineTo(pt.x + PAD, pt.y + PAD);
+    });
+    if (seg.kind === 'fill') ctx.closePath();
+  };
+
+  // #1854: the whole halo goes down before any ink, so it never covers ink.
+  ctx.strokeStyle = HALO_COLOR;
+  ctx.lineWidth = HALO_WIDTH;
+  for (const seg of segments) {
+    trace(seg);
+    ctx.stroke();
+  }
+
   ctx.strokeStyle = STROKE;
   ctx.fillStyle = STROKE;
   ctx.lineWidth = 1.5;
-  ctx.lineCap = 'round';
-
-  for (const seg of barbSegments(speedKn)) {
-    ctx.beginPath();
-    if (seg.kind === 'circle') {
-      ctx.arc(seg.cx, seg.cy, seg.r, 0, Math.PI * 2);
-      ctx.stroke();
-      continue;
-    }
-    seg.points.forEach((pt, i) => {
-      if (i === 0) ctx.moveTo(pt.x, pt.y);
-      else ctx.lineTo(pt.x, pt.y);
-    });
-    if (seg.kind === 'fill') {
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.stroke();
-    }
+  for (const seg of segments) {
+    trace(seg);
+    if (seg.kind === 'fill') ctx.fill();
+    else ctx.stroke();
   }
 }
 
@@ -160,11 +174,11 @@ export function registerBarbImages(map: MaplibreMap): void {
     const id = `barb-${speed}`;
     if (map.hasImage(id)) continue;
     const canvas = document.createElement('canvas');
-    canvas.width = IMAGE_SIZE;
-    canvas.height = IMAGE_SIZE;
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
     if (!ctx) continue; // no 2d context available (e.g. headless test env) — nothing to register
     drawBarb(ctx, speed);
-    map.addImage(id, ctx.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE));
+    map.addImage(id, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE));
   }
 }

@@ -238,6 +238,32 @@ describe('#1699: sea-state legend section', () => {
     expect(getByText(en['route.legend.seaStateCaveat'])).toBeInTheDocument();
   });
 
+  // #1854: 0.1° is 11.13 km north–south and 6.39 km east–west at 54.95° N.
+  it('explains the no-direction ring and the cell size from the lattice step', () => {
+    const { container, getByText } = renderLegend(false, false, true);
+    expect(container.querySelector('svg.route-legend-sea-dot')).not.toBeNull();
+    expect(getByText(en['route.legend.seaStateMarker'])).toBeInTheDocument();
+    expect(
+      getByText(
+        'Each cell is one model point on a 0.1° grid, about 6 × 11 km (east–west × north–south) at 55° N.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('formats the cell size in German', () => {
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <RouteLegend hasForcedLeg={false} hasHandover={false} hasWaveGrid />
+      </I18nProvider>,
+    );
+    expect(
+      screen.getByText(
+        'Jede Zelle ist ein Modellpunkt im 0,1°-Raster, etwa 6 × 11 km (Ost–West × Nord–Süd) bei 55° N.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('is absent for a plan without a grid', () => {
     const { queryByText } = renderLegend(false, false, false);
     expect(queryByText(en['route.legend.seaStateHeading'])).toBeNull();

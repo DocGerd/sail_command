@@ -1,21 +1,23 @@
 // #1699: map-side pieces of the sea-state overlay — layer ids, band colours,
-// GeoJSON and the arrow raster. A plain module (no React), so DataLayers can
-// import the stack anchor without importing a component.
-import type { WaveGrid } from '../types';
+// the water-clipped raster (#1854), markers and their images. A plain module
+// (no React), so DataLayers can import the stack anchor without importing a
+// component.
+import type { LatLon, MaskMeta, WaveGrid } from '../types';
 import type { NavMask } from './mask';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Lang } from './format';
 import { HALO_COLOR } from './mapColors';
-import { seaStateBand, wavePointsAt, type SeaStateBand } from './waves';
+import { depthCanvasRowMap } from './depthColor';
+import { seaStateBand, type SeaStateBand } from './waves';
 
-export const WAVE_CELL_SOURCE = 'sc-waves-cells';
+export const WAVE_RASTER_SOURCE = 'sc-waves-raster';
 export const WAVE_ARROW_SOURCE = 'sc-waves-arrows';
 export const WAVE_FILL_LAYER = 'sc-waves-fill';
 export const WAVE_ARROW_LAYER = 'sc-waves-arrows';
-export const WAVE_EDGE_LAYER = 'sc-waves-edge';
 // The fill is added first with the arrows on the same anchor, so it is the bottom.
 export const WAVE_STACK_BOTTOM_LAYER = WAVE_FILL_LAYER;
 export const WAVE_ARROW_IMAGE = 'sc-wave-arrow';
+export const WAVE_DOT_IMAGE = 'sc-wave-dot';
 
 export type ShadedBand = Exclude<SeaStateBand, 'no-data'>;
 export const SHADED_BANDS: readonly ShadedBand[] = [
@@ -48,11 +50,14 @@ export const SEA_STATE_BAND_KEY: Record<ShadedBand, MsgKey> = {
 };
 
 export const WAVE_FILL_OPACITY = 0.45;
-// Every data cell gets an edge whatever its band: the light bands are close to
-// the basemap's water, so the missing cell grid is what shows a wider unshaded
-// area as no data (or land); a single no-data cell is still framed by its
-// neighbours' edges.
-export const WAVE_EDGE_OPACITY = 0.2;
+
+// The fetch lattice (services/openMeteo.ts), twinned in waveMap.test.ts.
+export const WAVE_LATTICE_STEP_DEG = 0.1;
+export const WAVE_LATTICE_MID_LAT = 54.95;
+
+// One raster pixel per `stride` mask cells along each axis: quarter
+// resolution, chosen by #1854's gating paint measurement (recorded on its PR).
+export const SEA_STATE_RASTER_STRIDE = 4;
 
 export interface WaveCellProps {
   band: ShadedBand;
@@ -61,11 +66,15 @@ export interface WaveCellProps {
   travelDeg?: number;
 }
 
-type CellFC = GeoJSON.FeatureCollection<GeoJSON.Polygon, WaveCellProps>;
-type ArrowFC = GeoJSON.FeatureCollection<GeoJSON.Point, { rotateDeg: number }>;
+export interface WaveMarkerProps {
+  marker: 'arrow' | 'dot';
+  rotateDeg: number;
+  band: ShadedBand;
+}
 
-export const EMPTY_WAVE_CELLS: CellFC = { type: 'FeatureCollection', features: [] };
-export const EMPTY_WAVE_ARROWS: ArrowFC = { type: 'FeatureCollection', features: [] };
+type MarkerFC = GeoJSON.FeatureCollection<GeoJSON.Point, WaveMarkerProps>;
+
+export const EMPTY_WAVE_MARKERS: MarkerFC = { type: 'FeatureCollection', features: [] };
 
 // Waves are reported as coming FROM; the arrow shows where they travel.
 export function travelDeg(dirFromDeg: number): number {
@@ -74,69 +83,212 @@ export function travelDeg(dirFromDeg: number): number {
 
 function halfStep(axis: readonly number[]): number {
   if (axis.length < 2) return 0.05;
-  return (axis[axis.length - 1]! - axis[0]!) / (axis.length - 1) / 2;
+  return Math.abs(axis[axis.length - 1]! - axis[0]!) / (axis.length - 1) / 2;
 }
 
-// One cell polygon per water point with a finite Hs, one arrow per such point
-// with a finite direction. A no-data or culled point gets no feature at all
-// (fill, edge and arrow alike, since the edge layer reads the cell source): an
-// empty cell must never read as calm. Non-finite values are left out of the
-// properties because GeoJSON has no NaN.
-export function waveFeaturesAt(
-  grid: WaveGrid,
-  tMs: number,
-  mask: NavMask,
-): { cells: CellFC; arrows: ArrowFC } {
-  const points = wavePointsAt(grid, tMs);
-  if (points === null) return { cells: EMPTY_WAVE_CELLS, arrows: EMPTY_WAVE_ARROWS };
-  const dLat = halfStep(grid.lats);
-  const dLon = halfStep(grid.lons);
-  const cells: CellFC['features'] = [];
-  const arrows: ArrowFC['features'] = [];
-  for (const p of points) {
-    // What the marine API returns for a land point is unverified (spec §0),
-    // so cull by the mask at the point itself.
-    // Outside the mask there is no land/water answer, so no data (as for barbs).
-    if (!mask.inBounds(p)) continue;
-    // Land/unknown only (byte 0); shallow water still renders.
-    if (mask.depthM(p) <= 0) continue;
-    const band = seaStateBand(p.heightM);
-    if (band === 'no-data') continue;
-    const props: WaveCellProps = { band, heightM: p.heightM };
-    if (Number.isFinite(p.periodS)) props.periodS = p.periodS;
-    if (Number.isFinite(p.dirFromDeg)) props.travelDeg = travelDeg(p.dirFromDeg);
-    const w = p.lon - dLon;
-    const e = p.lon + dLon;
-    const s = p.lat - dLat;
-    const n = p.lat + dLat;
-    cells.push({
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [w, s],
-            [e, s],
-            [e, n],
-            [w, n],
-            [w, s],
-          ],
-        ],
-      },
-      properties: props,
-    });
-    if (props.travelDeg !== undefined) {
-      arrows.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-        properties: { rotateDeg: props.travelDeg },
-      });
+// Nearest axis entry within half a lattice step, else null: the cell partition
+// ends half a step beyond the outermost points.
+function nearestAxisIndex(axis: readonly number[], v: number, half: number): number | null {
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < axis.length; i++) {
+    const d = Math.abs(axis[i]! - v);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
     }
   }
+  return best >= 0 && bestD <= half ? best : null;
+}
+
+// Flattened lattice index (latIdx * nLon + lonIdx) of the point whose cell
+// holds `p`, or null outside the lattice.
+export function nearestWaveCell(grid: Pick<WaveGrid, 'lats' | 'lons'>, p: LatLon): number | null {
+  const la = nearestAxisIndex(grid.lats, p.lat, halfStep(grid.lats));
+  const lo = nearestAxisIndex(grid.lons, p.lon, halfStep(grid.lons));
+  return la === null || lo === null ? null : la * grid.lons.length + lo;
+}
+
+export interface SeaStateRaster {
+  readonly width: number;
+  readonly height: number;
+  readonly nPoints: number;
+  // Per pixel, row 0 north: lattice index + 1, or 0 where nothing may be shaded.
+  readonly cells: Uint16Array;
+  // Shadeable pixels per lattice point.
+  readonly pixelCount: Uint32Array;
+  readonly west: number;
+  readonly east: number;
+  readonly yNorth: number;
+  readonly ySpan: number;
+}
+
+function mercatorY(latDeg: number): number {
+  const s = Math.sin((latDeg * Math.PI) / 180);
+  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+}
+
+export function seaStateRasterSize(
+  meta: MaskMeta,
+  stride = SEA_STATE_RASTER_STRIDE,
+): { width: number; height: number } {
   return {
-    cells: { type: 'FeatureCollection', features: cells },
-    arrows: { type: 'FeatureCollection', features: arrows },
+    width: Math.ceil(meta.cols / stride),
+    height: Math.ceil(depthCanvasRowMap(meta).length / stride),
   };
+}
+
+const rasterCache = new WeakMap<NavMask, { key: string; raster: SeaStateRaster }>();
+
+// A pixel samples one mask cell (every `stride`-th mask column and every
+// `stride`-th depthCanvasRowMap row) and belongs to that cell's nearest lattice
+// point. It may be shaded only if the cell is water and the lattice point is
+// itself in-mask water, so nothing is borrowed from a neighbour point.
+export function seaStateRasterIndex(
+  mask: NavMask,
+  grid: Pick<WaveGrid, 'lats' | 'lons'>,
+  stride = SEA_STATE_RASTER_STRIDE,
+): SeaStateRaster {
+  const key = `${stride}|${grid.lats.join()}|${grid.lons.join()}`;
+  const cached = rasterCache.get(mask);
+  if (cached?.key === key) return cached.raster;
+
+  const { meta } = mask;
+  const rowMap = depthCanvasRowMap(meta);
+  const width = Math.ceil(meta.cols / stride);
+  const height = Math.ceil(rowMap.length / stride);
+  const nLon = grid.lons.length;
+  const nPoints = grid.lats.length * nLon;
+  const pointIsWater = new Uint8Array(nPoints);
+  for (let la = 0; la < grid.lats.length; la++)
+    for (let lo = 0; lo < nLon; lo++) {
+      const p = { lat: grid.lats[la]!, lon: grid.lons[lo]! };
+      pointIsWater[la * nLon + lo] = mask.inBounds(p) && mask.depthM(p) > 0 ? 1 : 0;
+    }
+  const latHalf = halfStep(grid.lats);
+  const lonHalf = halfStep(grid.lons);
+  const colLon = new Float64Array(width);
+  const colPoint = new Int32Array(width);
+  for (let j = 0; j < width; j++) {
+    colLon[j] = mask.grid.lon.centre(j * stride);
+    colPoint[j] = nearestAxisIndex(grid.lons, colLon[j]!, lonHalf) ?? -1;
+  }
+  const cells = new Uint16Array(width * height);
+  const pixelCount = new Uint32Array(nPoints);
+  for (let i = 0; i < height; i++) {
+    const lat = mask.grid.lat.centre(rowMap[i * stride]!);
+    const la = nearestAxisIndex(grid.lats, lat, latHalf);
+    if (la === null) continue;
+    for (let j = 0; j < width; j++) {
+      const lo = colPoint[j]!;
+      if (lo < 0) continue;
+      const k = la * nLon + lo;
+      if (!pointIsWater[k]) continue;
+      if (mask.depthM({ lat, lon: colLon[j]! }) <= 0) continue;
+      cells[i * width + j] = k + 1;
+      pixelCount[k]! += 1;
+    }
+  }
+  const raster: SeaStateRaster = {
+    width,
+    height,
+    nPoints,
+    cells,
+    pixelCount,
+    west: meta.west,
+    east: meta.east,
+    yNorth: mercatorY(meta.north),
+    ySpan: mercatorY(meta.south) - mercatorY(meta.north),
+  };
+  rasterCache.set(mask, { key, raster });
+  return raster;
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// Opaque band colours (the layer applies WAVE_FILL_OPACITY) into `out`, which
+// holds width * height * 4 bytes. Unshaded and no-data pixels are transparent.
+export function paintSeaState(
+  raster: SeaStateRaster,
+  grid: WaveGrid,
+  hourIdx: number,
+  out: Uint8ClampedArray,
+): void {
+  const table = new Uint8Array((raster.nPoints + 1) * 4);
+  const base = hourIdx * raster.nPoints;
+  for (let k = 0; k < raster.nPoints; k++) {
+    const band = seaStateBand(grid.waveHeightM[base + k] ?? NaN);
+    if (band === 'no-data') continue;
+    table.set([...hexRgb(SEA_STATE_COLORS[band]), 255], (k + 1) * 4);
+  }
+  // Whole-pixel copies through byte-built buffers, so byte order never matters.
+  const table32 = new Uint32Array(table.buffer);
+  const out32 = new Uint32Array(out.buffer, out.byteOffset, raster.width * raster.height);
+  const { cells } = raster;
+  for (let p = 0; p < cells.length; p++) out32[p] = table32[cells[p]!]!;
+}
+
+// The raster pixel holding `p`: columns are linear in longitude and rows in Web
+// Mercator y, as MapLibre stretches a canvas source between its corners.
+export function seaStatePixelAt(raster: SeaStateRaster, p: LatLon): number | null {
+  const x = (p.lon - raster.west) / (raster.east - raster.west);
+  const y = (mercatorY(p.lat) - raster.yNorth) / raster.ySpan;
+  if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) return null;
+  return Math.floor(y * raster.height) * raster.width + Math.floor(x * raster.width);
+}
+
+// Lattice point `k` at the hour, or null for no data. Non-finite period and
+// direction are left out (GeoJSON has no NaN).
+export function waveCellProps(grid: WaveGrid, hourIdx: number, k: number): WaveCellProps | null {
+  const i = hourIdx * grid.lats.length * grid.lons.length + k;
+  const heightM = grid.waveHeightM[i] ?? NaN;
+  const band = seaStateBand(heightM);
+  if (band === 'no-data') return null;
+  const props: WaveCellProps = { band, heightM };
+  const periodS = grid.wavePeriodS[i] ?? NaN;
+  const dir = grid.waveDirFromDeg[i] ?? NaN;
+  if (Number.isFinite(periodS)) props.periodS = periodS;
+  if (Number.isFinite(dir)) props.travelDeg = travelDeg(dir);
+  return props;
+}
+
+// The cell the raster shades at `p`, or null where it leaves `p` unshaded.
+export function shadedWaveCellAt(
+  raster: SeaStateRaster,
+  grid: WaveGrid,
+  hourIdx: number,
+  p: LatLon,
+): WaveCellProps | null {
+  const px = seaStatePixelAt(raster, p);
+  const c = px === null ? 0 : raster.cells[px]!;
+  return c === 0 ? null : waveCellProps(grid, hourIdx, c - 1);
+}
+
+// Exactly one marker per shaded cell, at its lattice point: the travel arrow,
+// or a dot when the direction is missing.
+export function seaStateMarkers(raster: SeaStateRaster, grid: WaveGrid, hourIdx: number): MarkerFC {
+  const nLon = grid.lons.length;
+  const features: MarkerFC['features'] = [];
+  for (let k = 0; k < raster.nPoints; k++) {
+    if (raster.pixelCount[k] === 0) continue;
+    const props = waveCellProps(grid, hourIdx, k);
+    if (props === null) continue;
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [grid.lons[k % nLon]!, grid.lats[Math.floor(k / nLon)]!],
+      },
+      properties:
+        props.travelDeg === undefined
+          ? { marker: 'dot', rotateDeg: 0, band: props.band }
+          : { marker: 'arrow', rotateDeg: props.travelDeg, band: props.band },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 export const WAVE_ARROW_IMAGE_PX = 32;
@@ -150,20 +302,25 @@ function insideArrow(u: number, v: number): boolean {
   return shaft || head;
 }
 
-function hexRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+// Unit-square ring, centred.
+function insideDot(u: number, v: number): boolean {
+  const r = Math.hypot(u - 0.5, v - 0.5);
+  return r >= 0.12 && r <= 0.22;
 }
 
-// Raw RGBA pixels for map.addImage: navy arrow on a white halo. Drawn without a
+// Raw RGBA pixels for map.addImage: navy glyph on a white halo. Drawn without a
 // canvas so it registers wherever the map does, test fakes included.
-export function waveArrowImage(): { width: number; height: number; data: Uint8Array } {
+function glyphImage(inside: (u: number, v: number) => boolean): {
+  width: number;
+  height: number;
+  data: Uint8Array;
+} {
   const size = WAVE_ARROW_IMAGE_PX;
   const data = new Uint8Array(size * size * 4);
   const ink = hexRgb(WAVE_ARROW_COLOR);
   const halo = hexRgb(HALO_COLOR);
   const haloPx = 2;
-  const at = (x: number, y: number) => insideArrow((x + 0.5) / size, (y + 0.5) / size);
+  const at = (x: number, y: number) => inside((x + 0.5) / size, (y + 0.5) / size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let rgb: [number, number, number] | null = null;
@@ -187,6 +344,14 @@ export function waveArrowImage(): { width: number; height: number; data: Uint8Ar
     }
   }
   return { width: size, height: size, data };
+}
+
+export function waveArrowImage(): { width: number; height: number; data: Uint8Array } {
+  return glyphImage(insideArrow);
+}
+
+export function waveDotImage(): { width: number; height: number; data: Uint8Array } {
+  return glyphImage(insideDot);
 }
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };

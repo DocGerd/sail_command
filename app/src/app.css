@@ -2503,6 +2503,13 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* #1854: a touch-sized close target. */
+.wave-popup .maplibregl-popup-close-button {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--sc-fg);
+}
+
 /* #711: MapLibre's own AttributionControl chrome hardcodes a white
    background + near-black link colour with no dark variant — same defect
    class as .seamark-popup/.ais-popup above, on the control that surfaces
@@ -2895,6 +2902,23 @@ select {
   stroke: var(--sc-halo);
   stroke-width: 1.5px;
   paint-order: stroke;
+}
+
+/* #1854: the map's no-direction ring, on its white halo like the arrow. */
+.route-legend-sea-dot {
+  width: 1rem;
+  height: 1rem;
+}
+
+.route-legend-sea-dot circle {
+  fill: none;
+  stroke: var(--sc-wave-arrow);
+  stroke-width: 1.5px;
+}
+
+.route-legend-sea-dot .route-legend-sea-dot-halo {
+  stroke: var(--sc-halo);
+  stroke-width: 3.5px;
 }
 
 .sc-boat-marker {

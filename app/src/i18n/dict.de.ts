@@ -876,6 +876,10 @@ export const de = {
   'route.legend.seaStateNoData': 'Keine Färbung bedeutet keine Daten oder Land, nicht ruhige See.',
   'route.legend.seaStateArrow':
     'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
+  'route.legend.seaStateMarker':
+    'Ein Ring markiert eine Zelle mit Wellenhöhe, aber ohne Laufrichtung.',
+  'route.legend.seaStateCells':
+    'Jede Zelle ist ein Modellpunkt im {step}°-Raster, etwa {ew} × {ns} km (Ost–West × Nord–Süd) bei {lat}° N.',
   'route.legend.seaStateCaveat':
     'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe ungenau.',
   // Douglas-scale wording per NLWKN, Anlage 7.1 Wellenauflaufberechnung

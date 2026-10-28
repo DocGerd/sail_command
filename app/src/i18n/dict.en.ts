@@ -961,6 +961,9 @@ export const en = {
   'route.legend.seaStateNoData': 'No shading means no data or land, not calm water.',
   'route.legend.seaStateArrow':
     'Arrows show the direction the waves travel — not where they come from, unlike wind barbs.',
+  'route.legend.seaStateMarker': 'A ring marks a cell with a wave height but no travel direction.',
+  'route.legend.seaStateCells':
+    'Each cell is one model point on a {step}° grid, about {ew} × {ns} km (east–west × north–south) at {lat}° N.',
   'route.legend.seaStateCaveat':
     'Model estimate (Open-Meteo), not chart authority; coarse near coasts.',
   'seaState.band.calm': 'calm',
