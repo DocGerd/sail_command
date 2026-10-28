@@ -859,6 +859,13 @@ export const de = {
   'route.waves.toggle': 'Seegang anzeigen',
   'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
   'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
+  // #1830: Höchstwert über die Stunden und den Weg der Etappe, nur Anzeige.
+  'route.legs.seaState': 'Seegang',
+  'route.legs.seaStateNote':
+    'Seegang: höchste signifikante Wellenhöhe auf der Etappe, über ihre Stunden und ihren Weg. Modellschätzung, keine amtliche Angabe; „≥“ heißt, Teile fehlen in den Daten.',
+  'route.totals.seaState': 'Höchster Seegang',
+  'route.seaState.noData': 'keine Daten',
+  'route.seaState.partial': 'teils ohne Daten',
   'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
   'route.legend.seaStateBelow': 'unter {max} m',
   'route.legend.seaStateRange': '{min} bis {max} m',

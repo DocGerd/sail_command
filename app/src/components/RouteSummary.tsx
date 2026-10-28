@@ -37,6 +37,9 @@ import {
   roundExposureNm,
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
+import { legMaxHsM, routeMaxHsM, type SeaStateReading } from '../lib/routeSeaState';
+import { seaStateBand } from '../lib/waves';
+import { formatSeaStateM, SEA_STATE_BAND_KEY } from '../lib/waveMap';
 import {
   reefSuggestionsForLegs,
   REEF1_AWS_KN,
@@ -647,6 +650,20 @@ export default function RouteSummary({
   // the same "nothing rendered" state `ReefChip` already handled before
   // this wiring — see that component's own comment.
   const reefSuggestions = result ? reefSuggestionsForLegs(result.legs) : null;
+  // #1830: derived each render from the plan's own grid; a same-id replace changes it.
+  const waveGrid = plan.waveGrid;
+  const seaState =
+    waveGrid && result
+      ? {
+          legs: result.legs.map((l) => legMaxHsM(l, waveGrid)),
+          route: routeMaxHsM(result.legs, waveGrid),
+        }
+      : null;
+  const routeBand = seaStateBand(seaState?.route.maxM ?? NaN);
+  const seaText = (r: SeaStateReading) =>
+    r.maxM === null
+      ? t('route.seaState.noData')
+      : `${r.incomplete ? '≥ ' : ''}${formatSeaStateM(r.maxM, lang)} m`;
 
   return (
     <Card
@@ -857,6 +874,16 @@ export default function RouteSummary({
               {t('route.totals.maneuvers')}:{' '}
               <span className="tabular-nums">{result.maneuverCount}</span>
             </p>
+            {seaState && (
+              <p className="ergebnis-maneuvers">
+                {t('route.totals.seaState')}:{' '}
+                <span className="tabular-nums">{seaText(seaState.route)}</span>
+                {routeBand !== 'no-data' && <> · {t(SEA_STATE_BAND_KEY[routeBand])}</>}
+                {seaState.route.incomplete && seaState.route.maxM !== null && (
+                  <> · {t('route.seaState.partial')}</>
+                )}
+              </p>
+            )}
 
             {/* Sail/motor split bar — proportions from the shared formatter.
               Motor uses a neutral grey (NOT a map-palette token). */}
@@ -977,6 +1004,7 @@ export default function RouteSummary({
                     <th scope="col">{t('route.legs.speed')}</th>
                     <th scope="col">{t('route.legs.distance')}</th>
                     <th scope="col">{t('route.legs.maneuver')}</th>
+                    {seaState && <th scope="col">{t('route.legs.seaState')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1078,6 +1106,7 @@ export default function RouteSummary({
                             </span>
                           )}
                         </td>
+                        {seaState && <td className="tabular-nums">{seaText(seaState.legs[i]!)}</td>}
                       </tr>
                     );
                   })}
@@ -1101,6 +1130,7 @@ export default function RouteSummary({
                 to check it against. Stated plainly here, with the actual
                 thresholds, per the issue's own "documented where a user can
                 find them" requirement — never only in a code comment. */}
+              {seaState && <p className="route-legs-note">{t('route.legs.seaStateNote')}</p>}
               {result.legs.some((l) => l.kind === 'sail') && (
                 <p className="route-legs-note">
                   {t('route.legs.reefNote', {
