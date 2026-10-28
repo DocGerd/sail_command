@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { crossedCells, legMaxHsM, mergeReadings, routeMaxHsM } from './routeSeaState';
+import { crossedCells, legMaxHsM, mergeReadings } from './routeSeaState';
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 const H = 3_600_000;
@@ -133,8 +133,8 @@ describe('legMaxHsM', () => {
     expect(r).toEqual({ maxM: Math.fround(0.6), incomplete: true });
   });
 
-  it('counts a cell the leg only clips at a corner', () => {
-    // Crosses the lat edge at 54.55 and the lon edge at 10.15, so it grazes cell (1,1).
+  it('counts a cell between the endpoint cells that endpoint sampling skips', () => {
+    // Crosses the lat edge at 54.55 (f = 0.5) and the lon edge at 10.15 (f = 0.75): (0,1) -> (1,1) -> (1,2).
     const clip = leg([54.54, 10.12], [54.56, 10.16]);
     const g = grid((la, lo) => (la === 1 && lo === 1 ? 5 : 0.3));
     expect(legMaxHsM(clip, g)).toEqual({ maxM: 5, incomplete: false });
@@ -146,7 +146,9 @@ describe('legMaxHsM', () => {
   });
 });
 
-describe('routeMaxHsM', () => {
+describe('route reading', () => {
+  const routeMaxHsM = (legs: ReturnType<typeof leg>[], g: ReturnType<typeof grid>) =>
+    mergeReadings(legs.map((l) => legMaxHsM(l, g)));
   const g = grid((_la, lo) => (lo === 2 ? 1.5 : 0.3));
   const west = leg([54.6, 10.0], [54.6, 10.05]);
   const east = leg([54.6, 10.15], [54.6, 10.2]);
@@ -167,7 +169,7 @@ describe('routeMaxHsM', () => {
 });
 
 describe('mergeReadings', () => {
-  it('folds readings like routeMaxHsM and treats none as incomplete', () => {
+  it('folds readings and treats none as incomplete', () => {
     expect(mergeReadings([])).toEqual({ maxM: null, incomplete: true });
     expect(
       mergeReadings([

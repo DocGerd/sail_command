@@ -57,8 +57,9 @@ function edgeCrossings(axis: readonly number[], a: number, b: number): number[] 
 }
 
 // Every cell the leg passes through (flattened `lat * nLon + lon`), by exact
-// edge-crossing traversal, so a clipped corner counts. `outside` is set when
-// any stretch of the leg lies beyond the grid's half-step margin.
+// edge-crossing traversal, so a clipped corner counts; a leg lying exactly
+// along a cell edge counts the cell on its lower side only. `outside` is set
+// when any stretch of the leg lies beyond the grid's half-step margin.
 export function crossedCells(
   leg: Pick<Leg, 'start' | 'end'>,
   grid: Pick<WaveGrid, 'lats' | 'lons'>,
@@ -121,8 +122,4 @@ export function mergeReadings(readings: readonly SeaStateReading[]): SeaStateRea
     if (r.maxM !== null && (maxM === null || r.maxM > maxM)) maxM = r.maxM;
   }
   return { maxM, incomplete };
-}
-
-export function routeMaxHsM(legs: readonly LegSpan[], grid: WaveGrid): SeaStateReading {
-  return mergeReadings(legs.map((l) => legMaxHsM(l, grid)));
 }
