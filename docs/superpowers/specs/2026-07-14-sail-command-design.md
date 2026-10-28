@@ -141,6 +141,7 @@ app runtime.
 - **Persistence** —
   - IndexedDB: saved plans (route + wind grid + settings snapshot), user
     settings. Plans survive restarts and offline periods; user can delete.
+    Trips linking saved passages: `2026-10-28-multi-day-trips-design.md`.
   - Service worker: precache app shell + static data (mask, polars, harbors,
     basemap). After first online visit, everything except *new* planning
     and fetching the Wetter tab's area forecast (#1854, maintainer ruling
@@ -185,6 +186,8 @@ Android install via browser "Add to Home Screen".
 
 Currents/tides, wave data, AIS, live re-routing, multi-day passages beyond
 forecast horizon, route sharing/collaboration, official ENC chart data.
+Multi-day trips whose passages are each planned inside the horizon:
+`2026-10-28-multi-day-trips-design.md`.
 
 ## 7. Caveats (will be stated in the app)
 
