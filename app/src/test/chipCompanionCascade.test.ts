@@ -12,9 +12,10 @@ import { withBackgroundSentinels } from './cssBackgroundSentinels';
 // `node:fs`, not `?raw`: vitest empties `.css` modules (see chipShallowFill.test.ts).
 const APP_CSS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../app.css');
 
-// The companion set is derived from `<Chip className=…>` and literal
-// `className="chip …"` in component sources. Blind spot: a class reaching a chip
-// through a variable or another wrapper.
+// The companion set is derived from `<Chip className="…">` / `<Chip className={`…`}>` and
+// literal `className="chip …"` in component sources. Blind spots: a class reaching a chip
+// through a variable, a ternary, another wrapper, a literal with `chip` not first, or a
+// `>` (arrow handler) before `className` inside the `<Chip` tag.
 const sources = import.meta.glob<string>(['../**/*.tsx', '!../**/*.test.tsx'], {
   query: '?raw',
   import: 'default',
@@ -93,7 +94,7 @@ const isCompanion = (name: string, c: Companions): boolean =>
 
 describe('#1884: .chip companion classes win the cascade over .chip', () => {
   it('the AIS status chip resolves its own background, not .chip’s neutral one', () => {
-    const { css } = withBackgroundSentinels(readFileSync(APP_CSS_PATH, 'utf8'));
+    const { css, sentinel } = withBackgroundSentinels(readFileSync(APP_CSS_PATH, 'utf8'));
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -102,7 +103,11 @@ describe('#1884: .chip companion classes win the cascade over .chip', () => {
     plain.className = 'chip';
     const ais = document.createElement('span');
     ais.className = 'chip ais-status-chip ais-status-offline';
-    document.body.append(plain, ais);
+    // Reference painted inline with the intended token, so a wrong-but-different
+    // background cannot satisfy the row.
+    const reference = document.createElement('span');
+    reference.style.background = `color-mix(in srgb, ${sentinel('--sc-bg')} 88%, transparent)`;
+    document.body.append(plain, ais, reference);
 
     const plainBackground = getComputedStyle(plain).backgroundColor;
     const aisBackground = getComputedStyle(ais).backgroundColor;
@@ -112,6 +117,10 @@ describe('#1884: .chip companion classes win the cascade over .chip', () => {
       `#1884 guard: .chip.ais-status-chip resolved "${aisBackground}", identical to plain .chip — ` +
         '`.chip` is overriding its background again.',
     ).not.toBe(plainBackground);
+    expect(
+      aisBackground,
+      `#1884 guard: .chip.ais-status-chip resolved "${aisBackground}", not the 88% --sc-bg glass fill.`,
+    ).toBe(getComputedStyle(reference).backgroundColor);
   });
 
   it('no bare companion rule declared before .chip overlaps .chip’s properties', () => {
