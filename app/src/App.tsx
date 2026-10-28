@@ -388,6 +388,15 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
+  const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
+  // #1761: the plan object the app itself just computed (run() completion, a
+  // confirmed departure window, a Live reroute or a late-adopted slow save);
+  // the form departure follows it unless edited mid-solve (#1867), see below.
+  const freshResultRef = useRef<Plan | null>(null);
+  // #1867: set only by the departure field's own onChange and cleared when a
+  // solve starts. A fresh result does not overwrite a departure the user
+  // edited while it computed; the app's own writes never set it.
+  const departureEditedMidSolveRef = useRef(false);
   const {
     planning,
     startedAtMs: planningStartedAtMs,
@@ -395,7 +404,11 @@ function AppShell() {
     ensureClient,
     ensureClientOrFailure,
     cancel,
-  } = usePlanFlow();
+  } = usePlanFlow({
+    onLateAdopted: (p) => {
+      freshResultRef.current = p;
+    },
+  });
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -480,9 +493,6 @@ function AppShell() {
   // same object survives) — `plan !== null && rig !== null` alone can't,
   // since a re-plan or recalc has both non-null already.
   const planAtBusyStartRef = useRef<Plan | null>(plan);
-  // #1761: the plan object the app itself just computed (run() completion or a
-  // confirmed departure window); the form departure follows it, see below.
-  const freshResultRef = useRef<Plan | null>(null);
   useEffect(() => {
     const prevPhase = prevPlanningPhaseRef.current;
     prevPlanningPhaseRef.current = planning.phase;
@@ -490,6 +500,7 @@ function AppShell() {
     const isBusy = planning.phase !== 'idle' && planning.phase !== 'error';
     if (!wasBusy && isBusy) {
       planAtBusyStartRef.current = plan;
+      departureEditedMidSolveRef.current = false;
     }
     if (
       wasBusy &&
@@ -630,10 +641,9 @@ function AppShell() {
   // #301: also written by the plan-form sync effect below (next to
   // planIdRef) whenever a NEW plan.id becomes active — origin/destination
   // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
-  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs), unless the app just computed the plan (#1761).
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs; state declared above usePlanFlow). A plan the app just computed keeps its own departure instead (#1761), and none is written if the field was edited while it computed (#1867).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
-  const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
   // #571 redesign (maintainer ruling: a via edit "is kind of a new route and
   // hence should only calculate once clicked on calculate" — no auto-replan
   // on add/remove/reorder/drag). `draftViaPoints` is now the UNCONDITIONAL
@@ -791,6 +801,10 @@ function AppShell() {
   useEffect(() => {
     if (!plan || freshResultRef.current !== plan || syncedPlanIdRef.current !== plan.id) return;
     freshResultRef.current = null;
+    if (departureEditedMidSolveRef.current) {
+      departureEditedMidSolveRef.current = false;
+      return;
+    }
     setDepartureMs(plan.request.departureMs);
   }, [plan]);
 
@@ -800,6 +814,8 @@ function AppShell() {
     syncedPlanIdRef.current = plan.id;
     const freshResult = freshResultRef.current === plan;
     freshResultRef.current = null;
+    const editedMidSolve = freshResult && departureEditedMidSolveRef.current;
+    if (freshResult) departureEditedMidSolveRef.current = false;
     const { origin: syncedOrigin, destination: syncedDestination } = pickedPointsOfPlan(
       plan,
       harbors,
@@ -818,7 +834,9 @@ function AppShell() {
     if (baseline === null || !pickedPointMoved(destination, baseline.destination)) {
       setDestination(syncedDestination);
     }
-    if (baseline === null || departureMs === baseline.departureMs) {
+    if (!editedMidSolve && (baseline === null || departureMs === baseline.departureMs)) {
+      // #1867: this write replaces any mid-solve edit.
+      departureEditedMidSolveRef.current = false;
       // #1761: a plan the app just computed keeps its own departure.
       setDepartureMs(departureAfterSyncMs(plan, freshResult));
     }
@@ -1494,10 +1512,14 @@ function AppShell() {
   const handleLiveReroute = useCallback(
     (fixPoint: LatLon) => {
       if (!plan) return;
+      departureEditedMidSolveRef.current = false;
       void liveReroute
         .reroute(plan, fixPoint, t('live.reroute.name', { name: plan.name }))
         .then((rerouted) => {
-          if (rerouted) setPlan(rerouted);
+          if (rerouted) {
+            freshResultRef.current = rerouted;
+            setPlan(rerouted);
+          }
         });
     },
     [plan, liveReroute, setPlan, t],
@@ -2197,7 +2219,10 @@ function AppShell() {
                   onUpdateVia={handleUpdateViaByCoord}
                   onSelectSavedWaypoint={handleSelectSavedWaypoint}
                   departureMs={departureMs}
-                  onDepartureChange={setDepartureMs}
+                  onDepartureChange={(ms) => {
+                    departureEditedMidSolveRef.current = true;
+                    setDepartureMs(ms);
+                  }}
                   settings={settings}
                   onSettingsChange={setSettings}
                   boat={boat}
@@ -2240,6 +2265,9 @@ function AppShell() {
                   plan={plan}
                   ensureClient={ensureClientOrFailure}
                   onConfirmed={handleDepartureConfirmed}
+                  onConfirmStart={() => {
+                    departureEditedMidSolveRef.current = false;
+                  }}
                 />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps
