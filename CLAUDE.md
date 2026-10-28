@@ -4955,7 +4955,7 @@ making design-level decisions; do not silently deviate.
 - **`/teleport` to a local machine carries the transcript, not the cloud
   scratchpad**: its uncommitted inputs and caches are gone (#1894,
   2026-10-28). Committed scripts plus an input hash list let the local
-  rebuild be checked; #1894's reproduced every compared published figure.
+  rebuild be checked; #1894's reproduced every compared spike §1 figure.
 - **Parallel subagents share ONE session scratchpad** (Claude Code 2.1.278;
   a harness property). A fixed commit-message filename there raced: one
   commit got a sibling's `Closes #N` (caught before push, v0.39.0 cycle).
