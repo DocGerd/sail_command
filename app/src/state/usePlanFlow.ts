@@ -91,6 +91,8 @@ export interface PlanFlowDeps {
   save?: typeof savePlan;
   /** #1164 T6: fire-and-forget region pinning after a successful save. */
   pinRegions?: PinAfterSave;
+  /** #1867: a plan adopted after its save timed out (#1776); no other path calls it. */
+  onLateAdopted?: (plan: Plan) => void;
 }
 
 // #432: ROUTING_FAILURE_MESSAGE_KEY (and its `routingFailureKey` accessor)
@@ -269,6 +271,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   );
   const save = deps.save ?? savePlan;
   const pinRegions = deps.pinRegions ?? pinRegionsAfterSave;
+  const onLateAdoptedRef = useRef(deps.onLateAdopted);
+  useEffect(() => {
+    onLateAdoptedRef.current = deps.onLateAdopted;
+  }, [deps.onLateAdopted]);
 
   // Shared by run() below and by the ensureClient this hook returns
   // (also called by state/replan.ts's useViaReplan, unused in production —
@@ -675,7 +681,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           () => {
             pinRegions(plan);
             if (runSeqRef.current !== seq) return;
-            if (activePlanRef.current === shownAtTimeout) setPlan(plan);
+            if (activePlanRef.current === shownAtTimeout) {
+              onLateAdoptedRef.current?.(plan);
+              setPlan(plan);
+            }
             transition({ phase: 'idle' });
           },
           () => {
