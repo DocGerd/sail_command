@@ -406,6 +406,14 @@ describe('#1854 day strip, sea ribbon and area line', () => {
     expect(document.querySelector('.conditions-hour-value')).toHaveTextContent('(jetzt)');
   });
 
+  it('a column click is a user step: it retires the clamped-seed note', () => {
+    renderPanel(props({ forecast: smallReady(), departureMs: HOUR0 + 100 * H }));
+    expect(screen.getByText(/liegt außerhalb der Vorhersage/)).toBeInTheDocument();
+    const lastDay = screen.getByRole('group', { name: /^Übersicht .+, Revier$/ });
+    fireEvent.click(lastDay.querySelector('button')!);
+    expect(screen.queryByText(/liegt außerhalb der Vorhersage/)).toBeNull();
+  });
+
   it('missing Hs reads as no model data, never as calm', () => {
     renderPanel(props({ forecast: smallReady(smallWave(() => NaN)) }));
     const sea = columns()[0]!.querySelector('.conditions-col-sea')!;

@@ -556,7 +556,7 @@ export default function ConditionsPanel({
                 aria-current={c.startMs === currentWindow ? 'true' : undefined}
                 onClick={() => {
                   const first = c.hoursMs[0];
-                  if (first !== undefined) setConditionsHour(first);
+                  if (first !== undefined) stepConditionsHourTo(first);
                 }}
               >
                 <span className="conditions-col-time">{formatTime(c.startMs, lang)}</span>
