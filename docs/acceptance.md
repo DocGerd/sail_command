@@ -258,6 +258,21 @@ results table at the bottom, and note it in the box below the check.
       50 vessels in view only the 50 nearest are listed under a sentence
       saying so. All three are designed states, not defects (#831).
 
+- [ ] **Weather tab (#1854).** The tab bar's second tab, after Plan, reads
+      "Weather" / "Wetter". Open it with no plan loaded: the map shows wind
+      and sea state for the whole sailing area at the chosen hour, with no
+      route. Step the hour and the day with the buttons and the map follows. The
+      overview strip shows one column per remaining three-hour window of the
+      chosen day; tapping a column selects its first remaining hour. Inside the
+      "Timeline, layers and key" / "Zeitleiste, Ebenen und Zeichenerklärung"
+      disclosure (collapsed on narrow layouts, open on wide), drag the
+      timeline; the sea-state ribbon sits above it. A "–" in the strip means the
+      model has no data there, not a calm sea. While sea state is shown, depth
+      shading is hidden and a note offers "Show depths" / "Tiefen zeigen". Press "Use as departure" / "Als Abfahrt übernehmen" ("Leave now" / "Jetzt als Abfahrt" at the current hour): the app switches to the Plan tab and the departure field holds that hour; a screen reader announces "Departure set to …". Offline, after the tab has been opened once online, it
+      shows the held forecast with its age; a new forecast needs a connection.
+      The shading stops at the coast to within one raster cell. Sea-state
+      shading is display only and never changes a route.
+
 ## 2. Route A — Flensburg → Marstal
 
 Plan a route from a Flensburg-area harbor to Marstal with a departure time
@@ -389,7 +404,7 @@ selected in §1.
       leg's "Shallow …"/"Marginal …" chip both now appear on an ordinary,
       non-relaxed route too, not only inside a route the relaxation banner
       already flagged (#651). Whenever the panel is too
-      narrow for all ten columns — the default width on a laptop — the
+      narrow for all its columns — the default width on a laptop — the
       table still scrolls sideways by design, and a soft shadow at its
       left/right edge marks that there is more to scroll in that direction.
       Both the scroll and the shadow disappear once the table fits (a very
@@ -399,8 +414,8 @@ selected in §1.
       same expanded "Legs (…)" table, every SAIL leg's "Type" cell carries a
       SECOND chip after the rig/board chip, reading "Full main" / "1st reef"
       / "2nd reef" / "3rd reef" (DE: "Volles Groß" / "1. Reff" / …). It is a
-      sibling chip in the existing cell, NOT a new column — the table still
-      has ten columns and the "Type" column still names the rig and board.
+      sibling chip in the existing cell, NOT a new column — it adds no column
+      to the table and the "Type" column still names the rig and board.
       MOTOR legs carry no reef chip at all; that is deliberate, not a
       missing value. The band may change along the route as the wind
       does; a single band across the whole route is not a defect when the
@@ -574,6 +589,20 @@ selected in §1.
       "Route wird berechnet…". The fetching, start-up and depth-probing
       phases name no sail. Cancelling
       still behaves as in 2.18.
+
+- [ ] **2.22 Sea state in the route summary (#1830).** On a freshly planned
+      route, the summary shows a "Max sea state" / "Höchster Seegang" line with
+      the highest significant wave height over the whole route. The expanded
+      "Legs (…)" table gains a last column, "Sea state" / "Seegang", with one
+      value per leg; a note below the table says the figure is a model
+      estimate and that "≥" means parts of the leg have no data. A leg without
+      data reads "no data" / "keine Daten", a leg with partial data shows a
+      lower bound ("≥"), and a route total over partial data is marked
+      "partly no data" / "teils ohne Daten". On a
+      plan saved before v0.59.0, or whose marine forecast did not arrive, the
+      line, the column and the note are all absent — a designed state, not a
+      defect. The figures are display only: ETA, distance and rig verdict are
+      unaffected.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 

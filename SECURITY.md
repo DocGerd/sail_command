@@ -100,8 +100,7 @@ signature at all. Both outcomes are expected for those versions, not a sign
 of tampering.
 
 A release can reach `main` before its signed tag is pushed; until that tag
-exists there is nothing to verify for it. `v0.59.0` is one
-([#1848](https://github.com/DocGerd/sail_command/issues/1848)).
+exists there is nothing to verify for it.
 
 The Silver `signed_releases` criterion requires **both** cryptographic
 signing **and** a documented process for obtaining the public keys and
