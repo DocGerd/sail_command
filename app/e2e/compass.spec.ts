@@ -774,8 +774,8 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
 }) => {
   const server = await startPreview(page);
   try {
-    // #1854: the Wetter visit must not reach the live forecast API.
-    await page.route(/open-meteo\.com/, (route) => route.abort());
+    // #1854: the Wetter visit must not reach the live forecast API; a 400 fails at once, with no retry.
+    await page.route(/open-meteo\.com/, (route) => route.fulfill({ status: 400, body: '' }));
     await page.goto(server.url);
     await mapReady(page);
 

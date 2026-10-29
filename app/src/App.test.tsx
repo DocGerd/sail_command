@@ -6134,7 +6134,9 @@ describe('#1854 Wetter tab (App wiring)', () => {
 
   async function openWetter() {
     fireEvent.click(screen.getByRole('tab', { name: de['nav.conditions'] }));
-    await waitFor(() => expect(fetchWindGrid).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    await waitFor(() => expect(fetchWindGrid).toHaveBeenCalledTimes(1), {
+      timeout: solverTimeoutMs(2_000),
+    });
     return screen.findByRole('button', { name: de['conditions.hour.next'] });
   }
 

@@ -852,8 +852,8 @@ for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
           },
           [lang, panelPx === undefined ? '' : String(panelPx)] as const,
         );
-        // Selecting Wetter must not reach the live forecast API.
-        await page.route(/open-meteo\.com/, (route) => route.abort());
+        // Selecting Wetter must not reach the live forecast API; a 400 fails at once, with no retry.
+        await page.route(/open-meteo\.com/, (route) => route.fulfill({ status: 400, body: '' }));
         await page.setViewportSize(viewport);
         await page.goto(server.url);
         await mapReady(page);
