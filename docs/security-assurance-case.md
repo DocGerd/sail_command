@@ -68,9 +68,9 @@ Complete runtime network egress — there is nothing else:
 | # | Destination | When | What is sent | Trust in the response |
 |---|---|---|---|---|
 | N1 | Same origin (`docgerd.github.io`, GitHub Pages CDN) | App load, map use | Nothing but the request | Data-only assets; the app shell is precached |
-| N2 | `https://api.open-meteo.com/v1/forecast` | Only when the user plans a route or opens the Weather tab | A **fixed** 14 × 23 point grid covering the whole supported area, no API key, no cookies | Untrusted JSON, validated on arrival |
+| N2 | `https://api.open-meteo.com/v1/forecast` | Only when the user plans a route or has the Weather tab open | A **fixed** 14 × 23 point grid covering the whole supported area, no API key, no cookies | Untrusted JSON, validated on arrival |
 | N3 | `wss://stream.aisstream.io/v0/stream` | Only if the user pasted their own AIS key | The user's key plus bounding boxes derived from the map view / active route | Untrusted JSON frames, validated per field |
-| N4 | `https://marine-api.open-meteo.com/v1/marine` | Only when the user plans a route or opens the Weather tab, after N2 succeeds | The same fixed grid as N2, no API key, no cookies | Untrusted JSON, validated on arrival; display only, so a failure drops the sea-state overlay, never the plan |
+| N4 | `https://marine-api.open-meteo.com/v1/marine` | Only when the user plans a route or has the Weather tab open, after N2 succeeds | The same fixed grid as N2, no API key, no cookies | Untrusted JSON, validated on arrival; display only, so a failure drops the sea-state overlay, never the plan |
 
 Two properties of N2 are load-bearing and easy to lose in a refactor: the wind
 request is **position-independent** (a constant grid, identical for every user,

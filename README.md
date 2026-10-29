@@ -114,8 +114,7 @@ installs as a standalone icon and works fully offline after the first visit
 - **Weather tab**: wind and sea state for the whole sailing area at an hour you
   choose, without a planned route. Step by hour or day, drag the timeline, read
   a three-hour overview of the chosen day, and hand the hour to the planner as
-  its departure. The forecast is fetched when the tab is first opened and held
-  for the session; offline the tab shows the held forecast with its age
+  its departure. The forecast is fetched when the tab is opened, unless a recent one (including the loaded plan's) is already held, and is kept for the session; offline the tab shows the held forecast with its age
   ([#1854](https://github.com/DocGerd/sail_command/issues/1854)).
 - The route summary shows the highest significant wave height per leg and for
   the whole route, from the plan's stored sea-state forecast. It is display
@@ -145,14 +144,13 @@ installs as a standalone icon and works fully offline after the first visit
   vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
   is filtered out by MMSI. The key stays on the device; saved plans and backup exports do not contain it, and plans stored before v0.58.0 lose it at the next app start.
 
-Planning a new route, and the Weather tab's first forecast fetch, require an
-internet connection (wind forecast fetch),
+Planning a new route requires an internet connection (wind forecast fetch),
 except the **next passage** from a planned route, which reuses that route's
 stored forecast offline for as long as it reaches the departure and the seeded start is unchanged;
 everything else — viewing/loading saved plans, the map, live GPS guidance —
 works fully offline once the app has been loaded once, except that the map's
 northern and eastern extension needs its region archive saved first (see
-[First load / offline](#first-load--offline)).
+[First load / offline](#first-load--offline)). The Weather tab needs a connection for its own forecast; offline it shows the forecast it or the loaded plan already holds.
 
 ## First load / offline
 

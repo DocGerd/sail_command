@@ -261,16 +261,14 @@ results table at the bottom, and note it in the box below the check.
 - [ ] **Weather tab (#1854).** The tab bar's second tab, after Plan, reads
       "Weather" / "Wetter". Open it with no plan loaded: the map shows wind
       and sea state for the whole sailing area at the chosen hour, with no
-      route. Step the hour and the day with the buttons, or drag
-      the timeline, and the map follows. Under the collapsed "Timeline, layers
-      and key" / "Zeitleiste, Ebenen und Zeichenerklärung" disclosure, the
-      sea-state ribbon sits above the timeline, and the overview strip shows
-      one column per remaining three-hour window of the chosen day; tapping a
-      column selects its first remaining hour. A "–" in the strip means the
+      route. Step the hour and the day with the buttons and the map follows. The
+      overview strip shows one column per remaining three-hour window of the
+      chosen day; tapping a column selects its first remaining hour. Inside the
+      "Timeline, layers and key" / "Zeitleiste, Ebenen und Zeichenerklärung"
+      disclosure (collapsed on narrow layouts, open on wide), drag the
+      timeline; the sea-state ribbon sits above it. A "–" in the strip means the
       model has no data there, not a calm sea. While sea state is shown, depth
-      shading is hidden and a note offers "Show depths" / "Tiefen zeigen". Press "Use as
-      departure" / "Als Abfahrt übernehmen": a confirmation names the hour, and
-      the planner's departure field holds it. Offline, after the tab has been opened once online, it
+      shading is hidden and a note offers "Show depths" / "Tiefen zeigen". Press "Use as departure" / "Als Abfahrt übernehmen" ("Leave now" / "Jetzt als Abfahrt" at the current hour): the app switches to the Plan tab and the departure field holds that hour; a screen reader announces "Departure set to …". Offline, after the tab has been opened once online, it
       shows the held forecast with its age; a new forecast needs a connection.
       The shading stops at the coast to within one raster cell. Sea-state
       shading is display only and never changes a route.
