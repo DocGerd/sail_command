@@ -403,10 +403,7 @@ making design-level decisions; do not silently deviate.
   <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
   per-test override, keyed OR positional, e.g. the property test's 900 s)
-  from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
-  RETIRED 2026-09-07: the eleven-file enumeration and the keyword-only-grep
-  miss it recorded are now pinned by `timeoutGuard.test.ts` below, which
-  covers BOTH the keyed and the bare-positional form.
+  from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal.
   `SC_COVERAGE` (read by `timeouts.ts`) is set by `vite.config.ts`'s
   `test.env` whenever the CLI's own `--coverage`/`--coverage.enabled*` flag
   is present — not by a shell-only env-var prefix, so it works identically
@@ -909,36 +906,11 @@ making design-level decisions; do not silently deviate.
   but `.map-stack-tl` lets only `.data-layer-controls` shrink
   (`.compass-control` is `flex-shrink: 0`) — DELIBERATE: the plain bound would
   scroll the compass itself out of reach.
-- `ScaleBar` is coupled to `.banner-area` through a RUNTIME-MEASURED value,
-  not a CSS rule: it computes its suppression ceiling from `.map-stack-tl`'s
-  rendered bottom edge. Before PR #374 nothing observed `.banner-area`
-  mounting a banner, so that ceiling went stale and the bar rendered fully
-  OVERLAPPING `.map-stack-tl` — 1837.7px² measured — rather than
-  suppressing. PR #374 fixed this with a `MutationObserver` on `.banner-area`
-  (`{childList: true}`), disconnected on unmount. **PR #382 (#368) REMOVED
-  that observer**, subsumed rather than kept as a second redundant trigger:
-  `childList` fires on banner mount/unmount but is BLIND to a banner that
-  grows TALLER by wrapping to a second line (a longer German string) with no
-  child added or removed at all — exactly the residual `lib/useBannerHeight.ts`'s
-  shared `ResizeObserver` on `.banner-area` closes structurally, publishing
-  the real rendered height as the `--sc-banner-height` custom property on
-  `:root` (the same value `app.css`'s narrow-layout banner-clearance rule
-  now reads, replacing an earlier viewport-height CLAMP HEURISTIC that was
-  blind to actual banner count/height — see that rule's own comment).
-  ScaleBar.tsx now calls that SAME hook (its own call site, alongside
-  App.tsx's) purely to get an effect-rerun trigger — the hook's
-  `ResizeObserver` callback writes the CSS custom property SYNCHRONOUSLY,
-  before the `setState` that would otherwise schedule ScaleBar's re-render,
-  so by the time ScaleBar's own `[isWide, bannerHeight]` effect reads
-  `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
-  correct regardless of which call site's commit lands first. NAMED
-  COUPLING now points at `App.tsx`'s `<div className="banner-area">`
-  (rendered unconditionally) and its App-level `useBannerHeight()`
-  call (kept purely for that write side-effect). Any rule that moves
-  `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
-  connected only through that runtime-measured layout value, invisible in
-  the CSS, in the diff, and to any test that checks the two components
-  separately.
+- `ScaleBar` re-measures its suppression ceiling when `.banner-area` or
+  `.map-stack-tl` resizes, pinned by `ScaleBar.test.tsx`'s #368/#1552 rows;
+  their geometry is stubbed, so a CSS move of `.map-stack-tl` is exercised only
+  in a real browser, and `App.tsx`'s own `useBannerHeight()` call (kept for its
+  `--sc-banner-height` write) is unpinned.
 - MQ4 `@media not (…)` is a syntax error to a Level 3 parser, which silently
   drops the WHOLE block, so `app.css` writes complements MQ3-style
   (`@media (max-width: 1023.98px)`, accepting the 0.02px hairline; never
@@ -985,27 +957,16 @@ making design-level decisions; do not silently deviate.
   `.chip-*`-style guard generalised to `.sc-btn` would report all three
   modifiers broken today. Note the grouped form is why an anchored
   `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
-- **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
-  `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
-  primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
-  the affordance even in the accessibility tree). `app.css`'s `.app-shell`
-  grid track is `grid-template-columns: minmax(320px, var(--sc-panel-w, 1fr))
-  10px 2fr;` — `--sc-panel-w` is written by `App.tsx` as a px length once a
-  user drags/keys the resizer, and the bare `1fr` fallback is load-bearing:
-  with no stored override the pre-#355 layout is reachable byte-for-byte, not
-  merely approximated. `panelWidth.ts`'s `panelMaxWidthPx()` computes
-  `max(320, min(0.7·viewportWidth, viewportWidth − 480))` — the `480px` map
-  reserve (`PANEL_MAP_RESERVE_PX`) is a maintainer JUDGEMENT call, not a
-  measured layout constant, and its own comment says so explicitly so a future
-  reader doesn't mistake it for one. Persistence is `usePersistedNumber` —
-  localStorage via `lib/storage.ts`'s safe wrappers, NOT IndexedDB (mirrors
-  `usePersistedToggle`'s contract); `null` means no override; the returned
-  value clamps to the CALLER's current `min`/`max` on every read, but the raw
-  stored number is left untouched by a bounds change ALONE — only an explicit
-  drag/keyboard-step/reset commit persists a new value, so one narrow-viewport
-  visit cannot silently erase a wide-screen preference. `panelWidth.test.ts`
-  is the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern),
-  pinning `app.css`'s `320px` literal against `PANEL_MIN_WIDTH_PX`.
+- **#355 resizable panel**: `isWide` mount-gates `PanelResizer`, so narrow
+  never gains the separator even in the a11y tree — pinned by
+  `panel-resize.spec.ts`'s narrow-layout rows (`[role="separator"]` count 0);
+  `PANEL_MAP_RESERVE_PX` is a judgement call, not a measurement (its own
+  comment says so); `panelMaxWidthPx` and the 320px floor are pinned by
+  `panelWidth.test.ts`, whose regex also pins the `var(--sc-panel-w, 1fr)`
+  track; localStorage persistence (clamp-on-read, storage untouched by a bounds
+  change, `null` = no override, `set(null)` resets) by
+  `usePersistedNumber.test.ts`; the unset-`--sc-panel-w` default by
+  `panel-resize.spec.ts`.
 - `maxPitch: 0` is set at Map construction in `MapView.tsx`, pinned by
   `MapView.mount.test.tsx`'s `#207` test (the constructor option, not
   behaviour). Pitch is deliberately unreachable; don't re-enable it without
@@ -1483,10 +1444,11 @@ making design-level decisions; do not silently deviate.
   guards` test reds unless the precache holds a self-contained
   `maplibre-gl-worker` chunk; it does not check the runtime `setWorkerUrl`
   call.
-- `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
-  `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
-  full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
-  stored per plan in IndexedDB, not in the SW cache).
+- `app/src/sw.ts`: the `.pmtiles` Range→206 route stays registered before
+  `precacheAndRoute` (why: sw.ts's comment; pinned by
+  `basemapArchiveRoute.test.ts`'s `Range→206 route stays registered BEFORE
+  precacheAndRoute` describe); the SW must never cache the Open-Meteo origin
+  (wind is stored per plan in IndexedDB).
 - The basemap ships as `app/public/data/basemap.pmtiles.png` (#118) — a deliberate
   masquerade, never "clean up" the extension: GitHub Pages' CDN gzips
   `application/octet-stream` at EVERY size and serves Range 206 slices of the
@@ -1728,6 +1690,7 @@ making design-level decisions; do not silently deviate.
   | v0.58.0 | 2026-10-21 | 45 s | read as **NO `deploy` JOB CREATED YET** (only `build`, `in_progress`) at 20:09:02Z, eight seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `39667697615` (created 20:08:25Z) -> tag `39667801625` (created 20:09:10Z) on `93441cb`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7236186642`, `ref: v0.58.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-ByTpDzGk.js` at ``version:`v0.58.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `493006a` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.59.0 | 2026-10-28 | 429178 s | `success`, `steps=6` (the cloud cut could not sign, so the tag followed days later, #1848) | **tag run cancelled** | merge-push `39993775630` (`deploy` success 17:18:44Z on 2026-10-23) -> tag `40726528067` on `578949f`, cancel-superseded by the `v0.60.0` tag run before its `deploy` started (`steps: 0`). Release created by run `40726528041`; tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
   | v0.60.0 | 2026-10-28 | 263315 s | `success`, `steps=6` (tag delayed as at v0.59.0, #1888) | **`smoke-probe` FAILED** | merge-push `40206598600` -> tag `40726671974` on `fe9c5b9`. Tag run's `build` and `deploy` succeeded; its prod entry chunk `assets/index-D3OW1GZs.js` returned 404 on all 10 attempts while the basemap Range probes passed on attempt 1. Remedy: the develop push of PR #1909 (different SHA); outcome not recorded here. Release `isLatest: true` (run `40726671968`); tag object `verified: true, reason: "valid"`. Names no MECHANISM. |
+  | v0.61.0 | 2026-10-29 | 63 s | read as **NO `deploy` JOB CREATED YET** (only `build`) at 08:56:42Z, three seconds before the tag push; conclusion later `cancelled` | **SAFE -- the tag deployment TOOK** | merge-push `40845687502` (created 08:55:42Z) -> tag `40845814989` (created 08:56:45Z) on `793779b`. Merge run's `deploy` **`steps: 0`** against its own `build` at **`steps: 23`**; the `github-pages` deployments list for that SHA returned ONE object, `7408026032`, `ref: v0.61.0`. Tag run's `build`, `deploy`, `prod-environment` and **`smoke-probe` all succeeded**; production served `assets/index-Cocdo71_.js` at ``version:`v0.61.0` `` with ZERO suffixed matches. Release `isLatest: true`; tag object `66b01cb` reported `verified: true, reason: "valid"`. Names no MECHANISM. |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
@@ -2055,6 +2018,11 @@ making design-level decisions; do not silently deviate.
   `main` BEFORE the tag is pushed — true here only because it merged via the
   release PR itself. Runbook step 5c is now VERIFY, not
   create: confirm `gh release list` shows the tag marked `Latest`.
+  Scorecard's `Signed-Releases` check reads signature/provenance files attached
+  to GitHub Releases, not git tag signatures, so the SSH-signed Verified tags
+  score nothing there: it read -1 "no releases found" (API result of
+  2026-10-26) while every Release carried zero assets, and attaching signed
+  artifacts or SLSA provenance via `release.yml` is tracked in #1940.
 - **Deploy-collision timing, back-merge and hotfix flow** — this is WHY step
   5b must pass BEFORE the back-merge: `cancel-in-progress` cancel-supersedes
   and tag runs share the `pages` group (mechanism in the "Deploy —
@@ -2775,6 +2743,13 @@ making design-level decisions; do not silently deviate.
   yields two identical empty dumps that read as proof. Cheap successor for a
   later comment-only wave: strip comments/strings and hash the code, which
   proves "comment-only" AND carries the equivalence forward by construction.
+- **A max or coverage over the cells a leg crosses must come from an exact
+  cell-edge traversal, never fixed-rate sampling along the chord**:
+  `routeSeaState.ts`'s first version sampled at 2 per cell step, skipped cells
+  a leg clipped, and so understated `legMaxHsM` while `incomplete` stayed false
+  (PR #1914 review, positive-controlled by raising the rate). `crossedCells`
+  replaced it and is pinned by a differential test against an independent dense
+  sampler.
 - **Two measurements of DIFFERENT subjects cannot be differenced — isolate
   by construction.** A before/after banner-height comparison used two
   different route plans (10 vs 5 flagged legs), so 489 px and 432 px were
@@ -3504,6 +3479,13 @@ making design-level decisions; do not silently deviate.
   from the `onSelect`/`onCancel` CALLBACKS, which know the user acted; a
   prop-diff can only guess. Enumerate every state a derived boolean passes
   through, not just the transition you care about.
+  Second instance (#1916): comparing the form value with its solve-start
+  snapshot counted the plan-sync's own departure write as a user edit, so
+  opening a saved plan mid-solve kept a stale departure and chip; the fix was
+  an explicit flag set only in the field's change handler, reset at each solve
+  start and cleared by the plan-sync's departure write, and a round-2 probe
+  (edit, open plan, result lands) found the flag outliving the overwritten
+  edit, a gap in the reviewer's own round-1 suggestion.
 - **A fix whose trigger is RARE is not verified by the trigger's absence.**
   Write "NOT YET EXERCISED" in the same breath as "landed" — every later
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
@@ -4560,6 +4542,12 @@ making design-level decisions; do not silently deviate.
   The Historical Forecast API and `past_days` returned
   identical `icon_seamless` values for the same past hours (206 of 206 read
   point-hours, #1894 spike §7.2).
+  A single-point forecast curl on 2026-10-29 returned
+  `{"error":true,"reason":"Hourly API request limit exceeded. Please try again
+  in the next hour."}` (HTTP status not captured), a quota failure distinct
+  from the concurrency 429 above, so a tiny probe avoids the concurrency 429
+  but can still hit an exhausted hourly quota; the marine API answered normally
+  in the same call.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
   client, ZERO sockets (the network-free e2e suite depends on this; never add
   a default key or eager connect). aisstream.io signals an invalid key as bare
@@ -4862,6 +4850,13 @@ making design-level decisions; do not silently deviate.
   shape than the heredoc-prose case — `-f` inside a longer word or a longer
   flag is not `-f` as a TOKEN, so exact-match on the argument would fix them
   without the parser PR #233 was closed over. Still out of repo scope (#236).
+  The guard's `RE_NOVERIFY` (any prefix of `--no-verify` from `--n` on, ended
+  by any character other than a lowercase letter or `-`; guard v6) denied `npx
+  tsc --noEmit` as "skips git hooks" in a reviewer probe and again in a
+  verification session. The capital `E` satisfies its terminator, and `sed -n`
+  and `git status` were innocent (controls: `--noemit` and `sed -n` passed).
+  Run `npm --prefix app run typecheck` or write the flag into a script file
+  instead.
 - **A `COMMENTED` review with a substantial body can carry ZERO inline
   threads** — `reviewThreads.nodes` and `pulls/N/comments` both empty,
   confirmed with a positive control at #1173. So a brief saying "reply on each
@@ -5089,6 +5084,13 @@ making design-level decisions; do not silently deviate.
   (branch, commit, `git status`, process table), and if that is still
   ambiguous ASK — a question costs one round-trip and cannot be wrong, while
   every external signal is blind to an uncommitted worktree.
+- **Agent-tool subagent results travel only via `SubagentHandback({message})`**
+  (Claude Code 2.1.312; a harness property, re-check after an upgrade): the
+  harness reminds every agent that plain end-of-turn text is not delivered, a
+  duplicate `SendMessage` reaches the caller twice, and the call ends the run.
+  So brief any "post the review" or "write the file" step to come BEFORE it,
+  and read the PR or file artifact rather than the agent's reply when judging
+  delivery.
 - Monitors, four failure modes (the first three measured 2026-08-07, the fourth
   2026-08-19): `pgrep -f <pat>`
   SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
@@ -5371,6 +5373,13 @@ making design-level decisions; do not silently deviate.
   plain heredoc write to a path outside the worktree. Broader than the compound-command
   trigger above; hit independently by two worktree agents on 2026-09-09. Remedy: write the
   message with the `Write` tool, then a single plain `git commit -F <file>`.
+  Further shapes refused for a worktree-isolated agent (Claude Code 2.1.312,
+  2026-10-29), all with the same "cannot be shown not to be git" text: `timeout
+  -k <s> node ...` ("runs timeout with the text node in a plain command"), a
+  `gh api ... --jq` whose text contains a pipe, `gh` with a shell variable such
+  as `$cid`, and `bash` inside a construct; an agent recovered by dropping
+  `timeout` and splitting into simple commands, launching the server as `npm
+  --prefix app run preview -- --port <p> --strictPort &`.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
