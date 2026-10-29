@@ -13,6 +13,7 @@ import { depthSourceCorners } from '../lib/depthColor';
 import {
   paintSeaState,
   seaStateMarkers,
+  windMarkerOffsets,
   seaStateRasterIndex,
   seaStateRasterSize,
   WAVE_ARROW_IMAGE,
@@ -23,7 +24,8 @@ import {
   WAVE_FILL_OPACITY,
   WAVE_RASTER_SOURCE,
 } from '../lib/waveMap';
-import type { MaskMeta, WaveGrid } from '../types';
+import type { MaskMeta, WaveGrid, WindGrid } from '../types';
+import { makeWindGrid } from '../test/fixtures';
 
 interface RecordedPopup {
   className: string | undefined;
@@ -134,6 +136,8 @@ function renderWaves(
     visible: boolean;
     armed: boolean;
     mask: NavMask | null;
+    wind: WindGrid | null;
+    barbsVisible: boolean;
   }> = {},
 ) {
   hoisted.map = map;
@@ -145,6 +149,8 @@ function renderWaves(
         visible={p.visible ?? true}
         mapPickArmed={p.armed ?? false}
         mask={'mask' in p ? (p.mask ?? null) : WATER}
+        wind={p.wind ?? null}
+        barbsVisible={p.barbsVisible ?? false}
       />
     </I18nProvider>
   );
@@ -265,6 +271,20 @@ describe('WaveLayer setup (#1699, #1854)', () => {
       'arrow',
       'arrow',
     ]);
+  });
+
+  it('moves markers off the barbs while barbs show, and back when they hide (#1854)', () => {
+    const map = waveMap();
+    const g = grid();
+    const wind = makeWindGrid(() => ({ speedKn: 12, dirFromDeg: 270 }), { t0Ms: T0, hours: 4 });
+    const { rerenderWith } = renderWaves(map, { grid: g, wind, barbsVisible: true });
+    const raster = seaStateRasterIndex(WATER, g);
+    expect(lastData(map, WAVE_ARROW_SOURCE)).toEqual(
+      seaStateMarkers(raster, g, 0, windMarkerOffsets(wind, g, T0)),
+    );
+    expect(lastData(map, WAVE_ARROW_SOURCE)).not.toEqual(seaStateMarkers(raster, g, 0));
+    rerenderWith({ grid: g, wind, barbsVisible: false });
+    expect(lastData(map, WAVE_ARROW_SOURCE)).toEqual(seaStateMarkers(raster, g, 0));
   });
 
   it('samples by time: repaints and re-points arrows on an hour change', () => {

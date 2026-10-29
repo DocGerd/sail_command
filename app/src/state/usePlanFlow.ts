@@ -6,6 +6,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { planLog } from '../lib/planLog';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
+import { mapWindError } from './windErrorKey';
 import { noRouteMessageKey } from '../lib/plan';
 import { windGridReaches } from '../lib/planForm';
 import type { HarborWithReachability } from '../lib/harborReachability';
@@ -99,21 +100,6 @@ export interface PlanFlowDeps {
 // moved to state/replan.ts — all three paths that can observe a RoutingError
 // share it now, not just this one. Its full rationale, including why
 // 'worker-fatal' deliberately bundles two causes, lives with the table.
-
-function mapWindError(err: unknown): MsgKey {
-  if (err instanceof OpenMeteoError) {
-    switch (err.kind) {
-      case 'offline':
-        return 'error.offline';
-      case 'rate-limited':
-        return 'error.rateLimited';
-      case 'http':
-      case 'malformed':
-        return 'error.windService';
-    }
-  }
-  return ROUTING_FAILURE_MESSAGE_KEY['wind-unclassified'];
-}
 
 // #114: options for run(). `replacePlanId` is the explicit-confirm
 // "recalculate and replace" path: the completed run is persisted under that

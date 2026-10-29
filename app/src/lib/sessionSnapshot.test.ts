@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   SESSION_SNAPSHOT_KEY,
   parseSessionSnapshot,
+  persistableTab,
   readSessionSnapshot,
   writeSessionSnapshot,
   type SessionSnapshot,
@@ -135,5 +136,16 @@ describe('sessionSnapshot (#113)', () => {
     expect(() =>
       writeSessionSnapshot({ v: 1, planId: 'p1', tab: 'plan', rig: 'genoa' }),
     ).not.toThrow();
+  });
+});
+
+describe('persistableTab (#1854)', () => {
+  it('writes Wetter as Plan so an older build still parses the snapshot', () => {
+    expect(persistableTab('conditions')).toBe('plan');
+    for (const tab of ['plan', 'routes', 'live', 'boat'] as const) {
+      expect(persistableTab(tab)).toBe(tab);
+    }
+    writeSessionSnapshot({ v: 1, planId: null, tab: persistableTab('conditions'), rig: null });
+    expect(parseSessionSnapshot(localStorage.getItem(SESSION_SNAPSHOT_KEY))?.tab).toBe('plan');
   });
 });

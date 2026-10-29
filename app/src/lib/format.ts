@@ -362,6 +362,19 @@ export function formatLegDuration(ms: number): string {
   return `${hours} h ${zeroPad(minutes, 2)} min`;
 }
 
+/** Forecast age: whole minutes below an hour, else whole hours ("45 min", "13 h"). */
+export function formatAgeShort(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h`;
+}
+
+/** Short local day label: "Sa 24." / "Sat 24". */
+export function formatDayShort(ms: number, lang: Lang): string {
+  const weekday = new Intl.DateTimeFormat(LOCALES[lang], { weekday: 'short' }).format(ms);
+  const day = new Date(ms).getDate();
+  return lang === 'de' ? `${weekday} ${day}.` : `${weekday} ${day}`;
+}
+
 /** Signed schedule drift in whole minutes, e.g. "+12 min" (behind) / "-10 min" (ahead) / "0 min". */
 export function formatDriftMin(driftMs: number): string {
   const minutes = Math.round(driftMs / 60_000);

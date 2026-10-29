@@ -2,7 +2,8 @@
 // the water-clipped raster (#1854), markers and their images. A plain module
 // (no React), so DataLayers can import the stack anchor without importing a
 // component.
-import type { LatLon, MaskMeta, WaveGrid } from '../types';
+import type { LatLon, MaskMeta, WaveGrid, WindGrid } from '../types';
+import { nearestHourIndex } from './routeGeoJson';
 import type { NavMask } from './mask';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Lang } from './format';
@@ -267,20 +268,99 @@ export function shadedWaveCellAt(
   return c === 0 ? null : waveCellProps(grid, hourIdx, c - 1);
 }
 
-// Exactly one marker per shaded cell, at its lattice point: the travel arrow,
-// or a dot when the direction is missing.
-export function seaStateMarkers(raster: SeaStateRaster, grid: WaveGrid, hourIdx: number): MarkerFC {
+export interface MarkerOffset {
+  dLat: number;
+  dLon: number;
+}
+
+const CALM_BARB_KN = 2.5;
+
+/**
+ * Where a cell's marker sits while barbs are shown (#1854 spike §5): the
+ * quarter-cell point on the downwind side, farthest from the cell's wind
+ * axis, so the barb drawn on the lattice point does not cover it. Calm or
+ * missing wind leaves it at the centre (null).
+ */
+export function markerOffset(
+  dirFromDeg: number,
+  speedKn: number,
+  latDeg: number,
+  latStepDeg: number,
+  lonStepDeg: number,
+): MarkerOffset | null {
+  if (!Number.isFinite(dirFromDeg) || !(speedKn >= CALM_BARB_KN)) return null;
+  const rad = (dirFromDeg * Math.PI) / 180;
+  const downE = -Math.sin(rad);
+  const downN = -Math.cos(rad);
+  const kx = Math.cos((latDeg * Math.PI) / 180);
+  let best: { e: number; n: number; perp: number; dot: number } | null = null;
+  for (const n of [1, -1])
+    for (const e of [1, -1]) {
+      const x = e * lonStepDeg * kx;
+      const y = n * latStepDeg;
+      const dot = x * downE + y * downN;
+      if (dot < -1e-12) continue;
+      const perp = Math.abs(x * downN - y * downE);
+      if (
+        best === null ||
+        perp > best.perp + 1e-12 ||
+        (Math.abs(perp - best.perp) <= 1e-12 && dot > best.dot)
+      ) {
+        best = { e, n, perp, dot };
+      }
+    }
+  return best && { dLat: (best.n * latStepDeg) / 4, dLon: (best.e * lonStepDeg) / 4 };
+}
+
+/** Per lattice point, the marker offset from the wind at `tMs`; null when there is no wind to offset from. */
+export function windMarkerOffsets(
+  wind: WindGrid | null | undefined,
+  grid: Pick<WaveGrid, 'lats' | 'lons'>,
+  tMs: number,
+): ((k: number) => MarkerOffset | null) | null {
+  if (!wind || wind.timesMs.length === 0) return null;
+  const h = nearestHourIndex(wind.timesMs, tMs);
+  const base = h * wind.lats.length * wind.lons.length;
+  const latStep = 2 * halfStep(grid.lats);
+  const lonStep = 2 * halfStep(grid.lons);
+  const nLon = grid.lons.length;
+  return (k) => {
+    const p = { lat: grid.lats[Math.floor(k / nLon)]!, lon: grid.lons[k % nLon]! };
+    const w = nearestWaveCell(wind, p);
+    if (w === null) return null;
+    return markerOffset(
+      wind.dirFromDeg[base + w] ?? NaN,
+      wind.speedKn[base + w] ?? NaN,
+      p.lat,
+      latStep,
+      lonStep,
+    );
+  };
+}
+
+// Exactly one marker per shaded cell: the travel arrow, or a dot when the
+// direction is missing. At its lattice point, or offset off the barb.
+export function seaStateMarkers(
+  raster: SeaStateRaster,
+  grid: WaveGrid,
+  hourIdx: number,
+  offsetAt: ((k: number) => MarkerOffset | null) | null = null,
+): MarkerFC {
   const nLon = grid.lons.length;
   const features: MarkerFC['features'] = [];
   for (let k = 0; k < raster.nPoints; k++) {
     if (raster.pixelCount[k] === 0) continue;
     const props = waveCellProps(grid, hourIdx, k);
     if (props === null) continue;
+    const off = offsetAt?.(k) ?? null;
     features.push({
       type: 'Feature',
       geometry: {
         type: 'Point',
-        coordinates: [grid.lons[k % nLon]!, grid.lats[Math.floor(k / nLon)]!],
+        coordinates: [
+          grid.lons[k % nLon]! + (off?.dLon ?? 0),
+          grid.lats[Math.floor(k / nLon)]! + (off?.dLat ?? 0),
+        ],
       },
       properties:
         props.travelDeg === undefined

@@ -130,10 +130,14 @@ function cellsAt(page: Page, points: Record<string, [number, number]>) {
       };
       for (const [name, [lng, lat]] of Object.entries(pts)) {
         const { x, y } = map.project([lng, lat]);
+        // #1854: with barbs on, a marker sits on a quarter-cell point (0.025°)
+        // off its lattice point; 0.03° stays clear of the neighbours' markers.
+        const ne = map.project([lng + 0.03, lat + 0.03]);
+        const sw = map.project([lng - 0.03, lat - 0.03]);
         const markers = map.queryRenderedFeatures(
           [
-            [x - 4, y - 4],
-            [x + 4, y + 4],
+            [Math.min(sw.x, x - 4), Math.min(ne.y, y - 4)],
+            [Math.max(ne.x, x + 4), Math.max(sw.y, y + 4)],
           ],
           { layers: [arrows] },
         ).length;

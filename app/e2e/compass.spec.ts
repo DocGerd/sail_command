@@ -599,7 +599,7 @@ const OCCLUSION_VIEWPORTS = [
   { width: 375, height: 667, neverSuppress: true },
   { width: 390, height: 844, neverSuppress: true },
 ];
-const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
+const OCCLUSION_TABS = ['Planen', 'Wetter', 'Routen'] as const;
 
 // #412 fix-wave (PR #419 review, Minor 1): formats an overlap tracker that
 // was initialised to `null` (never `0` — see the two `#368` overlap guards
@@ -774,7 +774,11 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
 }) => {
   const server = await startPreview(page);
   try {
-    await page.goto(server.url);
+    // #1854: fixtures keep the Wetter visit off the live API, and its arm
+    // measures the loaded card (hour row and actions), the taller state.
+    await page.goto(
+      `${server.url}?windFixture=test-fixtures/wind-sw12.json&waveFixture=test-fixtures/wave-bands.json`,
+    );
     await mapReady(page);
 
     // The PWA's SW registration finishes at roughly the same time as
@@ -808,6 +812,9 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
       for (const tabName of OCCLUSION_TABS) {
         await test.step(`${viewport.width}x${viewport.height} / ${tabName}`, async () => {
           await page.getByRole('tab', { name: tabName }).click();
+          if (tabName === 'Wetter') {
+            await expect(page.locator('.conditions-actions')).toBeVisible({ timeout: 15_000 });
+          }
 
           // --- compass: real occlusion + real interaction ---
           // #422 (residual of #412): geometry is RE-SAMPLED on every poll

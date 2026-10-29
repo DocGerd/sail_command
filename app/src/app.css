@@ -571,19 +571,40 @@ select {
   display: flex;
   height: var(--sc-tabbar-h);
   border-bottom: 1px solid var(--sc-border);
+  /* #1854: five tabs; the font step follows the strip's own width. */
+  container-type: inline-size;
 }
 
+/* No horizontal padding: flex sets the width; padding only takes room from the
+   label inside it. */
 .app-tabs button {
   flex: 1;
   background: transparent;
   border: none;
   border-bottom: 3px solid transparent;
-  padding: 0.6rem;
+  padding: 0.6rem 0;
 }
 
 .app-tabs button[aria-selected='true'] {
   border-bottom-color: var(--sc-accent);
   font-weight: 600;
+}
+
+@container (max-width: 22.5rem) {
+  .app-tabs button {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Below the tablet floor the selected tab keeps its accent border, not bold. */
+@container (max-width: 18rem) {
+  .app-tabs button {
+    font-size: 0.75rem;
+  }
+
+  .app-tabs button[aria-selected='true'] {
+    font-weight: inherit;
+  }
 }
 
 /* #706: the app's most-used control had no focus ring at all before this —
@@ -1574,6 +1595,11 @@ select {
    comment, below, covers why a blind copy of this rule would have clipped
    the compass instead — it uses a shrink-one-child variant, not this
    plain overflow). */
+/* #1854: on Wetter only ViaMarkers' status chip may show here. */
+.route-layer-controls[hidden] {
+  display: none;
+}
+
 .route-layer-controls {
   position: absolute;
   top: calc(var(--sc-app-header-height) + 8px);
@@ -5527,4 +5553,94 @@ select {
   margin: 0;
   font-size: 0.85rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #1854 Wetter card. Token-only, untiered panel content. */
+.conditions-header,
+.conditions-hour,
+.conditions-actions,
+.conditions-depth,
+.conditions-update,
+.conditions-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Compound: a bare modifier loses `background` to the later `.chip` rule (#506). */
+.chip.conditions-status {
+  padding: 0.25rem 0.6rem;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.conditions-status.conditions-status-stale,
+.conditions-line-warn {
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+}
+
+.conditions-line-warn {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+}
+
+.conditions-hour {
+  flex-wrap: nowrap;
+}
+
+.conditions-step.sc-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.conditions-hour-value {
+  flex: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.conditions-day.sc-btn {
+  min-height: 44px;
+}
+
+.conditions-day.sc-btn[aria-pressed='true'] {
+  border-color: var(--sc-accent);
+  box-shadow: inset 0 0 0 2px var(--sc-accent);
+}
+
+.conditions-line,
+.conditions-notice,
+.conditions-disclaimer {
+  margin: 0;
+}
+
+.conditions-notice,
+.conditions-disclaimer,
+.conditions-note {
+  font-size: 0.95rem;
+}
+
+.conditions-skeleton {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.conditions-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+
+.conditions-scrubber .sc-slider {
+  width: 100%;
+  min-height: 44px;
+}
+
+.conditions-more > .sc-disclosure-body {
+  display: grid;
+  gap: 0.5rem;
 }
