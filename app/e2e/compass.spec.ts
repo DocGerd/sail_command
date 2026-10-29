@@ -599,7 +599,7 @@ const OCCLUSION_VIEWPORTS = [
   { width: 375, height: 667, neverSuppress: true },
   { width: 390, height: 844, neverSuppress: true },
 ];
-const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
+const OCCLUSION_TABS = ['Planen', 'Wetter', 'Routen'] as const;
 
 // #412 fix-wave (PR #419 review, Minor 1): formats an overlap tracker that
 // was initialised to `null` (never `0` — see the two `#368` overlap guards
@@ -774,6 +774,8 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
 }) => {
   const server = await startPreview(page);
   try {
+    // #1854: the Wetter visit must not reach the live forecast API.
+    await page.route(/open-meteo\.com/, (route) => route.abort());
     await page.goto(server.url);
     await mapReady(page);
 

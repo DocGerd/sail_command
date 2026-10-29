@@ -800,8 +800,8 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
   }
 });
 
-// #299: proves the FOUR-tab strip (Plan/Routes/Live/Boat, added for the
-// dedicated Boat/skipper-settings tab) fits at the two narrowest
+// #299: proves the tab strip (FOUR tabs at #299; FIVE since #1854 added
+// Wetter: Planen/Wetter/Routen/Live/Boot) fits at the two narrowest
 // EDGE_VIEWPORTS entries by MEASUREMENT, never by trusting character counts.
 // "Boot"/"Boat" (4 chars, shorter than the existing "Routen"/"Routes") was
 // chosen specifically to keep this margin, per the #299 design decision.
@@ -828,51 +828,77 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
 // `scrollWidth > clientWidth` on the STRIP itself is the one signal here
 // that can actually distinguish "fits" from "silently overflows", and is
 // now the test's primary assertion.
-const FOUR_TAB_VIEWPORTS: Record<string, Viewport> = {
-  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
-  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
-};
-for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
-  test(`#299: the four-tab strip fits without horizontal overflow (${label}, ${viewport.width}x${viewport.height})`, async ({
-    page,
-  }) => {
-    const server = await startPreview(page);
-    try {
-      await page.setViewportSize(viewport);
-      await page.goto(server.url);
-      await mapReady(page);
+// #1854 (AC-12): also at 1024 px wide with the default panel and at
+// 1180x820 with the panel at its default and at 320 px, in DE and EN, with
+// every tab selected in turn (the selected tab is bold).
+const TAB_STRIP_CASES: { label: string; viewport: Viewport; panelPx?: number }[] = [
+  { label: 'wrapForcing280', viewport: EDGE_VIEWPORTS.wrapForcing280 },
+  { label: 'deepPortrait320', viewport: EDGE_VIEWPORTS.deepPortrait320 },
+  { label: 'wide1024', viewport: { width: 1024, height: 768 } },
+  { label: 'tabletLandscape', viewport: STANDARD_VIEWPORTS.tabletLandscape },
+  { label: 'tabletLandscape-panel320', viewport: STANDARD_VIEWPORTS.tabletLandscape, panelPx: 320 },
+];
+for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
+  for (const lang of ['de', 'en'] as const) {
+    test(`#299: the five-tab strip fits without horizontal overflow (${label}, ${viewport.width}x${viewport.height}, ${lang})`, async ({
+      page,
+    }) => {
+      const server = await startPreview(page);
+      try {
+        await page.addInitScript(
+          ([l, w]) => {
+            window.localStorage.setItem('sc-lang', l);
+            if (w) window.localStorage.setItem('sc-panel-width', w);
+          },
+          [lang, panelPx === undefined ? '' : String(panelPx)] as const,
+        );
+        // Selecting Wetter must not reach the live forecast API.
+        await page.route(/open-meteo\.com/, (route) => route.abort());
+        await page.setViewportSize(viewport);
+        await page.goto(server.url);
+        await mapReady(page);
 
-      const tablist = page.getByRole('tablist');
-      await expect(tablist).toBeVisible();
-      const tabs = page.getByRole('tab');
-      await expect(tabs).toHaveCount(4);
+        const tablist = page.getByRole('tablist');
+        await expect(tablist).toBeVisible();
+        const tabs = page.getByRole('tab');
+        await expect(tabs).toHaveCount(5);
+        const tabCount = await tabs.count();
 
-      // THE discriminating assertion — see this block's own header comment
-      // for why scrollWidth, not boundingBox(), is what can actually fail
-      // here. Polls the OVERFLOW AMOUNT (scrollWidth - clientWidth), not a
-      // boolean, so a CI failure names the actual px overrun instead of just
-      // timing out (this repo's own "poll the value" rule). Polled (not a
-      // one-shot read) purely as a settle margin for the page's own
-      // first-paint layout, not because this value is expected to change
-      // afterwards.
-      await expect
-        .poll(() => tablist.evaluate((el) => el.scrollWidth - el.clientWidth), { timeout: 5_000 })
-        .toBeLessThanOrEqual(0);
+        // THE discriminating assertion — see this block's own header comment
+        // for why scrollWidth, not boundingBox(), is what can actually fail
+        // here. Polls the OVERFLOW AMOUNT (scrollWidth - clientWidth), not a
+        // boolean, so a CI failure names the actual px overrun instead of just
+        // timing out (this repo's own "poll the value" rule). Polled (not a
+        // one-shot read) purely as a settle margin for the page's own
+        // first-paint layout, not because this value is expected to change
+        // afterwards.
+        for (let i = 0; i < tabCount; i++) {
+          await tabs.nth(i).click();
+          await expect
+            .poll(() => tablist.evaluate((el) => el.scrollWidth - el.clientWidth), {
+              timeout: 5_000,
+            })
+            .toBeLessThanOrEqual(0);
+        }
+        await tabs.nth(0).click();
 
-      // Structural sanity below — real geometry, but NOT the overflow guard
-      // (see header comment: these are unfalsifiable theorems for THIS
-      // failure mode under this app's flexbox setup). Kept only to catch a
-      // DIFFERENT regression — a tab collapsing to 0 width, or the strip
-      // itself losing its own full-viewport width.
-      const tabBoxes = await Promise.all([0, 1, 2, 3].map((i) => box(tabs.nth(i))));
-      for (const b of tabBoxes) expect(b.width).toBeGreaterThan(0);
-      const stripBox = await box(tablist);
-      const lastTab = tabBoxes[tabBoxes.length - 1];
-      expect(lastTab.x + lastTab.width).toBeCloseTo(stripBox.x + stripBox.width, 0);
-    } finally {
-      server.kill();
-    }
-  });
+        // Structural sanity below — real geometry, but NOT the overflow guard
+        // (see header comment: these are unfalsifiable theorems for THIS
+        // failure mode under this app's flexbox setup). Kept only to catch a
+        // DIFFERENT regression — a tab collapsing to 0 width, or the strip
+        // itself losing its own full-viewport width.
+        const tabBoxes = await Promise.all(
+          Array.from({ length: tabCount }, (_, i) => box(tabs.nth(i))),
+        );
+        for (const b of tabBoxes) expect(b.width).toBeGreaterThan(0);
+        const stripBox = await box(tablist);
+        const lastTab = tabBoxes[tabBoxes.length - 1];
+        expect(lastTab.x + lastTab.width).toBeCloseTo(stripBox.x + stripBox.width, 0);
+      } finally {
+        server.kill();
+      }
+    });
+  }
 }
 
 // #299 (PR #486 review, Minor 3): the #368 clearance MECHANISM (a
