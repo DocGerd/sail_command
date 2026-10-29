@@ -309,7 +309,7 @@ export default function WaveLayer({
     };
   }, [map, styleEpoch]);
 
-  // Unmount (plan cleared): the layers stay, emptied.
+  // Unmount (RouteLayer gone): the layers stay, emptied.
   useEffect(() => {
     if (!map) return;
     return () => {

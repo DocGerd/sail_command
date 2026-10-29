@@ -7,7 +7,14 @@ const HOUR_MS = 3_600_000;
 
 let hourMs: number | null = null;
 let seedDepartureMs: number | null = null;
+// The departure the last seed had to clamp; cleared by a manual step or an
+// entry that did not seed.
+let clampedSeedMs: number | null = null;
 const listeners = new Set<() => void>();
+
+function notify(): void {
+  for (const l of listeners) l();
+}
 
 export function getConditionsHour(): number | null {
   return hourMs;
@@ -16,7 +23,24 @@ export function getConditionsHour(): number | null {
 export function setConditionsHour(ms: number | null): void {
   if (ms === hourMs) return;
   hourMs = ms;
-  for (const l of listeners) l();
+  notify();
+}
+
+/** A user's own step: also retires the clamped-seed note. */
+export function stepConditionsHourTo(ms: number): void {
+  if (clampedSeedMs !== null) {
+    clampedSeedMs = null;
+    notify();
+  }
+  setConditionsHour(ms);
+}
+
+export function getClampedSeedMs(): number | null {
+  return clampedSeedMs;
+}
+
+export function useClampedSeedMs(): number | null {
+  return useSyncExternalStore(subscribeConditionsHour, getClampedSeedMs);
 }
 
 export function subscribeConditionsHour(listener: () => void): () => void {
@@ -33,6 +57,7 @@ export function useConditionsHour(): number | null {
 export function resetConditionsHourForTests(): void {
   hourMs = null;
   seedDepartureMs = null;
+  clampedSeedMs = null;
   listeners.clear();
 }
 
@@ -78,16 +103,27 @@ export function stepDay(options: readonly number[], current: number, delta: numb
 }
 
 /**
- * Tab entry. A departure that changed since the last seed becomes the hour;
- * otherwise the user's last hour is kept. Either is clamped into `options`,
- * which also moves a past hour forward. Returns whether the departure seed
+ * A departure that changed since the last seed becomes the hour; otherwise the
+ * user's last hour is kept. Either is clamped into `options`, which also moves
+ * a past hour forward. `entry` marks a tab entry: one that does not seed
+ * retires an earlier clamped-seed note. Returns whether the departure seed
  * had to be clamped.
  */
-export function seedConditionsHour(departureMs: number, options: readonly number[]): boolean {
+export function seedConditionsHour(
+  departureMs: number,
+  options: readonly number[],
+  entry = false,
+): boolean {
   if (options.length === 0) return false;
   const fromDeparture = departureMs !== seedDepartureMs || hourMs === null;
   seedDepartureMs = departureMs;
   const c = clampHour(fromDeparture ? floorHourMs(departureMs) : (hourMs ?? departureMs), options);
+  const seededClamped = fromDeparture && (c?.clamped ?? false);
+  const note = seededClamped ? departureMs : fromDeparture || entry ? null : clampedSeedMs;
+  if (note !== clampedSeedMs) {
+    clampedSeedMs = note;
+    notify();
+  }
   setConditionsHour(c?.ms ?? null);
-  return fromDeparture && (c?.clamped ?? false);
+  return seededClamped;
 }

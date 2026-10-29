@@ -60,10 +60,20 @@ async function serveAlternatingWind(page: Page): Promise<void> {
   });
 }
 
+const OPEN_METEO_HOSTS = new Set(['api.open-meteo.com', 'marine-api.open-meteo.com']);
+
 function watchOpenMeteo(page: Page): string[] {
   const urls: string[] = [];
   page.on('request', (req) => {
-    if (req.url().includes('open-meteo')) urls.push(req.url());
+    if (OPEN_METEO_HOSTS.has(new URL(req.url()).hostname)) urls.push(req.url());
+  });
+  return urls;
+}
+
+function watchFixtures(page: Page): string[] {
+  const urls: string[] = [];
+  page.on('request', (req) => {
+    if (new URL(req.url()).pathname.includes('/test-fixtures/')) urls.push(req.url());
   });
   return urls;
 }
@@ -84,15 +94,19 @@ test('a cold load fetches nothing; the tablist reads Planen, Wetter, Routen, Liv
     expect(requests).toEqual([]);
 
     // A failed fetch with nothing held is a typed message, never a blank card.
-    await page.route(/open-meteo\.com/, (route) => route.abort());
+    await page.route(/^https:\/\/(?:api|marine-api)\.open-meteo\.com\//, (route) => route.abort());
     await wetterTab(page).click();
     await expect(page.locator('.conditions-card [role="alert"]')).toContainText(
       'Windvorhersagedienst nicht erreichbar',
       { timeout: 60_000 },
     );
     // Wind only (the client retries it); waves are never fetched after a wind failure.
-    expect(requests.filter((u) => u.includes('api.open-meteo.com')).length).toBeGreaterThan(0);
-    expect(requests.filter((u) => u.includes('marine-api'))).toHaveLength(0);
+    expect(
+      requests.filter((u) => new URL(u).hostname === 'api.open-meteo.com').length,
+    ).toBeGreaterThan(0);
+    expect(
+      requests.filter((u) => new URL(u).hostname === 'marine-api.open-meteo.com'),
+    ).toHaveLength(0);
   } finally {
     server.kill();
   }
@@ -166,17 +180,23 @@ test('offline: nothing held says so; a held forecast shows with its age and the 
   try {
     await page.goto(`${server.url}?${FIXTURES}`);
     await mapReady(page);
+    const fixtureRequests = watchFixtures(page);
     // setOffline only flips navigator.onLine here; the fixture would still load.
     await context.setOffline(true);
     await wetterTab(page).click();
     await expect(
       page.getByText('Es ist keine Vorhersage im Speicher.', { exact: false }),
     ).toBeVisible();
+    // An absence needs a window: three times the 600 ms dwell.
+    await page.waitForTimeout(1_800);
+    expect(fixtureRequests, 'offline issues no forecast request').toEqual([]);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     await context.setOffline(false);
     await wetterTab(page).click();
     await expect(page.locator('.conditions-hour-value')).toBeVisible({ timeout: 15_000 });
+    // Positive control: online, the same visit does request the fixtures.
+    expect(fixtureRequests.length).toBeGreaterThan(0);
     await context.setOffline(true);
     await expect(page.locator('.conditions-line-warn')).toContainText(
       /Offline – zeigt die Vorhersage, abgerufen \d\d:\d\d \(vor \d+ min\)/,

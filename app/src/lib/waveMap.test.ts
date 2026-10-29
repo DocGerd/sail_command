@@ -370,6 +370,30 @@ describe('markerOffset: wave markers off the barb (#1854 spike §5, AC-4)', () =
     expect(markerOffset(270, 12, LAT, STEP, STEP)).toEqual({ dLat: 0.025, dLon: 0.025 });
   });
 
+  it('reads each cell its own wind: a per-cell field moves markers to different quadrants', () => {
+    const grid = makeWaveGrid(() => ({ heightM: 0.5, periodS: 4, dirFromDeg: 270 }));
+    const raster = seaStateRasterIndex(fineMaskLandAt([]), grid, 1);
+    // West column from the west (marker NE), east column from the north (marker SE).
+    const wind = makeWindGrid((_lat, lon) => ({ speedKn: 12, dirFromDeg: lon < 10.05 ? 270 : 0 }), {
+      t0Ms: grid.timesMs[0],
+      hours: 1,
+    });
+    const features = seaStateMarkers(
+      raster,
+      grid,
+      0,
+      windMarkerOffsets(wind, grid, grid.timesMs[0]!),
+    ).features;
+    expect(features.length).toBeGreaterThan(2);
+    for (const f of features) {
+      const [lon, lat] = f.geometry.coordinates as [number, number];
+      const cellLat = grid.lats.reduce((a, b) => (Math.abs(b - lat) < Math.abs(a - lat) ? b : a));
+      const west = Math.abs(lon - 10.025) < 1e-9;
+      expect(west || Math.abs(lon - 10.125) < 1e-9, `lon ${lon}`).toBe(true);
+      expect(lat - cellLat, `lon ${lon}`).toBeCloseTo(west ? 0.025 : -0.025, 9);
+    }
+  });
+
   it('stays centred for calm or missing wind', () => {
     expect(markerOffset(90, 2, LAT, STEP, STEP)).toBeNull();
     expect(markerOffset(NaN, 12, LAT, STEP, STEP)).toBeNull();

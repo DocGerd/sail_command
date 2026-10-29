@@ -97,6 +97,9 @@ describe('ConditionsPanel states (#1854 §7)', () => {
     renderPanel(props({ forecast: forecast({ errorKey: 'error.windService', refresh }) }));
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(de['error.windService']);
+    // Nothing is loading: no chip claims it is.
+    expect(document.querySelector('.chip.conditions-status')).toBeNull();
+    expect(screen.queryByText(de['conditions.status.loading'])).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: de['conditions.update'] }));
     expect(refresh).toHaveBeenCalledTimes(1);
   });
@@ -111,9 +114,26 @@ describe('ConditionsPanel states (#1854 §7)', () => {
     expect(screen.getByText(de['conditions.update.cooldown'])).toBeInTheDocument();
   });
 
+  it('re-enables the update button when the cooldown ends, not at the next minute tick', () => {
+    vi.useFakeTimers({
+      toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+    });
+    vi.setSystemTime(NOW);
+    renderPanel(
+      props({
+        forecast: forecast({ errorKey: 'error.rateLimited', cooldownUntilMs: NOW + 30_000 }),
+      }),
+    );
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(screen.getByRole('button', { name: de['conditions.update'] })).toBeEnabled();
+    expect(screen.queryByText(de['conditions.update.cooldown'])).toBeNull();
+  });
+
   it('offline with nothing held: the offline copy, no alert, no hour row', () => {
     renderPanel(props({ online: false }));
     expect(screen.getByText(de['conditions.offline.none'])).toBeInTheDocument();
+    expect(document.querySelector('.chip.conditions-status')).toBeNull();
+    expect(screen.queryByText(de['conditions.status.loading'])).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByRole('button', { name: de['conditions.update'] })).toBeNull();
   });
@@ -169,14 +189,53 @@ describe('ConditionsPanel states (#1854 §7)', () => {
     expect(screen.getByRole('button', { name: de['conditions.update'] })).toBeInTheDocument();
   });
 
-  it('a departure outside the forecast is clamped and says so', () => {
+  it('a departure outside the forecast is clamped and says so, until the user steps', () => {
     renderPanel(props({ forecast: ready(), departureMs: HOUR0 + 100 * H }));
     expect(screen.getByText(/liegt außerhalb der Vorhersage/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.hour.prev'] }));
+    expect(screen.queryByText(/liegt außerhalb der Vorhersage/)).toBeNull();
+    // Stepping back onto the clamped hour is not a seed.
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.hour.next'] }));
+    expect(screen.queryByText(/liegt außerhalb der Vorhersage/)).toBeNull();
+  });
+
+  it('a re-entry that does not seed drops an earlier clamped-seed note', () => {
+    const p = props({ forecast: ready(), departureMs: HOUR0 + 100 * H });
+    const first = renderPanel(p);
+    expect(screen.getByText(/liegt außerhalb der Vorhersage/)).toBeInTheDocument();
+    first.unmount();
+    renderPanel(p);
+    expect(screen.queryByText(/liegt außerhalb der Vorhersage/)).toBeNull();
+  });
+
+  it('the hour group and the slider have distinct accessible names', () => {
+    renderPanel(props({ forecast: ready() }));
+    expect(screen.getByRole('group', { name: de['conditions.hour.group'] })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(de['conditions.hour.label'])).toHaveLength(1);
+  });
+
+  it('the Disclosure carries the sea-state key while sea state can show', () => {
+    const { update } = renderPanel(props({ forecast: ready() }));
+    const more = document.querySelector('.conditions-more')!;
+    expect(more).toHaveTextContent(de['route.legend.seaStateHeading']);
+    expect(more.querySelectorAll('.route-legend-sea')).toHaveLength(5);
+    update(props({ forecast: ready({ wave: null }) }));
+    expect(more).not.toHaveTextContent(de['route.legend.seaStateHeading']);
+  });
+
+  it('a plan source without sea state says so', () => {
+    renderPanel(props({ forecast: ready({ source: 'plan', wave: null }) }));
+    expect(screen.getByText(de['route.waves.unavailable'])).toBeInTheDocument();
   });
 
   it('a short remaining forecast is stated next to the button', () => {
     renderPanel(props({ forecast: ready(), departureMs: HOUR0 + 42 * H }));
     expect(screen.getByText('Danach bleiben nur 3 h Vorhersage.')).toBeInTheDocument();
+  });
+
+  it('no depth line at an hour the sea state does not draw', () => {
+    renderPanel(props({ forecast: ready({ wave: wave(1) }), depthSuppressed: true }));
+    expect(screen.queryByText(de['conditions.depthHidden'])).toBeNull();
   });
 
   it('depth suppression shows its line, and Tiefen zeigen lifts it', () => {

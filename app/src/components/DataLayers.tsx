@@ -9,6 +9,8 @@ import type {
 } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useSettings, useActivePlan } from '../state/AppState';
+import { useConditionsHour } from '../state/conditionsHour';
+import { waveHourIndexAt } from '../lib/waves';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
@@ -56,7 +58,7 @@ import {
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import { WAVE_STACK_BOTTOM_LAYER } from '../lib/waveMap';
-import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint } from '../types';
+import type { Harbor, LatLon, MaskMeta, SeamarkProperties, ViaPoint, WaveGrid } from '../types';
 
 /**
  * `.map-stack-tl`'s own inset from the top of the narrow map grid row — the
@@ -100,6 +102,8 @@ export interface DataLayersProps {
   // hides depth while sea state is shown, without writing the persisted toggles.
   conditionsActive?: boolean;
   suppressDepth?: boolean;
+  // The Wetter sea state: depth hides only at an hour it actually draws.
+  seaState?: WaveGrid | null;
 }
 
 const DEPTH_SOURCE = 'sc-depth';
@@ -706,8 +710,15 @@ export default function DataLayers({
   onHarborPick,
   onAddWaypoint,
   conditionsActive = false,
-  suppressDepth = false,
+  suppressDepth: suppressDepthProp = false,
+  seaState = null,
 }: DataLayersProps) {
+  const conditionsHour = useConditionsHour();
+  const suppressDepth =
+    suppressDepthProp &&
+    seaState !== null &&
+    conditionsHour !== null &&
+    waveHourIndexAt(seaState, conditionsHour) !== null;
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();

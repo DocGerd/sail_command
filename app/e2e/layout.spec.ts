@@ -801,8 +801,8 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
 });
 
 // #299: proves the tab strip (FOUR tabs at #299; FIVE since #1854 added
-// Wetter: Planen/Wetter/Routen/Live/Boot) fits at the two narrowest
-// EDGE_VIEWPORTS entries by MEASUREMENT, never by trusting character counts.
+// Wetter: Planen/Wetter/Routen/Live/Boot) fits in every TAB_STRIP_CASES
+// entry below by MEASUREMENT, never by trusting character counts.
 // "Boot"/"Boat" (4 chars, shorter than the existing "Routen"/"Routes") was
 // chosen specifically to keep this margin, per the #299 design decision.
 //
@@ -825,12 +825,13 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
 // `'Boot'` returns both to `<= 0` (passing). `scrollWidth` does NOT share
 // the boundingBox blindness — it reflects the element's actual laid-out
 // content extent regardless of the `overflow` property's value — so
-// `scrollWidth > clientWidth` on the STRIP itself is the one signal here
-// that can actually distinguish "fits" from "silently overflows", and is
-// now the test's primary assertion.
+// `scrollWidth > clientWidth` is the signal that can distinguish "fits" from
+// "silently overflows". #1854: read on the STRIP it discriminates only a
+// spill of the LAST tab; the per-tab read below covers the rest and is the
+// test's primary assertion.
 // #1854 (AC-12): also at 1024 px wide with the default panel and at
 // 1180x820 with the panel at its default and at 320 px, in DE and EN, with
-// every tab selected in turn (the selected tab is bold).
+// every tab selected in turn (the selected tab's styling: bold above 18rem).
 const TAB_STRIP_CASES: { label: string; viewport: Viewport; panelPx?: number }[] = [
   { label: 'wrapForcing280', viewport: EDGE_VIEWPORTS.wrapForcing280 },
   { label: 'deepPortrait320', viewport: EDGE_VIEWPORTS.deepPortrait320 },
@@ -853,7 +854,9 @@ for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
           [lang, panelPx === undefined ? '' : String(panelPx)] as const,
         );
         // Selecting Wetter must not reach the live forecast API; a 400 fails at once, with no retry.
-        await page.route(/open-meteo\.com/, (route) => route.fulfill({ status: 400, body: '' }));
+        await page.route(/^https:\/\/(?:api|marine-api)\.open-meteo\.com\//, (route) =>
+          route.fulfill({ status: 400, body: '' }),
+        );
         await page.setViewportSize(viewport);
         await page.goto(server.url);
         await mapReady(page);
@@ -864,9 +867,8 @@ for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
         await expect(tabs).toHaveCount(5);
         const tabCount = await tabs.count();
 
-        // THE discriminating assertion — see this block's own header comment
-        // for why scrollWidth, not boundingBox(), is what can actually fail
-        // here. Polls the OVERFLOW AMOUNT (scrollWidth - clientWidth), not a
+        // Discriminates only a spill of the LAST tab; the per-tab read below
+        // covers the rest. Polls the OVERFLOW AMOUNT (scrollWidth - clientWidth), not a
         // boolean, so a CI failure names the actual px overrun instead of just
         // timing out (this repo's own "poll the value" rule). Polled (not a
         // one-shot read) purely as a settle margin for the page's own
@@ -879,8 +881,8 @@ for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
               timeout: 5_000,
             })
             .toBeLessThanOrEqual(0);
-          // #1854: a MIDDLE tab's spill overlaps its neighbour and never
-          // widens the strip, so each tab's own overflow is read too.
+          // THE discriminating assertion (#1854): a middle tab's spill overlaps
+          // its neighbour and never widens the strip, so each tab is read.
           await expect
             .poll(() =>
               tabs.evaluateAll((els) =>

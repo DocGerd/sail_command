@@ -140,12 +140,14 @@ export function useAreaForecast(
     return held === null || Date.now() - held.fetchedAtMs > AREA_FORECAST_AUTO_REFETCH_MS;
   }, []);
 
-  // Entry and the `online` event: after the dwell, only when nothing recent is held.
+  // Entry and the `online` event: after the dwell, only when nothing recent is
+  // held, and never inside a rate-limit cooldown.
   useEffect(() => {
-    if (!active || !online || !due()) return;
+    if (!active || !online || !due() || (cooldownUntilMs !== null && Date.now() < cooldownUntilMs))
+      return;
     const timer = setTimeout(() => void load(), AREA_FORECAST_DWELL_MS);
     return () => clearTimeout(timer);
-  }, [active, online, due, load]);
+  }, [active, online, due, load, cooldownUntilMs]);
 
   const refresh = useCallback(() => {
     if (cooldownUntilMs !== null && Date.now() < cooldownUntilMs) return;

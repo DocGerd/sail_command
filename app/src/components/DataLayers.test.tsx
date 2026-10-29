@@ -11,7 +11,15 @@ import { __resetContoursForTests, type ContourAsset } from '../lib/contours';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
-import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot, type Plan } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
+  defaultBoatSnapshot,
+  type Plan,
+  type WaveGrid,
+} from '../types';
+import { makeWaveGrid } from '../test/waveFixtures';
+import { resetConditionsHourForTests, setConditionsHour } from '../state/conditionsHour';
 import { uniformWindGrid } from '../test/fixtures';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
@@ -1215,6 +1223,13 @@ describe('#1581: the scroll cue follows content-only changes', () => {
 
 describe('#1854 Wetter: planless form and depth suppression', () => {
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  const SEA_T0 = Date.UTC(2026, 6, 15, 6);
+  const SEA = makeWaveGrid(() => ({ heightM: 0.5, periodS: 4, dirFromDeg: 200 }), {
+    t0Ms: SEA_T0,
+    hours: 4,
+  });
+  beforeEach(() => setConditionsHour(SEA_T0));
+  afterEach(() => resetConditionsHourForTests());
 
   beforeEach(() => {
     HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
@@ -1232,7 +1247,7 @@ describe('#1854 Wetter: planless form and depth suppression', () => {
 
   function renderWetter(
     map: ReturnType<typeof makeFakeMap>,
-    p: { plan: Plan | null; active: boolean; suppress: boolean },
+    p: { plan: Plan | null; active: boolean; suppress: boolean; sea?: WaveGrid | null },
   ) {
     hoisted.map = map;
     const el = (q: typeof p) => (
@@ -1242,6 +1257,7 @@ describe('#1854 Wetter: planless form and depth suppression', () => {
           onHarborPick={() => {}}
           conditionsActive={q.active}
           suppressDepth={q.suppress}
+          seaState={q.sea === undefined ? SEA : q.sea}
         />
       </AppStateProvider>
     );
@@ -1261,6 +1277,17 @@ describe('#1854 Wetter: planless form and depth suppression', () => {
     update({ plan, active: true, suppress: false });
     expect(container.querySelector('.data-layer-controls-disclosure')).not.toBeNull();
     expect(container.querySelector('details.depth-legend')).not.toBeNull();
+  });
+
+  it('keeps depth at an hour the sea state does not draw', async () => {
+    const map = makeFakeMap();
+    const { update } = renderWetter(map, { plan: null, active: true, suppress: false });
+    await waitFor(() => expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible'));
+    act(() => setConditionsHour(SEA_T0 + 5 * 3_600_000));
+    update({ plan: null, active: true, suppress: true });
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+    act(() => setConditionsHour(SEA_T0));
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('none');
   });
 
   it('hides depth, hatch and the legend while suppressed, without writing the toggles', async () => {

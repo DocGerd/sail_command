@@ -6199,6 +6199,25 @@ describe('#1854 Wetter tab (App wiring)', () => {
     ).toBeInTheDocument();
   });
 
+  it('a repeated handoff to the same time is announced again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(MOUNT_MS);
+    vi.mocked(fetchWindGrid).mockClear();
+    alignedWind();
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    const next = await openWetter();
+    fireEvent.click(next);
+    const region = () => document.querySelector('.app-panel > [aria-live="polite"]')!;
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.useAsDeparture'] }));
+    const done = region().textContent;
+    expect(done).toContain('Abfahrt auf');
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.conditions'] }));
+    expect(region().textContent).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.useAsDeparture'] }));
+    expect(region().textContent).toBe(done);
+  });
+
   it('a handoff during a solve survives the result (#1761 guard)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(MOUNT_MS);

@@ -575,8 +575,8 @@ select {
   container-type: inline-size;
 }
 
-/* No horizontal padding: flex sets the width, and padding only adds to the
-   min-content width #299 guards. */
+/* No horizontal padding: flex sets the width; padding only takes room from the
+   label inside it. */
 .app-tabs button {
   flex: 1;
   background: transparent;
