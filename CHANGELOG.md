@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-29
+
+### Added
+
+- The route summary shows the highest significant wave height each leg and the whole route meet, from the plan's stored sea-state forecast. Legs without data say so, and a leg with partial data shows a lower bound. It does not affect the route (#1830).
+- New "Wetter" ("Weather") tab, second after Planen ("Plan"): wind and sea state for the whole sailing area at an hour you choose, without a planned route. Step by hour or day or drag the timeline; "Als Abfahrt übernehmen" ("Use as departure") hands that hour to the planner as its departure. The forecast is fetched only when the tab is opened and held for the session; offline the tab shows the held forecast with its age, and planning still needs a connection. While sea state is shown there, depth shading is hidden until "Tiefen zeigen" ("Show depths"). With wind barbs on, a sea-state arrow moves off the barb on its own grid point; at close zoom barbs can still cover it (#1854).
+- The Wetter tab shows an overview of the chosen day for the whole sailing area: one column per remaining three-hour window with the range of mean wind, the strongest gust and the highest sea state, "–" where there is no model data. Tapping a column selects its first remaining hour. Under "Zeitleiste, Ebenen und Zeichenerklärung" ("Timeline, layers and key"), a sea-state ribbon above the timeline shows each hour's highest band and stays empty where no sea-state data exists, and a line sums up wind and the highest sea state in the visible map area at the chosen hour, or at the nearest model point when no water point is in view (#1854).
+- A route that passes Kong Christian X's Bro at Sønderborg now shows a notice on the Plan and Routes tabs: the bridge may be closed, openings outside the listed times may be possible on request, and the Danske Havnelods page gives the current times (#1881).
+- The About dialog now links to SailCommand's GitHub page and to its new-issue page, so a problem or a feature idea can be reported straight from the app (#1895).
+
+### Changed
+
+- Sea-state shading on the map is now clipped to water: it is drawn as a raster at a quarter of the land/depth mask's resolution, so it stops at the coast to within one raster cell; each shaded cell carries one arrow (or a ring where the wave direction is missing) instead of a cell outline, and wind barbs gain a white halo (#1854).
+
+### Fixed
+
+- The departure field now keeps the departure of a Live reroute, or of a plan whose save was slow, instead of showing the result as outdated, and keeps a departure you change while a route is being calculated (#1867).
+- The AIS status chip on the map is readable in dark mode and now has the same glass pill as the other map chrome in both themes; the generic chip fill was overriding its background (#1884).
+
 ## [0.60.0] - 2026-10-25
 
 ### Added
@@ -1385,7 +1404,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.60.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.61.0...HEAD
+[0.61.0]: https://github.com/DocGerd/sail_command/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/DocGerd/sail_command/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/DocGerd/sail_command/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/DocGerd/sail_command/compare/v0.57.0...v0.58.0

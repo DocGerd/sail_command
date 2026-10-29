@@ -111,6 +111,16 @@ installs as a standalone icon and works fully offline after the first visit
 - Saved plans, including the wind grid they were computed from, persist
   offline in the browser — a saved route always re-renders against the
   forecast it was planned with, never a re-fetched one.
+- **Weather tab**: wind and sea state for the whole sailing area at an hour you
+  choose, without a planned route. Step by hour or day, drag the timeline, read
+  a three-hour overview of the chosen day, and hand the hour to the planner as
+  its departure. The forecast is fetched when the tab is first opened and held
+  for the session; offline the tab shows the held forecast with its age
+  ([#1854](https://github.com/DocGerd/sail_command/issues/1854)).
+- The route summary shows the highest significant wave height per leg and for
+  the whole route, from the plan's stored sea-state forecast. It is display
+  only and does not affect the route
+  ([#1830](https://github.com/DocGerd/sail_command/issues/1830)).
 - **Next passage**: any planned route offers "Plan next passage", which seeds
   the planner with that route's destination as the start and the next 10:00
   after arrival as the departure; you pick the next destination
@@ -135,7 +145,8 @@ installs as a standalone icon and works fully offline after the first visit
   vessels in view" list covering the vessels in the current map view. Off by default and fully inert without a key; your own vessel
   is filtered out by MMSI. The key stays on the device; saved plans and backup exports do not contain it, and plans stored before v0.58.0 lose it at the next app start.
 
-Planning a new route requires an internet connection (wind forecast fetch),
+Planning a new route, and the Weather tab's first forecast fetch, require an
+internet connection (wind forecast fetch),
 except the **next passage** from a planned route, which reuses that route's
 stored forecast offline for as long as it reaches the departure and the seeded start is unchanged;
 everything else — viewing/loading saved plans, the map, live GPS guidance —
@@ -216,7 +227,7 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
-- As of v0.60.0, Live mode has not been tested on the water; the on-water test protocol
+- As of v0.61.0, Live mode has not been tested on the water; the on-water test protocol
   for the first trip is tracked in
   [#1808](https://github.com/DocGerd/sail_command/issues/1808).
 - Only a curated set of harbors is included; a handful of shallow/narrow
