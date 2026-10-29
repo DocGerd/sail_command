@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatSeaStateM,
+  markerOffset,
   nearestWaveCell,
   paintSeaState,
   SEA_STATE_COLORS,
@@ -17,8 +18,10 @@ import {
   WAVE_LATTICE_STEP_DEG,
   waveArrowImage,
   waveDotImage,
+  windMarkerOffsets,
   type SeaStateRaster,
 } from './waveMap';
+import { makeWindGrid } from '../test/fixtures';
 import { depthCanvasRowMap } from './depthColor';
 import { NavMask } from './mask';
 import { makeWaveGrid } from '../test/waveFixtures';
@@ -337,6 +340,71 @@ describe('seaStateMarkers (#1854)', () => {
       { marker: 'dot', rotateDeg: 0, band: 'rough' },
       { marker: 'arrow', rotateDeg: 90, band: 'calm' },
     ]);
+  });
+});
+
+describe('markerOffset: wave markers off the barb (#1854 spike §5, AC-4)', () => {
+  const LAT = 54.95;
+  const STEP = 0.1;
+  const qx = (STEP / 4) * Math.cos((LAT * Math.PI) / 180);
+
+  it('moves to a quarter-cell point inside its own cell, downwind and off the wind axis', () => {
+    for (let dir = 0; dir < 360; dir += 5) {
+      const off = markerOffset(dir, 12, LAT, STEP, STEP);
+      expect(off, `dir ${dir}`).not.toBeNull();
+      expect(Math.abs(off!.dLat)).toBeCloseTo(STEP / 4, 12);
+      expect(Math.abs(off!.dLon)).toBeCloseTo(STEP / 4, 12);
+      const x = off!.dLon * Math.cos((LAT * Math.PI) / 180);
+      const y = off!.dLat;
+      const rad = (dir * Math.PI) / 180;
+      const [downE, downN] = [-Math.sin(rad), -Math.cos(rad)];
+      expect(x * downE + y * downN, `downwind at ${dir}`).toBeGreaterThanOrEqual(-1e-12);
+      expect(Math.abs(x * downN - y * downE), `off axis at ${dir}`).toBeGreaterThan(qx * 0.999);
+    }
+  });
+
+  it('pins two hand-derived cases', () => {
+    // From the north: downwind is south; the two south points tie, east wins by order.
+    expect(markerOffset(0, 12, LAT, STEP, STEP)).toEqual({ dLat: -0.025, dLon: 0.025 });
+    // From the west: downwind is east; the north-east point.
+    expect(markerOffset(270, 12, LAT, STEP, STEP)).toEqual({ dLat: 0.025, dLon: 0.025 });
+  });
+
+  it('stays centred for calm or missing wind', () => {
+    expect(markerOffset(90, 2, LAT, STEP, STEP)).toBeNull();
+    expect(markerOffset(NaN, 12, LAT, STEP, STEP)).toBeNull();
+    expect(markerOffset(90, NaN, LAT, STEP, STEP)).toBeNull();
+  });
+
+  it('seaStateMarkers applies the offset from the wind at the hour, one marker per cell', () => {
+    const grid = makeWaveGrid(() => ({ heightM: 0.5, periodS: 4, dirFromDeg: 270 }));
+    const raster = seaStateRasterIndex(fineMaskLandAt([]), grid, 1);
+    const wind = makeWindGrid((_lat, _lon, h) => ({ speedKn: 12, dirFromDeg: h === 0 ? 270 : 0 }), {
+      t0Ms: grid.timesMs[0],
+      hours: 2,
+    });
+    const centred = seaStateMarkers(raster, grid, 0).features;
+    const moved = seaStateMarkers(
+      raster,
+      grid,
+      0,
+      windMarkerOffsets(wind, grid, grid.timesMs[0]!),
+    ).features;
+    expect(moved).toHaveLength(centred.length);
+    moved.forEach((f, i) => {
+      const [lon, lat] = f.geometry.coordinates as [number, number];
+      const [lon0, lat0] = centred[i]!.geometry.coordinates as [number, number];
+      expect(lon - lon0).toBeCloseTo(0.025, 9);
+      expect(lat - lat0).toBeCloseTo(0.025, 9);
+      expect(nearestWaveCell(grid, { lat, lon })).toBe(
+        nearestWaveCell(grid, { lat: lat0, lon: lon0 }),
+      );
+    });
+    // The next hour's wind (from the north) moves the markers south.
+    const later = windMarkerOffsets(wind, grid, grid.timesMs[1]!)!;
+    expect(later(0)!.dLat).toBeCloseTo(-0.025, 9);
+    expect(later(0)!.dLon).toBeCloseTo(0.025, 9);
+    expect(windMarkerOffsets(null, grid, grid.timesMs[0]!)).toBeNull();
   });
 });
 
