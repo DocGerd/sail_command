@@ -157,6 +157,94 @@ test('hour stepping moves barbs and sea state; depth is hidden until shown; the 
   }
 });
 
+test('the day strip is a list or grid by its own width, selects hours, and the ribbon shows sea state', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const server = await startPreview(page);
+  const requests = watchOpenMeteo(page);
+  try {
+    await page.goto(`${server.url}?${FIXTURES}`);
+    await mapReady(page);
+    const sizes = [
+      STANDARD_VIEWPORTS.tabletPortrait,
+      STANDARD_VIEWPORTS.tabletLandscape,
+      STANDARD_VIEWPORTS.desktopHd,
+      STANDARD_VIEWPORTS.desktop4k,
+    ];
+    for (const viewport of sizes) {
+      for (const colorScheme of ['light', 'dark'] as const) {
+        await test.step(`${viewport.width}x${viewport.height} ${colorScheme}`, async () => {
+          await page.setViewportSize(viewport);
+          await page.emulateMedia({ colorScheme });
+          await wetterTab(page).click();
+          const strip = page.getByRole('group', { name: /^Übersicht .+, Revier$/ });
+          await expect(strip).toBeVisible({ timeout: 15_000 });
+          const cols = strip.getByRole('button');
+          await expect.poll(() => cols.count()).toBeGreaterThan(1);
+
+          const geo = await strip.evaluate((el) => {
+            const body = el.querySelector('.conditions-strip-body')!;
+            const boxes = Array.from(el.querySelectorAll('button')).map((b) =>
+              b.getBoundingClientRect(),
+            );
+            return {
+              stripPx: el.getBoundingClientRect().width,
+              remPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
+              overflow: body.scrollWidth - body.clientWidth,
+              tops: boxes.map((b) => Math.round(b.top)),
+              minW: Math.min(...boxes.map((b) => b.width)),
+              minH: Math.min(...boxes.map((b) => b.height)),
+            };
+          });
+          expect(geo.overflow).toBeLessThanOrEqual(0);
+          if (geo.stripPx >= 46 * geo.remPx) {
+            expect(new Set(geo.tops).size, 'grid: one row of columns').toBe(1);
+            expect(geo.minW).toBeGreaterThanOrEqual(48);
+            expect(geo.minH).toBeGreaterThanOrEqual(72);
+          } else {
+            expect(new Set(geo.tops).size, 'list: one row per window').toBe(geo.tops.length);
+            expect(geo.minH).toBeGreaterThanOrEqual(44);
+          }
+          await expect(strip.locator('.conditions-col-sea').first()).toHaveText(/\d/);
+
+          const second = cols.nth(1);
+          const time = (await second.locator('.conditions-col-time').textContent()) ?? '';
+          await second.click();
+          await expect(second).toHaveAttribute('aria-current', 'true');
+          await expect(page.locator('.conditions-hour-value')).toContainText(time);
+          await expect(cols.first()).not.toHaveAttribute('aria-current', 'true');
+
+          await expect
+            .poll(() => page.locator('.conditions-ribbon rect').count())
+            .toBeGreaterThan(0);
+
+          if (viewport === STANDARD_VIEWPORTS.tabletPortrait) {
+            const fits = await page.evaluate(() => {
+              const panel = document.querySelector('.app-panel')!;
+              const chip = document.querySelector('.chip.conditions-status')!;
+              const actions = document.querySelector('.conditions-actions')!;
+              return {
+                scrollTop: panel.scrollTop,
+                chipTop: chip.getBoundingClientRect().top,
+                actionsBottom: actions.getBoundingClientRect().bottom,
+                vh: window.innerHeight,
+              };
+            });
+            expect(fits.scrollTop).toBe(0);
+            expect(fits.chipTop).toBeGreaterThanOrEqual(0);
+            expect(fits.actionsBottom).toBeLessThanOrEqual(fits.vh);
+          }
+          await page.getByRole('tab', { name: 'Planen' }).click();
+        });
+      }
+    }
+    expect(requests, 'fixtures keep the run off the live APIs').toEqual([]);
+  } finally {
+    server.kill();
+  }
+});
+
 test('offline: nothing held says so; a held forecast shows with its age and the planning note', async ({
   page,
   context,

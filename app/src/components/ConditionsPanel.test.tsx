@@ -330,6 +330,9 @@ describe('#1854 day strip, sea ribbon and area line', () => {
     expect(document.querySelector('.conditions-hour-value')).toHaveTextContent('(in 2 h)');
     expect(columns()[1]).toHaveAttribute('aria-current', 'true');
     expect(columns()[0]).not.toHaveAttribute('aria-current');
+    // The current window starts at a past hour; its column selects now.
+    fireEvent.click(columns()[0]!);
+    expect(document.querySelector('.conditions-hour-value')).toHaveTextContent('(jetzt)');
   });
 
   it('missing Hs reads as no model data, never as calm', () => {
