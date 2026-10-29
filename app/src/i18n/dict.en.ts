@@ -1358,6 +1358,22 @@ export const en = {
   'conditions.more.summary': 'Timeline, layers and key',
   'conditions.disclaimer':
     'Planning aid: Open-Meteo model forecast, not an official weather or marine forecast.',
+  'conditions.strip.group': 'Overview {day}, {scope}',
+  'conditions.strip.rowWind': 'Wind kn (gusts)',
+  'conditions.strip.rowSea': 'Sea state m',
+  'conditions.sr.windFrom': 'wind from {cardinal}',
+  'conditions.sr.windVariable': 'wind variable',
+  'conditions.sr.knots': 'knots',
+  'conditions.sr.gusts': 'gusts',
+  'conditions.sr.sea': 'sea state',
+  'conditions.sr.metres': 'metres',
+  'conditions.sr.noData': 'no model data',
+  'conditions.scope.area': 'Sailing area',
+  'conditions.scope.nearest': 'at the nearest model point',
+  'conditions.area':
+    'In the map view: wind {speed} kn (Bft {force}) from {cardinal}, gusts to {gust} kn · sea state up to {height} m',
+  'conditions.area.variable':
+    'In the map view: wind {speed} kn (Bft {force}), direction variable, gusts to {gust} kn · sea state up to {height} m',
   'nav.langToggle': 'Auf Deutsch anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',

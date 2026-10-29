@@ -5,9 +5,22 @@ import Chip from './Chip';
 import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
 import Slider from './Slider';
+import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
+import type { Lang } from '../i18n';
+import {
+  latticePoint,
+  nearestLatticePoint,
+  stripWindows,
+  summariseScope,
+  waterLatticePoints,
+  windowOf,
+  type ScopeSummary,
+} from '../lib/areaForecast';
+import { beaufortForce } from '../lib/beaufort';
 import {
   formatAgeShort,
+  formatCompassPoint,
   formatDateTime,
   formatDayShort,
   formatSliderTime,
@@ -15,8 +28,11 @@ import {
 } from '../lib/format';
 import { STALE_THRESHOLD_MS } from '../lib/plan';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { useSheetTop } from '../lib/useSheetTop';
 import { useWideLayout } from '../lib/useWideLayout';
-import { waveHourIndexAt } from '../lib/waves';
+import { formatSeaStateM, SEA_STATE_COLORS } from '../lib/waveMap';
+import { seaStateBand, waveHourIndexAt } from '../lib/waves';
+import { useNavMask } from '../state/useNavMask';
 import { GRID_CACHE_TTL_MS } from '../services/openMeteo';
 import {
   clampHour,
@@ -29,6 +45,7 @@ import {
   validHours,
 } from '../state/conditionsHour';
 import type { AreaForecast } from '../state/useAreaForecast';
+import type { WindGrid } from '../types';
 
 const HOUR_MS = 3_600_000;
 const CLOCK_TICK_MS = 60_000;
@@ -49,6 +66,75 @@ type Phase = 'loading' | 'error' | 'offlineNone' | 'offlineHeld' | 'failed' | 's
 function localDayKey(ms: number): string {
   const d = new Date(ms);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function rangeText(min: number, max: number): string {
+  return min === max ? String(min) : `${min}–${max}`;
+}
+
+const NO_DATA = '–';
+
+interface ViewScope {
+  wind: number[];
+  wave: number[];
+  nearest: boolean;
+}
+
+type T = ReturnType<typeof useT>;
+
+function windDirSr(s: ScopeSummary, t: T, lang: Lang): string {
+  const dir = s.wind?.dirFromDeg;
+  return dir === null || dir === undefined
+    ? t('conditions.sr.windVariable')
+    : t('conditions.sr.windFrom', { cardinal: formatCompassPoint(dir, lang) });
+}
+
+// Sr-only words sit between visible tokens with the spaces in text nodes
+// outside them, so the name keeps its spaces and the visible spaces collapse.
+function Sr({ children }: { children: string }) {
+  return <span className="sr-only">{children}</span>;
+}
+
+function StripCell({ summary, t, lang }: { summary: ScopeSummary; t: T; lang: Lang }) {
+  const w = summary.wind;
+  const noData = (
+    <>
+      <span aria-hidden="true">{NO_DATA}</span> <Sr>{t('conditions.sr.noData')}</Sr>
+    </>
+  );
+  return (
+    <>
+      <span className="conditions-col-wind">
+        <Sr>{windDirSr(summary, t, lang)}</Sr>{' '}
+        {w === null ? (
+          noData
+        ) : (
+          <>
+            {rangeText(Math.round(w.minKn), Math.round(w.maxKn))}{' '}
+            <Sr>{t('conditions.sr.knots')}</Sr>
+            {w.gustKn !== null && (
+              <>
+                {' '}
+                <Sr>{t('conditions.sr.gusts')}</Sr>
+                {` (${Math.round(w.gustKn)})`}
+              </>
+            )}
+          </>
+        )}
+      </span>
+      <Sr>,</Sr>{' '}
+      <span className="conditions-col-sea">
+        <Sr>{t('conditions.sr.sea')}</Sr>{' '}
+        {summary.seaMaxM === null ? (
+          noData
+        ) : (
+          <>
+            {formatSeaStateM(summary.seaMaxM, lang)} <Sr>{t('conditions.sr.metres')}</Sr>
+          </>
+        )}
+      </span>
+    </>
+  );
 }
 
 // The clock for ages and valid hours: set on mount, every minute while the
@@ -176,6 +262,104 @@ export default function ConditionsPanel({
     for (const ms of options) if (!seen.has(localDayKey(ms))) seen.set(localDayKey(ms), ms);
     return [...seen.values()];
   }, [options]);
+
+  const mask = useNavMask();
+  const windWater = useMemo(
+    () => (mask && wind ? waterLatticePoints(mask, wind) : []),
+    [mask, wind],
+  );
+  const waveWater = useMemo(
+    () => (mask && wave ? waterLatticePoints(mask, wave) : []),
+    [mask, wave],
+  );
+
+  const windows = useMemo(
+    () => (hour === null ? [] : stripWindows(options, hour)),
+    [options, hour],
+  );
+  const columns = useMemo(
+    () =>
+      wind && windWater.length > 0
+        ? windows.map((w) => ({
+            ...w,
+            summary: summariseScope(wind, wave, windWater, waveWater, w.hoursMs),
+          }))
+        : [],
+    [wind, wave, windWater, waveWater, windows],
+  );
+  const currentWindow = hour === null ? null : windowOf(windows, hour);
+
+  const ribbon = useMemo(
+    () =>
+      wind && wave && waveWater.length > 0
+        ? options.map((h) => summariseScope(wind, wave, [], waveWater, [h]).seaMaxM)
+        : [],
+    [wind, wave, waveWater, options],
+  );
+
+  const map = useMapInstance();
+  const sheetTop = useSheetTop(!isWide);
+  const [view, setView] = useState<ViewScope | null>(null);
+  useEffect(() => {
+    if (!map || !wind || windWater.length === 0) return;
+    const compute = () => {
+      const el = map.getContainer();
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const visH =
+        sheetTop === null ? h : Math.min(h, Math.max(0, sheetTop - el.getBoundingClientRect().top));
+      const inView = (k: number, grid: Pick<WindGrid, 'lats' | 'lons'>) => {
+        const p = latticePoint(grid, k);
+        const q = map.project([p.lon, p.lat]);
+        return q.x >= 0 && q.x <= w && q.y >= 0 && q.y <= visH;
+      };
+      const windIn = windWater.filter((k) => inView(k, wind));
+      if (windIn.length > 0) {
+        setView({
+          wind: windIn,
+          wave: wave ? waveWater.filter((k) => inView(k, wave)) : [],
+          nearest: false,
+        });
+        return;
+      }
+      const c = map.unproject([w / 2, visH / 2]);
+      const centre = { lat: c.lat, lon: c.lng };
+      const kWind = nearestLatticePoint(wind, windWater, centre);
+      const kWave = wave ? nearestLatticePoint(wave, waveWater, centre) : null;
+      setView({
+        wind: kWind === null ? [] : [kWind],
+        wave: kWave === null ? [] : [kWave],
+        nearest: true,
+      });
+    };
+    compute();
+    map.on('moveend', compute);
+    return () => {
+      map.off('moveend', compute);
+    };
+  }, [map, wind, wave, windWater, waveWater, sheetTop]);
+
+  const areaLine = (() => {
+    if (!view || !wind || hour === null) return null;
+    const s = summariseScope(wind, wave, view.wind, view.wave, [hour]);
+    if (!s.wind) return null;
+    const min = Math.round(s.wind.minKn);
+    const max = Math.round(s.wind.maxKn);
+    const vars = {
+      speed: rangeText(min, max),
+      force: rangeText(beaufortForce(min), beaufortForce(max)),
+      gust: s.wind.gustKn === null ? NO_DATA : String(Math.round(s.wind.gustKn)),
+      height: s.seaMaxM === null ? NO_DATA : formatSeaStateM(s.seaMaxM, lang),
+    };
+    const line =
+      s.wind.dirFromDeg === null
+        ? t('conditions.area.variable', vars)
+        : t('conditions.area', {
+            ...vars,
+            cardinal: formatCompassPoint(s.wind.dirFromDeg, lang),
+          });
+    return view.nearest ? `${line} (${t('conditions.scope.nearest')})` : line;
+  })();
 
   const handleUse = (e: MouseEvent<HTMLButtonElement>) => {
     if (hour === null) return;
@@ -324,15 +508,76 @@ export default function ConditionsPanel({
         </div>
       )}
 
+      {hour !== null && columns.length > 0 && (
+        <div
+          className="conditions-strip"
+          role="group"
+          aria-label={t('conditions.strip.group', {
+            day: formatDayShort(hour, lang),
+            scope: t('conditions.scope.area'),
+          })}
+        >
+          <p className="conditions-strip-caption" aria-hidden="true">
+            {formatDayShort(hour, lang)}, {t('conditions.scope.area')}
+          </p>
+          <div className="conditions-strip-body">
+            <div className="conditions-strip-labels" aria-hidden="true">
+              <span />
+              <span>{t('conditions.strip.rowWind')}</span>
+              <span>{t('conditions.strip.rowSea')}</span>
+            </div>
+            {columns.map((c) => (
+              <Button
+                key={c.startMs}
+                variant="ghost"
+                className="conditions-col"
+                aria-current={c.startMs === currentWindow ? 'true' : undefined}
+                onClick={() => {
+                  const first = c.hoursMs[0];
+                  if (first !== undefined) setConditionsHour(first);
+                }}
+              >
+                <span className="conditions-col-time">{formatTime(c.startMs, lang)}</span>
+                <Sr>,</Sr> <StripCell summary={c.summary} t={t} lang={lang} />
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Disclosure
         key={isWide ? 'wide' : 'narrow'}
         className="conditions-more"
         defaultOpen={isWide}
         summary={t('conditions.more.summary')}
       >
+        {areaLine !== null && <p className="conditions-area">{areaLine}</p>}
         {hour !== null && (
           <>
             <div className="conditions-scrubber">
+              {ribbon.length > 0 && (
+                <svg
+                  className="conditions-ribbon"
+                  aria-hidden="true"
+                  viewBox={`0 0 ${ribbon.length} 1`}
+                  preserveAspectRatio="none"
+                >
+                  {ribbon.map((m, i) => {
+                    const band = m === null ? 'no-data' : seaStateBand(m);
+                    return band === 'no-data' ? null : (
+                      <rect
+                        key={options[i]}
+                        x={i}
+                        y={0}
+                        width={1}
+                        height={1}
+                        fill={SEA_STATE_COLORS[band]}
+                        data-band={band}
+                      />
+                    );
+                  })}
+                </svg>
+              )}
               <label htmlFor="conditions-hour-slider" className="sr-only">
                 {t('conditions.hour.label')}
               </label>

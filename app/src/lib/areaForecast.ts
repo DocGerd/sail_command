@@ -109,7 +109,7 @@ export function summariseScope(
   }
   let dirFromDeg: number | null = null;
   if (sw > 0 && Math.hypot(sx, sy) / sw >= VARIABLE_RESULTANT) {
-    dirFromDeg = (((Math.atan2(sx, sy) * 180) / Math.PI) % 360 + 360) % 360;
+    dirFromDeg = ((((Math.atan2(sx, sy) * 180) / Math.PI) % 360) + 360) % 360;
   }
   return {
     wind:

@@ -1355,6 +1355,22 @@ export const de = {
   'conditions.more.summary': 'Zeitleiste, Ebenen und Zeichenerklärung',
   'conditions.disclaimer':
     'Planungshilfe: Modellvorhersage von Open-Meteo, keine amtliche Wetter- oder Seewetterangabe.',
+  'conditions.strip.group': 'Übersicht {day}, {scope}',
+  'conditions.strip.rowWind': 'Wind kn (Böen)',
+  'conditions.strip.rowSea': 'Seegang m',
+  'conditions.sr.windFrom': 'Wind aus {cardinal}',
+  'conditions.sr.windVariable': 'Wind umlaufend',
+  'conditions.sr.knots': 'Knoten',
+  'conditions.sr.gusts': 'Böen',
+  'conditions.sr.sea': 'Seegang',
+  'conditions.sr.metres': 'Meter',
+  'conditions.sr.noData': 'keine Modelldaten',
+  'conditions.scope.area': 'Revier',
+  'conditions.scope.nearest': 'am nächsten Modellpunkt',
+  'conditions.area':
+    'Im Kartenausschnitt: Wind {speed} kn (Bft {force}) aus {cardinal}, Böen bis {gust} kn · Seegang bis {height} m',
+  'conditions.area.variable':
+    'Im Kartenausschnitt: Wind {speed} kn (Bft {force}), Richtung umlaufend, Böen bis {gust} kn · Seegang bis {height} m',
   'nav.langToggle': 'English anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
