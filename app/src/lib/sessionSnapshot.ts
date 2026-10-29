@@ -24,6 +24,14 @@ import { safeGetItem, safeSetItem } from './storage';
 // why and how that's enforced).
 export type Tab = 'plan' | 'routes' | 'live' | 'boat';
 
+// #1854: App's tabs add Wetter, which is never persisted: an older /uat/
+// build sharing `sc-session` drops the whole snapshot on an unknown tab.
+export type AppTab = Tab | 'conditions';
+
+export function persistableTab(tab: AppTab): Tab {
+  return tab === 'conditions' ? 'plan' : tab;
+}
+
 export const SESSION_SNAPSHOT_KEY = 'sc-session';
 
 export interface SessionSnapshot {

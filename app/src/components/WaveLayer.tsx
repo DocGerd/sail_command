@@ -30,11 +30,12 @@ import {
   shadedWaveCellAt,
   waveArrowImage,
   waveDotImage,
+  windMarkerOffsets,
   type WaveCellProps,
 } from '../lib/waveMap';
 import { waveHourIndexAt } from '../lib/waves';
 import type { NavMask } from '../lib/mask';
-import type { MaskMeta, WaveGrid } from '../types';
+import type { MaskMeta, WaveGrid, WindGrid } from '../types';
 
 // Stack position (#160): above the depth ramp, hatch and contours (DataLayers
 // anchors those below WAVE_STACK_BOTTOM_LAYER when it exists), below every
@@ -166,12 +167,23 @@ export interface WaveLayerProps {
   mapPickArmed: boolean;
   // Land/water mask for clipping; null while it loads or if it fails to load.
   mask: NavMask | null;
+  // #1854: with barbs shown, markers move off the barb on their lattice point.
+  wind?: WindGrid | null;
+  barbsVisible?: boolean;
 }
 
 // #1699: plan-bound sea-state overlay — Hs shading by WMO band plus travel
 // arrows, display only. Rendered by RouteLayer, which owns the slider. #1854:
 // the shading is a raster clipped to nav-mask water.
-export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: WaveLayerProps) {
+export default function WaveLayer({
+  grid,
+  tMs,
+  visible,
+  mapPickArmed,
+  mask,
+  wind = null,
+  barbsVisible = false,
+}: WaveLayerProps) {
   const map = useMapInstance();
   const t = useT();
   const [lang] = useLang();
@@ -208,7 +220,12 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
     const markers = map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined;
     markers?.setData(
       raster && grid && hourIdx !== null
-        ? seaStateMarkers(raster, grid, hourIdx)
+        ? seaStateMarkers(
+            raster,
+            grid,
+            hourIdx,
+            barbsVisible ? windMarkerOffsets(wind, grid, tMs) : null,
+          )
         : EMPTY_WAVE_MARKERS,
     );
     const canvas = rasterCanvases.get(map);
@@ -232,7 +249,7 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
     }
     paintedRef.current = { canvas, key };
     uploadRaster(map);
-  }, [map, styleEpoch, grid, tMs, mask, visible]);
+  }, [map, styleEpoch, grid, tMs, mask, visible, wind, barbsVisible]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0) return;

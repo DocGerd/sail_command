@@ -42,6 +42,8 @@ import {
   formatHeading,
   formatTime,
   formatDateTime,
+  formatAgeShort,
+  formatDayShort,
   formatDuration,
   formatLegDuration,
   formatDriftMin,
@@ -178,6 +180,23 @@ describe('formatHeading', () => {
 
   it('normalizes negative degrees into 0..359', () => {
     expect(formatHeading(-10)).toBe('350°');
+  });
+});
+
+describe('formatDayShort', () => {
+  it('prints weekday and day of month per language', () => {
+    const ms = new Date(2026, 9, 24, 14).getTime();
+    expect(formatDayShort(ms, 'de')).toBe('Sa 24.');
+    expect(formatDayShort(ms, 'en')).toBe('Sat 24');
+  });
+});
+
+describe('formatAgeShort', () => {
+  it('reads whole minutes below an hour and whole hours from there', () => {
+    expect(formatAgeShort(-5_000)).toBe('0 min');
+    expect(formatAgeShort(59 * 60_000 + 59_999)).toBe('59 min');
+    expect(formatAgeShort(60 * 60_000)).toBe('1 h');
+    expect(formatAgeShort(13 * 3_600_000 + 59 * 60_000)).toBe('13 h');
   });
 });
 

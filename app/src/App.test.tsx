@@ -25,6 +25,7 @@ import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
 import { fetchWaveGrid, fetchWindGrid, OpenMeteoError } from './services/openMeteo';
+import { resetConditionsHourForTests } from './state/conditionsHour';
 import { makeWaveGrid } from './test/waveFixtures';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
@@ -945,14 +946,28 @@ describe('App', () => {
     renderApp();
 
     const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const conditionsTab = screen.getByRole('tab', { name: de['nav.conditions'] });
     const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
     const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+    // #1854: Planen | Wetter | Routen | Live | Boot.
+    expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
+      de['nav.plan'],
+      de['nav.conditions'],
+      de['nav.routes'],
+      de['nav.live'],
+      de['nav.boat'],
+    ]);
 
     fireEvent.keyDown(planTab, { key: 'ArrowRight' });
+    expect(conditionsTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(conditionsTab);
+
+    fireEvent.keyDown(conditionsTab, { key: 'ArrowRight' });
     expect(routesTab).toHaveAttribute('aria-selected', 'true');
     expect(document.activeElement).toBe(routesTab);
 
     fireEvent.keyDown(routesTab, { key: 'ArrowLeft' });
+    fireEvent.keyDown(conditionsTab, { key: 'ArrowLeft' });
     expect(planTab).toHaveAttribute('aria-selected', 'true');
     expect(document.activeElement).toBe(planTab);
 
@@ -6089,5 +6104,126 @@ describe('#1707 next passage', () => {
       expect(screen.getByText(de['error.offline'])).toBeInTheDocument();
       expect(screen.queryByText(/gespeicherte Vorhersage/)).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('#1854 Wetter tab (App wiring)', () => {
+  const MOUNT_MS = new Date(2026, 9, 20, 10, 30, 0).getTime();
+  const NEXT_HOUR_MS = new Date(2026, 9, 20, 11, 0, 0).getTime();
+  const de2 = new Intl.DateTimeFormat('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetConditionsHourForTests();
+  });
+
+  // An hour-aligned axis, as Open-Meteo's is (the file-level mock's is not).
+  function alignedWind() {
+    vi.mocked(fetchWindGrid).mockImplementationOnce(async () => ({
+      ...uniformWindGrid(10, 250, { t0Ms: new Date(2026, 9, 20, 9, 0, 0).getTime(), hours: 48 }),
+      fetchedAtMs: MOUNT_MS - 20 * 60_000,
+    }));
+  }
+
+  async function openWetter() {
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.conditions'] }));
+    await waitFor(() => expect(fetchWindGrid).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    return screen.findByRole('button', { name: de['conditions.hour.next'] });
+  }
+
+  it('a cold load fetches nothing; Wetter fetches wind once after its dwell', async () => {
+    vi.mocked(fetchWindGrid).mockClear();
+    vi.mocked(fetchWaveGrid).mockClear();
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    expect(fetchWindGrid).not.toHaveBeenCalled();
+    expect(fetchWaveGrid).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.conditions'] }));
+    expect(screen.getAllByText(de['conditions.status.loading']).length).toBeGreaterThan(0);
+    expect(fetchWindGrid).not.toHaveBeenCalled();
+    await openWetter();
+    await waitFor(() => expect(fetchWaveGrid).toHaveBeenCalledTimes(1));
+  });
+
+  it('a harbour tap on Wetter leaves Start and Ziel unchanged', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.conditions'] }));
+    await simulateHarborMarkerClick('flensburg');
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
+    // Control: the same tap on Planen does set the Start.
+    await simulateHarborMarkerClick('flensburg');
+    await waitFor(() =>
+      expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
+    );
+  });
+
+  it('the handoff sets the departure, selects Planen, focuses Ziel and announces', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(MOUNT_MS);
+    vi.mocked(fetchWindGrid).mockClear();
+    alignedWind();
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    const next = await openWetter();
+    fireEvent.click(next);
+    fireEvent.click(next);
+    const targetMs = new Date(2026, 9, 20, 13, 0, 0).getTime();
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.useAsDeparture'] }));
+
+    expect(screen.getByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departureInput.value).toBe(toLocalInputValue(targetMs));
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(destSection).getByRole('combobox')),
+    );
+    expect(
+      screen.getByText(
+        de['conditions.useAsDeparture.done'].replace('{datetime}', de2.format(targetMs)),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('a handoff during a solve survives the result (#1761 guard)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(MOUNT_MS);
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    expect(routingMock.calls[0].request.departureMs).toBe(NEXT_HOUR_MS);
+
+    vi.mocked(fetchWindGrid).mockClear();
+    alignedWind();
+    const next = await openWetter();
+    fireEvent.click(next);
+    fireEvent.click(next);
+    fireEvent.click(next);
+    const targetMs = new Date(2026, 9, 20, 14, 0, 0).getTime();
+    fireEvent.click(screen.getByRole('button', { name: de['conditions.useAsDeparture'] }));
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departureInput.value).toBe(toLocalInputValue(targetMs));
+    await waitFor(() => expect(document.activeElement).toBe(departureInput));
+
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    await flushPlanFormSync();
+    expect(departureInput.value).toBe(toLocalInputValue(targetMs));
   });
 });

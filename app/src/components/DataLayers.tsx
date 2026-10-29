@@ -96,6 +96,10 @@ export interface DataLayersProps {
   // the real app always passes it. Omitting it simply omits the button
   // (buildSeamarkPopoverContent's own onAddWaypoint is optional too).
   onAddWaypoint?: (waypoint: ViaPoint) => void;
+  // #1854: the Wetter tab shows the planless controls even with a plan, and
+  // hides depth while sea state is shown, without writing the persisted toggles.
+  conditionsActive?: boolean;
+  suppressDepth?: boolean;
 }
 
 const DEPTH_SOURCE = 'sc-depth';
@@ -698,7 +702,12 @@ function setupLayers(
   }
 }
 
-export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersProps) {
+export default function DataLayers({
+  onHarborPick,
+  onAddWaypoint,
+  conditionsActive = false,
+  suppressDepth = false,
+}: DataLayersProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
@@ -718,6 +727,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // "Anzeigeoptionen" owns the hatch and contour rows; with none, this
   // component's `.depth-legend` and unified disclosure below take over.
   const { plan } = useActivePlan();
+  const planless = plan === null || conditionsActive;
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
@@ -895,7 +905,8 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   // run, so this must re-sync after that transition, not just on toggles.
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets || !map.getLayer(DEPTH_LAYER)) return;
-    map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
+    const depthShown = depthVisible && !suppressDepth;
+    map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthShown ? 'visible' : 'none');
     // #681: the hazard-hatch layer now has its OWN persisted toggle
     // (hatchVisible), but it is still a dependent annotation over the depth
     // overlay — meaningless, and never drawable, once depthVisible itself is
@@ -915,10 +926,10 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
       map.setLayoutProperty(
         DEPTH_HATCH_LAYER,
         'visibility',
-        depthVisible && hatchVisible ? 'visible' : 'none',
+        depthShown && hatchVisible ? 'visible' : 'none',
       );
     }
-  }, [map, styleEpoch, assets, depthVisible, hatchVisible]);
+  }, [map, styleEpoch, assets, depthVisible, hatchVisible, suppressDepth]);
 
   // #492/#599: rebuild the hazard-hatch raster whenever safetyDepthM OR the
   // zoom band changes,
@@ -1456,7 +1467,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const [userToggled, setUserToggled] = useState(false);
   const [seededWide, setSeededWide] = useState(isWide);
-  if (plan !== null && userToggled) setUserToggled(false);
+  if (!planless && userToggled) setUserToggled(false);
   if (!userToggled && seededWide !== isWide) setSeededWide(isWide);
   const disclosureKey = seededWide ? 'wide' : 'narrow';
   useEffect(() => {
@@ -1502,13 +1513,11 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
     <>
       <div
         className={
-          plan === null
-            ? 'data-layer-controls data-layer-controls-disclosed'
-            : 'data-layer-controls'
+          planless ? 'data-layer-controls data-layer-controls-disclosed' : 'data-layer-controls'
         }
         ref={controlsRef}
       >
-        {plan === null ? (
+        {planless ? (
           <Disclosure
             key={disclosureKey}
             className="data-layer-controls-disclosure"
@@ -1551,7 +1560,7 @@ export default function DataLayers({ onHarborPick, onAddWaypoint }: DataLayersPr
           decides reachability. Rendered only without a plan: with one,
           RouteLegend is the sole "Legende" surface and carries the #597
           caveat. */}
-      {plan === null && (
+      {planless && !suppressDepth && (
         <details className="depth-legend" hidden={legendHidden}>
           <summary>{t('map.depth.legend.title')}</summary>
           <div className="depth-legend-body">

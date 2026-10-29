@@ -38,7 +38,8 @@ import WaveLayer from './WaveLayer';
 import { seaStateUnavailable, waveHourIndexAt } from '../lib/waves';
 import Disclosure from './Disclosure';
 import Button from './Button';
-import type { LatLon, Leg, Plan, SailId } from '../types';
+import type { LatLon, Leg, Plan, SailId, WaveGrid, WindGrid } from '../types';
+import { useConditionsHour } from '../state/conditionsHour';
 
 export interface RouteLayerProps {
   plan: Plan | null;
@@ -96,7 +97,20 @@ export interface RouteLayerProps {
   // #1699: any map pick (origin/destination/via) is armed; the sea-state
   // popup then yields the tap to it.
   mapPickArmed: boolean;
+  // #1854: the Wetter tab is shown. Barbs and sea state then draw `forecast`
+  // at the card's hour, and a loaded plan's route is drawn quietly.
+  conditionsActive?: boolean;
+  forecast?: { wind: WindGrid | null; wave: WaveGrid | null };
 }
+
+// #1854 spike §6: a loaded plan's route on Wetter, styled like the alt-rig overlay.
+const CONDITIONS_ROUTE_DASH = [1, 1.5];
+const CONDITIONS_ROUTE_OPACITY = 0.45;
+const MOTOR_ROUTE_DASH = [2, 1.5];
+const ROUTE_LINE_DASH: Record<'sc-route-sail' | 'sc-route-motor', number[] | undefined> = {
+  'sc-route-sail': undefined,
+  'sc-route-motor': MOTOR_ROUTE_DASH,
+};
 
 // jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
 // etc. either no-op or return undefined, so nothing here can render for
@@ -300,7 +314,7 @@ function setupLayers(map: MaplibreMap): void {
       paint: {
         'line-width': 3.5,
         'line-color': MOTOR_COLOR,
-        'line-dasharray': [2, 1.5],
+        'line-dasharray': MOTOR_ROUTE_DASH,
       },
     });
     // Per-leg speed label along the line (#35). line-center placement only
@@ -1010,6 +1024,8 @@ export default function RouteLayer({
   viaArmed,
   onArmedRouteTapInsert,
   mapPickArmed,
+  conditionsActive = false,
+  forecast,
 }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
@@ -1177,6 +1193,7 @@ export default function RouteLayer({
   // in the meantime, and the sea-state overlay draws nothing.
   const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
+  const conditionsHour = useConditionsHour();
   // Reference "now" for the slider label's day-vs-today tier decision
   // (#292) — computed once at mount, matching PlannerPanel's departure-
   // bounds pattern, NOT a ticking clock. Reading Date.now() directly during
@@ -1530,23 +1547,28 @@ export default function RouteLayer({
   // zoomend and on slider/plan/rig/mask changes — but ONLY while visible (no
   // per-frame JS during a pan, and no work at all when the toggle is off).
   // Always sampled from plan.windGrid at the slider time — never re-fetched.
+  // #1854: on Wetter the barbs come from the area forecast at the card's
+  // hour, with no route ribbon.
+  const barbGrid = conditionsActive ? (forecast?.wind ?? null) : (plan?.windGrid ?? null);
+  const barbTMs = conditionsActive ? conditionsHour : tMs;
+  const barbLegs = conditionsActive ? null : result;
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const source = () => map.getSource(BARB_SOURCE) as GeoJSONSource | undefined;
-    if (!plan || !barbsVisible) {
+    if (!barbGrid || barbTMs === null || !barbsVisible) {
       // No plan → clear stale barbs. Hidden → the layer is already invisible,
       // but clearing avoids a one-frame flash of the previous hour/zoom when
       // it's re-enabled.
       source()?.setData(EMPTY_FC);
       return;
     }
-    const legs = result?.legs ?? [];
+    const legs = barbLegs?.legs ?? [];
     let raf = 0;
     const rebuild = () => {
       const b = map.getBounds();
       const data = adaptiveBarbFeatures(
-        plan.windGrid,
-        tMs,
+        barbGrid,
+        barbTMs,
         {
           project: (p: LatLon) => {
             const pt = map.project([p.lon, p.lat]);
@@ -1571,7 +1593,9 @@ export default function RouteLayer({
         rebuild();
       });
     };
-    rebuild(); // initial paint for the current slider/plan/rig/mask/viewport
+    // Wetter's hour drags rebuild once per frame, like its sea-state repaint.
+    if (conditionsActive) onViewChange();
+    else rebuild(); // initial paint for the current slider/plan/rig/mask/viewport
     map.on('moveend', onViewChange);
     map.on('zoomend', onViewChange);
     return () => {
@@ -1579,7 +1603,7 @@ export default function RouteLayer({
       map.off('moveend', onViewChange);
       map.off('zoomend', onViewChange);
     };
-  }, [map, styleEpoch, plan, tMs, result, barbsVisible, mask]);
+  }, [map, styleEpoch, barbGrid, barbTMs, barbLegs, barbsVisible, mask, conditionsActive]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0 || !map.getLayer('sc-wind-barbs')) return;
@@ -1590,11 +1614,37 @@ export default function RouteLayer({
   // together (heading dots are NOT included — they stay minzoom-gated).
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const visibility = annotationsVisible ? 'visible' : 'none';
+    const visibility = annotationsVisible && !conditionsActive ? 'visible' : 'none';
     for (const id of ANNOTATION_LAYERS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleEpoch, annotationsVisible]);
+  }, [map, styleEpoch, annotationsVisible, conditionsActive]);
+
+  // #1854: on Wetter the time-bearing labels go and the route line reads as
+  // context (dash + 0.45); leaving restores them. Persisted toggles are
+  // untouched. Paint is written only around a Wetter visit.
+  const routeRestyledRef = useRef(false);
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    if (!conditionsActive && !routeRestyledRef.current) return;
+    routeRestyledRef.current = conditionsActive;
+    if (map.getLayer('sc-maneuver-labels')) {
+      map.setLayoutProperty(
+        'sc-maneuver-labels',
+        'visibility',
+        conditionsActive ? 'none' : 'visible',
+      );
+    }
+    for (const id of ['sc-route-sail', 'sc-route-motor'] as const) {
+      if (!map.getLayer(id)) continue;
+      map.setPaintProperty(
+        id,
+        'line-dasharray',
+        conditionsActive ? CONDITIONS_ROUTE_DASH : ROUTE_LINE_DASH[id],
+      );
+      map.setPaintProperty(id, 'line-opacity', conditionsActive ? CONDITIONS_ROUTE_OPACITY : 1);
+    }
+  }, [map, styleEpoch, conditionsActive]);
 
   // #324: alt-rig overlay toggle, default OFF. Gated on altToggleAvailable
   // too, not just the persisted altRigVisible flag — the checkbox's
@@ -1607,11 +1657,12 @@ export default function RouteLayer({
   // primary".
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const visibility = altRigVisible && altToggleAvailable ? 'visible' : 'none';
+    const visibility =
+      altRigVisible && altToggleAvailable && !conditionsActive ? 'visible' : 'none';
     for (const id of ALT_ROUTE_LAYERS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleEpoch, altRigVisible, altToggleAvailable]);
+  }, [map, styleEpoch, altRigVisible, altToggleAvailable, conditionsActive]);
 
   // #1170: sync the discoverability casing AND the invisible hit-line to
   // "armed and a route is displayed" — gated on `result`, not merely
@@ -1839,34 +1890,53 @@ export default function RouteLayer({
     };
   }, [map, styleEpoch]);
 
-  if (!plan) return null;
+  // #1854: one WaveLayer for both modes, first in a stable fragment, so a
+  // tab switch or a plan change never remounts it.
+  const waveLayer = (
+    <WaveLayer
+      grid={conditionsActive ? (forecast?.wave ?? undefined) : plan?.waveGrid}
+      tMs={conditionsActive ? (conditionsHour ?? 0) : tMs}
+      visible={wavesVisible}
+      mapPickArmed={mapPickArmed}
+      mask={mask}
+      wind={barbGrid}
+      barbsVisible={barbsVisible}
+    />
+  );
+
+  if (!plan) return <>{waveLayer}</>;
 
   return (
-    <div className="route-layer-controls" ref={controlsRef}>
-      {/* #628: ViaMarkers renders NO visible box of its own most of the time
+    <>
+      {waveLayer}
+      {/* #1854: on Wetter only ViaMarkers' status chip may show; the card's hour row is the clock. */}
+      <div
+        className="route-layer-controls"
+        ref={controlsRef}
+        hidden={conditionsActive && !viaReplanning}
+      >
+        {/* #628: ViaMarkers renders NO visible box of its own most of the time
           (maplibre Markers attach straight to the map container, outside this
           DOM subtree) — its only DOM output is the rare "draft differs from
           the committed route" status chip. That chip must stay visible
           regardless of collapse state, so it sits OUTSIDE the Disclosure
           below rather than inside its collapsible body. */}
-      <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
-      <WaveLayer
-        grid={plan.waveGrid}
-        tMs={tMs}
-        visible={wavesVisible}
-        mapPickArmed={mapPickArmed}
-        mask={mask}
-      />
-      {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
+        <ViaMarkers
+          viaPoints={draftViaPoints}
+          replanning={viaReplanning}
+          onDragEnd={onViaDragEnd}
+        />
+        {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
           this Disclosure on an unresponded `isWide` change (see that state's
           own comment above) — do not remove the key thinking it is inert. */}
-      <Disclosure
-        key={editCollapsed ? `${disclosureKey}-edit` : disclosureKey}
-        className="route-layer-controls-disclosure"
-        defaultOpen={editCollapsed ? false : (openOverride ?? isWide)}
-        summary={t('route.controls.summary')}
-      >
-        {/* #297: user-invoked "fit route to view" — see this component's own
+        {!conditionsActive && (
+          <Disclosure
+            key={editCollapsed ? `${disclosureKey}-edit` : disclosureKey}
+            className="route-layer-controls-disclosure"
+            defaultOpen={editCollapsed ? false : (openOverride ?? isWide)}
+            summary={t('route.controls.summary')}
+          >
+            {/* #297: user-invoked "fit route to view" — see this component's own
             #297 comment above (near `fitToLegs`/`handleFitToView`) for why
             this ships as an action rather than a permanent overview widget.
             Placed FIRST and inside the (narrow-collapsed-by-default)
@@ -1877,51 +1947,56 @@ export default function RouteLayer({
             row inside the collapsed body costs zero width at the narrow
             baseline where that margin is tightest, unlike a row rendered
             unconditionally alongside ViaMarkers. */}
-        <Button type="button" variant="secondary" disabled={!canFitRoute} onClick={handleFitToView}>
-          {t('route.fitToView')}
-        </Button>
-        <label>
-          <input
-            type="checkbox"
-            checked={annotationsVisible}
-            onChange={(e) => setAnnotationsVisible(e.target.checked)}
-          />
-          {t('route.annotations.toggle')}
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={barbsVisible}
-            onChange={(e) => setBarbsVisible(e.target.checked)}
-          />
-          {t('route.windBarbs.toggle')}
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={wavesVisible && hasWaveGrid}
-            disabled={!hasWaveGrid}
-            onChange={(e) => setWavesVisible(e.target.checked)}
-            aria-describedby={hasWaveGrid && !wavesOutOfRange ? undefined : 'route-waves-note'}
-          />
-          {t('route.waves.toggle')}
-        </label>
-        {(!hasWaveGrid || wavesOutOfRange) && (
-          <p id="route-waves-note" className="route-waves-note">
-            {t(hasWaveGrid ? 'route.waves.outOfRange' : 'route.waves.unavailable')}
-          </p>
-        )}
-        <label>
-          <input
-            type="checkbox"
-            checked={altRigVisible}
-            disabled={!altToggleAvailable}
-            onChange={(e) => setAltRigVisible(e.target.checked)}
-            aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
-          />
-          {t('route.altRig.toggle')}
-        </label>
-        {/* A `title` attribute is hover-only — unreachable on this app's
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!canFitRoute}
+              onClick={handleFitToView}
+            >
+              {t('route.fitToView')}
+            </Button>
+            <label>
+              <input
+                type="checkbox"
+                checked={annotationsVisible}
+                onChange={(e) => setAnnotationsVisible(e.target.checked)}
+              />
+              {t('route.annotations.toggle')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={barbsVisible}
+                onChange={(e) => setBarbsVisible(e.target.checked)}
+              />
+              {t('route.windBarbs.toggle')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={wavesVisible && hasWaveGrid}
+                disabled={!hasWaveGrid}
+                onChange={(e) => setWavesVisible(e.target.checked)}
+                aria-describedby={hasWaveGrid && !wavesOutOfRange ? undefined : 'route-waves-note'}
+              />
+              {t('route.waves.toggle')}
+            </label>
+            {(!hasWaveGrid || wavesOutOfRange) && (
+              <p id="route-waves-note" className="route-waves-note">
+                {t(hasWaveGrid ? 'route.waves.outOfRange' : 'route.waves.unavailable')}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
+                checked={altRigVisible}
+                disabled={!altToggleAvailable}
+                onChange={(e) => setAltRigVisible(e.target.checked)}
+                aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
+              />
+              {t('route.altRig.toggle')}
+            </label>
+            {/* A `title` attribute is hover-only — unreachable on this app's
             primary (touch) context. A visible note, wired via
             aria-describedby, reaches both. Reused for BOTH unavailable
             causes (fock/genoa's own result null, or the complement's) — "only
@@ -1929,56 +2004,58 @@ export default function RouteLayer({
             once at least the recommended rig has solved (types.ts:
             `recommendedResult`'s invariant), so the two results can never be
             null AT THE SAME TIME. */}
-        {!altToggleAvailable && (
-          <p id="route-alt-rig-note" className="route-alt-rig-note">
-            {t(
-              plan?.request.sailIds.length === 1
-                ? 'route.altRig.singleSail'
-                : 'route.altRig.unavailable',
+            {!altToggleAvailable && (
+              <p id="route-alt-rig-note" className="route-alt-rig-note">
+                {t(
+                  plan?.request.sailIds.length === 1
+                    ? 'route.altRig.singleSail'
+                    : 'route.altRig.unavailable',
+                )}
+              </p>
             )}
-          </p>
-        )}
-        <label>
-          <input
-            type="checkbox"
-            checked={hatchVisible}
-            disabled={!depthVisible}
-            onChange={(e) => setHatchVisible(e.target.checked)}
-          />
-          {t('map.depth.legend.hatchToggle')}
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={contoursVisible}
-            onChange={(e) => setContoursVisible(e.target.checked)}
-          />
-          {t('map.depth.legend.contoursToggle')}
-        </label>
-        {contoursFetchState.status === 'error' && (
-          <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
-        )}
-        {hourOptions.length > 1 && (
-          <div className="route-layer-time-slider">
-            <input
-              type="range"
-              min={0}
-              max={hourOptions.length - 1}
-              step={1}
-              value={clampedHourIdx}
-              onChange={(e) => setHourIdx(Number(e.target.value))}
-              aria-label={t('route.windBarbs.timeSlider')}
-              aria-valuetext={formatDateTime(tMs, lang)}
+            <label>
+              <input
+                type="checkbox"
+                checked={hatchVisible}
+                disabled={!depthVisible}
+                onChange={(e) => setHatchVisible(e.target.checked)}
+              />
+              {t('map.depth.legend.hatchToggle')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={contoursVisible}
+                onChange={(e) => setContoursVisible(e.target.checked)}
+              />
+              {t('map.depth.legend.contoursToggle')}
+            </label>
+            {contoursFetchState.status === 'error' && (
+              <p className="depth-legend-error">{t('map.depth.legend.contoursError')}</p>
+            )}
+            {hourOptions.length > 1 && (
+              <div className="route-layer-time-slider">
+                <input
+                  type="range"
+                  min={0}
+                  max={hourOptions.length - 1}
+                  step={1}
+                  value={clampedHourIdx}
+                  onChange={(e) => setHourIdx(Number(e.target.value))}
+                  aria-label={t('route.windBarbs.timeSlider')}
+                  aria-valuetext={formatDateTime(tMs, lang)}
+                />
+                <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
+              </div>
+            )}
+            <RouteLegend
+              hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false}
+              hasHandover={result !== null && handoverLines.length > 0}
+              hasWaveGrid={hasWaveGrid}
             />
-            <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
-          </div>
+          </Disclosure>
         )}
-        <RouteLegend
-          hasForcedLeg={result?.legs.some((l) => l.forced === true) ?? false}
-          hasHandover={result !== null && handoverLines.length > 0}
-          hasWaveGrid={hasWaveGrid}
-        />
-      </Disclosure>
-    </div>
+      </div>
+    </>
   );
 }
