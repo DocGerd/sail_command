@@ -87,6 +87,17 @@ export function formatHeading(deg: number): string {
   return `${zeroPad(normalized, 3)}°`;
 }
 
+const COMPASS_POINTS: Record<Lang, readonly string[]> = {
+  de: ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'],
+  en: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+};
+
+/** Eight-point compass name; each sector is 45° wide, centred on its point. */
+export function formatCompassPoint(deg: number, lang: Lang): string {
+  const normalized = ((deg % 360) + 360) % 360;
+  return COMPASS_POINTS[lang][Math.floor((normalized + 22.5) / 45) % 8]!;
+}
+
 /**
  * Plain decimal-degree coordinate label for a map-tap-picked point, e.g.
  * `54.789°N 9.433°E` — deliberately NOT formatHeading (that's for 0..360°
