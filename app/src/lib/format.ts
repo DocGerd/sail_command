@@ -87,6 +87,17 @@ export function formatHeading(deg: number): string {
   return `${zeroPad(normalized, 3)}°`;
 }
 
+const COMPASS_POINTS: Record<Lang, readonly string[]> = {
+  de: ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'],
+  en: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+};
+
+/** Eight-point compass name; each sector is 45° wide, centred on its point. */
+export function formatCompassPoint(deg: number, lang: Lang): string {
+  const normalized = ((deg % 360) + 360) % 360;
+  return COMPASS_POINTS[lang][Math.floor((normalized + 22.5) / 45) % 8]!;
+}
+
 /**
  * Plain decimal-degree coordinate label for a map-tap-picked point, e.g.
  * `54.789°N 9.433°E` — deliberately NOT formatHeading (that's for 0..360°
@@ -360,6 +371,19 @@ export function formatLegDuration(ms: number): string {
   const minutes = totalMinutes % 60;
   if (hours === 0) return `${minutes} min`;
   return `${hours} h ${zeroPad(minutes, 2)} min`;
+}
+
+/** Forecast age: whole minutes below an hour, else whole hours ("45 min", "13 h"). */
+export function formatAgeShort(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h`;
+}
+
+/** Short local day label: "Sa 24." / "Sat 24". */
+export function formatDayShort(ms: number, lang: Lang): string {
+  const weekday = new Intl.DateTimeFormat(LOCALES[lang], { weekday: 'short' }).format(ms);
+  const day = new Date(ms).getDate();
+  return lang === 'de' ? `${weekday} ${day}.` : `${weekday} ${day}`;
 }
 
 /** Signed schedule drift in whole minutes, e.g. "+12 min" (behind) / "-10 min" (ahead) / "0 min". */

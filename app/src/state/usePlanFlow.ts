@@ -6,6 +6,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { planLog } from '../lib/planLog';
 import { RoutingClient, RoutingError } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
+import { mapWindError } from './windErrorKey';
 import { noRouteMessageKey } from '../lib/plan';
 import { windGridReaches } from '../lib/planForm';
 import type { HarborWithReachability } from '../lib/harborReachability';
@@ -91,27 +92,14 @@ export interface PlanFlowDeps {
   save?: typeof savePlan;
   /** #1164 T6: fire-and-forget region pinning after a successful save. */
   pinRegions?: PinAfterSave;
+  /** #1867: a plan adopted after its save timed out (#1776); no other path calls it. */
+  onLateAdopted?: (plan: Plan) => void;
 }
 
 // #432: ROUTING_FAILURE_MESSAGE_KEY (and its `routingFailureKey` accessor)
 // moved to state/replan.ts — all three paths that can observe a RoutingError
 // share it now, not just this one. Its full rationale, including why
 // 'worker-fatal' deliberately bundles two causes, lives with the table.
-
-function mapWindError(err: unknown): MsgKey {
-  if (err instanceof OpenMeteoError) {
-    switch (err.kind) {
-      case 'offline':
-        return 'error.offline';
-      case 'rate-limited':
-        return 'error.rateLimited';
-      case 'http':
-      case 'malformed':
-        return 'error.windService';
-    }
-  }
-  return ROUTING_FAILURE_MESSAGE_KEY['wind-unclassified'];
-}
 
 // #114: options for run(). `replacePlanId` is the explicit-confirm
 // "recalculate and replace" path: the completed run is persisted under that
@@ -269,6 +257,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   );
   const save = deps.save ?? savePlan;
   const pinRegions = deps.pinRegions ?? pinRegionsAfterSave;
+  const onLateAdoptedRef = useRef(deps.onLateAdopted);
+  useEffect(() => {
+    onLateAdoptedRef.current = deps.onLateAdopted;
+  }, [deps.onLateAdopted]);
 
   // Shared by run() below and by the ensureClient this hook returns
   // (also called by state/replan.ts's useViaReplan, unused in production —
@@ -675,7 +667,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           () => {
             pinRegions(plan);
             if (runSeqRef.current !== seq) return;
-            if (activePlanRef.current === shownAtTimeout) setPlan(plan);
+            if (activePlanRef.current === shownAtTimeout) {
+              onLateAdoptedRef.current?.(plan);
+              setPlan(plan);
+            }
             transition({ phase: 'idle' });
           },
           () => {

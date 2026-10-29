@@ -40,8 +40,11 @@ import {
   formatKn,
   formatLegNm,
   formatHeading,
+  formatCompassPoint,
   formatTime,
   formatDateTime,
+  formatAgeShort,
+  formatDayShort,
   formatDuration,
   formatLegDuration,
   formatDriftMin,
@@ -178,6 +181,23 @@ describe('formatHeading', () => {
 
   it('normalizes negative degrees into 0..359', () => {
     expect(formatHeading(-10)).toBe('350°');
+  });
+});
+
+describe('formatDayShort', () => {
+  it('prints weekday and day of month per language', () => {
+    const ms = new Date(2026, 9, 24, 14).getTime();
+    expect(formatDayShort(ms, 'de')).toBe('Sa 24.');
+    expect(formatDayShort(ms, 'en')).toBe('Sat 24');
+  });
+});
+
+describe('formatAgeShort', () => {
+  it('reads whole minutes below an hour and whole hours from there', () => {
+    expect(formatAgeShort(-5_000)).toBe('0 min');
+    expect(formatAgeShort(59 * 60_000 + 59_999)).toBe('59 min');
+    expect(formatAgeShort(60 * 60_000)).toBe('1 h');
+    expect(formatAgeShort(13 * 3_600_000 + 59 * 60_000)).toBe('13 h');
   });
 });
 
@@ -912,4 +932,29 @@ it('#1707: formatWeekdayTime pairs the short weekday with the 24 h time', () => 
   const sat10 = new Date(2026, 9, 17, 10, 0).getTime();
   expect(formatWeekdayTime(sat10, 'de')).toBe('Sa 10:00');
   expect(formatWeekdayTime(sat10, 'en')).toBe('Sat 10:00');
+});
+
+describe('#1854: formatCompassPoint', () => {
+  it.each([
+    [0, 'N', 'N'],
+    [22.49, 'N', 'N'],
+    [22.5, 'NO', 'NE'],
+    [67.49, 'NO', 'NE'],
+    [67.5, 'O', 'E'],
+    [112.5, 'SO', 'SE'],
+    [157.5, 'S', 'S'],
+    [202.5, 'SW', 'SW'],
+    [225, 'SW', 'SW'],
+    [247.5, 'W', 'W'],
+    [292.5, 'NW', 'NW'],
+    [337.49, 'NW', 'NW'],
+    [337.5, 'N', 'N'],
+    [359.99, 'N', 'N'],
+    [360, 'N', 'N'],
+    [-45, 'NW', 'NW'],
+    [405, 'NO', 'NE'],
+  ])('%s° is %s / %s', (deg, de, en) => {
+    expect(formatCompassPoint(deg, 'de')).toBe(de);
+    expect(formatCompassPoint(deg, 'en')).toBe(en);
+  });
 });

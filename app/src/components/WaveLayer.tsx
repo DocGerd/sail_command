@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popup } from 'maplibre-gl';
-import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
+import type { CanvasSource, GeoJSONSource, Map as MaplibreMap, MapMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { HARBOR_CIRCLE_LAYER, SEAMARKS_HAZARD_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { SAVED_WAYPOINT_LAYER } from './SavedWaypointsLayer';
@@ -10,28 +10,32 @@ import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { installStyleSetup } from '../lib/styleReload';
 import { formatHeading, type Lang } from '../lib/format';
-import { INK_COLOR } from '../lib/mapColors';
+import { depthSourceCorners } from '../lib/depthColor';
 import {
-  EMPTY_WAVE_ARROWS,
-  EMPTY_WAVE_CELLS,
+  EMPTY_WAVE_MARKERS,
   SEA_STATE_BAND_KEY,
-  SEA_STATE_COLORS,
   WAVE_ARROW_IMAGE,
   WAVE_ARROW_LAYER,
   WAVE_ARROW_PIXEL_RATIO,
   WAVE_ARROW_SOURCE,
-  WAVE_CELL_SOURCE,
-  WAVE_EDGE_LAYER,
-  WAVE_EDGE_OPACITY,
+  WAVE_DOT_IMAGE,
   WAVE_FILL_LAYER,
   WAVE_FILL_OPACITY,
+  WAVE_RASTER_SOURCE,
   formatSeaStateM,
+  paintSeaState,
+  seaStateMarkers,
+  seaStateRasterIndex,
+  seaStateRasterSize,
+  shadedWaveCellAt,
   waveArrowImage,
-  waveFeaturesAt,
-  type ShadedBand,
+  waveDotImage,
+  windMarkerOffsets,
+  type WaveCellProps,
 } from '../lib/waveMap';
+import { waveHourIndexAt } from '../lib/waves';
 import type { NavMask } from '../lib/mask';
-import type { WaveGrid } from '../types';
+import type { MaskMeta, WaveGrid, WindGrid } from '../types';
 
 // Stack position (#160): above the depth ramp, hatch and contours (DataLayers
 // anchors those below WAVE_STACK_BOTTOM_LAYER when it exists), below every
@@ -49,55 +53,44 @@ function waveBeforeId(map: MaplibreMap): string | undefined {
   return undefined;
 }
 
-function setupLayers(map: MaplibreMap): void {
+// The canvas behind each map's raster source; replaced on a style reload.
+const rasterCanvases = new WeakMap<MaplibreMap, HTMLCanvasElement>();
+
+function setupLayers(map: MaplibreMap, meta: MaskMeta): void {
   if (!map.hasImage(WAVE_ARROW_IMAGE)) {
     map.addImage(WAVE_ARROW_IMAGE, waveArrowImage(), { pixelRatio: WAVE_ARROW_PIXEL_RATIO });
   }
+  if (!map.hasImage(WAVE_DOT_IMAGE)) {
+    map.addImage(WAVE_DOT_IMAGE, waveDotImage(), { pixelRatio: WAVE_ARROW_PIXEL_RATIO });
+  }
   // addImage fires 'styledata' synchronously, so a setup armed on that event
   // may already have re-entered and added everything below.
-  if (map.getSource(WAVE_CELL_SOURCE)) return;
+  if (map.getSource(WAVE_RASTER_SOURCE)) return;
   const beforeId = waveBeforeId(map);
-  map.addSource(WAVE_CELL_SOURCE, { type: 'geojson', data: EMPTY_WAVE_CELLS });
-  map.addSource(WAVE_ARROW_SOURCE, { type: 'geojson', data: EMPTY_WAVE_ARROWS });
+  const canvas = document.createElement('canvas');
+  const size = seaStateRasterSize(meta);
+  canvas.width = size.width;
+  canvas.height = size.height;
+  rasterCanvases.set(map, canvas);
+  // Created even without a 2D context: DataLayers anchors below the fill.
+  map.addSource(WAVE_RASTER_SOURCE, {
+    type: 'canvas',
+    canvas,
+    animate: false,
+    coordinates: depthSourceCorners(meta),
+  });
+  map.addSource(WAVE_ARROW_SOURCE, { type: 'geojson', data: EMPTY_WAVE_MARKERS });
   map.addLayer(
     {
       id: WAVE_FILL_LAYER,
-      type: 'fill',
-      source: WAVE_CELL_SOURCE,
+      type: 'raster',
+      source: WAVE_RASTER_SOURCE,
       layout: { visibility: 'none' },
       paint: {
-        'fill-color': [
-          'match',
-          ['get', 'band'],
-          'calm',
-          SEA_STATE_COLORS.calm,
-          'smooth',
-          SEA_STATE_COLORS.smooth,
-          'slight',
-          SEA_STATE_COLORS.slight,
-          'moderate',
-          SEA_STATE_COLORS.moderate,
-          'rough',
-          SEA_STATE_COLORS.rough,
-          'rgba(0,0,0,0)',
-        ],
-        'fill-opacity': WAVE_FILL_OPACITY,
-        // Antialiasing draws hairline seams between adjacent cells.
-        'fill-antialias': false,
-      },
-    },
-    beforeId,
-  );
-  map.addLayer(
-    {
-      id: WAVE_EDGE_LAYER,
-      type: 'line',
-      source: WAVE_CELL_SOURCE,
-      layout: { visibility: 'none' },
-      paint: {
-        'line-color': INK_COLOR,
-        'line-opacity': WAVE_EDGE_OPACITY,
-        'line-width': 0.75,
+        'raster-opacity': WAVE_FILL_OPACITY,
+        // Magnified band edges stay crisp; minification still blends.
+        'raster-resampling': 'nearest',
+        'raster-fade-duration': 0,
       },
     },
     beforeId,
@@ -109,7 +102,7 @@ function setupLayers(map: MaplibreMap): void {
       source: WAVE_ARROW_SOURCE,
       layout: {
         visibility: 'none',
-        'icon-image': WAVE_ARROW_IMAGE,
+        'icon-image': ['match', ['get', 'marker'], 'dot', WAVE_DOT_IMAGE, WAVE_ARROW_IMAGE],
         'icon-rotate': ['get', 'rotateDeg'],
         'icon-rotation-alignment': 'map',
         'icon-size': ['interpolate', ['linear'], ['zoom'], 7, 0.6, 10, 1],
@@ -122,6 +115,15 @@ function setupLayers(map: MaplibreMap): void {
   );
 }
 
+// Re-uploads the canvas texture once: the source is created with animate: false.
+function uploadRaster(map: MaplibreMap): void {
+  const source = map.getSource(WAVE_RASTER_SOURCE) as CanvasSource | undefined;
+  if (source && 'play' in source) {
+    source.play();
+    source.pause();
+  }
+}
+
 function row(label: string, value: string): HTMLElement {
   const p = document.createElement('div');
   const b = document.createElement('strong');
@@ -130,34 +132,24 @@ function row(label: string, value: string): HTMLElement {
   return p;
 }
 
-function popupContent(
-  props: Record<string, unknown>,
-  t: (k: MsgKey) => string,
-  lang: Lang,
-): HTMLElement {
-  const num = (k: string): number | null =>
-    typeof props[k] === 'number' && Number.isFinite(props[k]) ? props[k] : null;
+function popupContent(cell: WaveCellProps, t: (k: MsgKey) => string, lang: Lang): HTMLElement {
   const noData = t('map.waves.popup.noData');
-  const height = num('heightM');
-  const period = num('periodS');
-  const travel = num('travelDeg');
-  const band = props.band as ShadedBand | undefined;
   const root = document.createElement('div');
   root.className = 'wave-popover';
   const title = document.createElement('strong');
   title.textContent = t('map.waves.popup.title');
   root.append(
     title,
+    row(t('map.waves.popup.height'), `${formatSeaStateM(cell.heightM, lang)} m`),
+    row(t('map.waves.popup.band'), t(SEA_STATE_BAND_KEY[cell.band])),
     row(
-      t('map.waves.popup.height'),
-      height === null ? noData : `${formatSeaStateM(height, lang)} m`,
+      t('map.waves.popup.period'),
+      cell.periodS === undefined ? noData : `${Math.round(cell.periodS)} s`,
     ),
     row(
-      t('map.waves.popup.band'),
-      band && Object.hasOwn(SEA_STATE_BAND_KEY, band) ? t(SEA_STATE_BAND_KEY[band]) : noData,
+      t('map.waves.popup.direction'),
+      cell.travelDeg === undefined ? noData : formatHeading(cell.travelDeg),
     ),
-    row(t('map.waves.popup.period'), period === null ? noData : `${Math.round(period)} s`),
-    row(t('map.waves.popup.direction'), travel === null ? noData : formatHeading(travel)),
   );
   const note = document.createElement('p');
   note.className = 'wave-popover-disclaimer';
@@ -173,58 +165,96 @@ export interface WaveLayerProps {
   visible: boolean;
   // A map pick (origin/destination/via) is armed: the tap belongs to it.
   mapPickArmed: boolean;
-  // Land/water mask for culling; null while it loads or if it fails to load.
+  // Land/water mask for clipping; null while it loads or if it fails to load.
   mask: NavMask | null;
+  // #1854: with barbs shown, markers move off the barb on their lattice point.
+  wind?: WindGrid | null;
+  barbsVisible?: boolean;
 }
 
 // #1699: plan-bound sea-state overlay — Hs shading by WMO band plus travel
-// arrows, display only. Rendered by RouteLayer, which owns the slider.
-export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: WaveLayerProps) {
+// arrows, display only. Rendered by RouteLayer, which owns the slider. #1854:
+// the shading is a raster clipped to nav-mask water.
+export default function WaveLayer({
+  grid,
+  tMs,
+  visible,
+  mapPickArmed,
+  mask,
+  wind = null,
+  barbsVisible = false,
+}: WaveLayerProps) {
   const map = useMapInstance();
   const t = useT();
   const [lang] = useLang();
   const [styleEpoch, setStyleEpoch] = useState(0);
   const hasGrid = grid !== undefined;
   const popupRef = useRef<Popup | null>(null);
-  const armedRef = useRef(mapPickArmed);
-  const tRef = useRef(t);
-  const langRef = useRef(lang);
+  const paintedRef = useRef<{ canvas: HTMLCanvasElement; key: unknown[] } | null>(null);
+  const imageRef = useRef<{ canvas: HTMLCanvasElement; image: ImageData } | null>(null);
+  const latest = useRef({ mapPickArmed, t, lang, grid, tMs, mask, shown: visible && hasGrid });
   useEffect(() => {
-    armedRef.current = mapPickArmed;
-    tRef.current = t;
-    langRef.current = lang;
+    latest.current = { mapPickArmed, t, lang, grid, tMs, mask, shown: visible && hasGrid };
   });
 
-  // Only a plan with a grid creates the layers; plans without one leave the
-  // map's stack exactly as it was.
+  // Plans without a grid leave the map's stack exactly as it was; nothing is
+  // created until the mask loads, since its bbox places the raster.
+  const meta = hasGrid ? mask?.meta : undefined;
   useEffect(() => {
-    if (!map || !hasGrid) return;
+    if (!map || !meta) return;
     const setup = () => {
-      const missing = !map.getSource(WAVE_CELL_SOURCE);
-      if (missing) setupLayers(map);
+      const missing = !map.getSource(WAVE_RASTER_SOURCE);
+      if (missing) setupLayers(map, meta);
       setStyleEpoch((e) => (missing || e === 0 ? e + 1 : e));
     };
     return installStyleSetup(map, setup);
-  }, [map, hasGrid]);
+  }, [map, meta]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const cells = map.getSource(WAVE_CELL_SOURCE) as GeoJSONSource | undefined;
-    const arrows = map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined;
-    // Nothing until the mask loads: un-culled cells would tint land as sea
-    // state.
-    const data = grid && mask ? waveFeaturesAt(grid, tMs, mask) : null;
-    cells?.setData(data?.cells ?? EMPTY_WAVE_CELLS);
-    arrows?.setData(data?.arrows ?? EMPTY_WAVE_ARROWS);
     // The popup's numbers belong to the hour and plan it was opened on.
     popupRef.current?.remove();
     popupRef.current = null;
-  }, [map, styleEpoch, grid, tMs, mask]);
+    const hourIdx = grid ? waveHourIndexAt(grid, tMs) : null;
+    const raster = grid && mask && hourIdx !== null ? seaStateRasterIndex(mask, grid) : null;
+    const markers = map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined;
+    markers?.setData(
+      raster && grid && hourIdx !== null
+        ? seaStateMarkers(
+            raster,
+            grid,
+            hourIdx,
+            barbsVisible ? windMarkerOffsets(wind, grid, tMs) : null,
+          )
+        : EMPTY_WAVE_MARKERS,
+    );
+    const canvas = rasterCanvases.get(map);
+    if (!canvas || !visible) return;
+    const key = [grid, mask, hourIdx];
+    const painted = paintedRef.current;
+    if (painted?.canvas === canvas && painted.key.every((v, i) => v === key[i])) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    if (raster && grid && hourIdx !== null) {
+      // paintSeaState writes every pixel, so one buffer per canvas serves every hour.
+      let image = imageRef.current?.canvas === canvas ? imageRef.current.image : null;
+      if (image?.width !== raster.width || image.height !== raster.height) {
+        image = ctx.createImageData(raster.width, raster.height);
+        imageRef.current = { canvas, image };
+      }
+      paintSeaState(raster, grid, hourIdx, image.data);
+      ctx.putImageData(image, 0, 0);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    paintedRef.current = { canvas, key };
+    uploadRaster(map);
+  }, [map, styleEpoch, grid, tMs, mask, visible, wind, barbsVisible]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const visibility = visible && hasGrid ? 'visible' : 'none';
-    for (const id of [WAVE_FILL_LAYER, WAVE_EDGE_LAYER, WAVE_ARROW_LAYER]) {
+    for (const id of [WAVE_FILL_LAYER, WAVE_ARROW_LAYER]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
     if (visibility === 'none') {
@@ -233,17 +263,19 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
     }
   }, [map, styleEpoch, visible, hasGrid]);
 
+  // A raster is not queryable, so the tap is resolved against the raster index:
+  // the popup opens only where a pixel is shaded.
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const handleClick = (e: MapLayerMouseEvent) => {
-      if (armedRef.current) return;
+    const handleClick = (e: MapMouseEvent) => {
+      const { mapPickArmed: armed, grid: g, tMs: time, mask: m, shown } = latest.current;
+      if (!shown || armed || !g || !m) return;
       // A DOM marker (endpoints, vias, ownship, the route-drag handle) sits
-      // over the canvas, and MapLibre still delivers its click to the layer
-      // below.
+      // over the canvas, and MapLibre still delivers its click to the map.
       const target = e.originalEvent?.target;
       if (target instanceof Element && target.closest('.maplibregl-marker')) return;
-      // Any other tappable layer under the point owns the tap; the wave
-      // layer covers most of the sea and must never steal it.
+      // Any other tappable layer under the point owns the tap; the sea state
+      // covers most of the sea and must never steal it.
       const others = [
         HARBOR_CIRCLE_LAYER,
         SEAMARKS_LAYER,
@@ -254,8 +286,13 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
       ].filter((id) => map.getLayer(id));
       if (others.length > 0 && map.queryRenderedFeatures(e.point, { layers: others }).length > 0)
         return;
-      const props = e.features?.[0]?.properties;
-      if (!props) return;
+      const hourIdx = waveHourIndexAt(g, time);
+      if (hourIdx === null) return;
+      const cell = shadedWaveCellAt(seaStateRasterIndex(m, g), g, hourIdx, {
+        lat: e.lngLat.lat,
+        lon: e.lngLat.lng,
+      });
+      if (!cell) return;
       popupRef.current?.remove();
       popupRef.current = new Popup({
         closeButton: true,
@@ -263,23 +300,29 @@ export default function WaveLayer({ grid, tMs, visible, mapPickArmed, mask }: Wa
         className: 'wave-popup',
       })
         .setLngLat(e.lngLat)
-        .setDOMContent(popupContent(props, tRef.current, langRef.current))
+        .setDOMContent(popupContent(cell, latest.current.t, latest.current.lang))
         .addTo(map);
     };
-    map.on('click', WAVE_FILL_LAYER, handleClick);
+    map.on('click', handleClick);
     return () => {
-      map.off('click', WAVE_FILL_LAYER, handleClick);
+      map.off('click', handleClick);
     };
   }, [map, styleEpoch]);
 
-  // Unmount (plan cleared): the layers stay, emptied.
+  // Unmount (RouteLayer gone): the layers stay, emptied.
   useEffect(() => {
     if (!map) return;
     return () => {
       popupRef.current?.remove();
       popupRef.current = null;
-      (map.getSource(WAVE_CELL_SOURCE) as GeoJSONSource | undefined)?.setData(EMPTY_WAVE_CELLS);
-      (map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined)?.setData(EMPTY_WAVE_ARROWS);
+      paintedRef.current = null;
+      const canvas = rasterCanvases.get(map);
+      const ctx = canvas?.getContext('2d');
+      if (canvas && ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        uploadRaster(map);
+      }
+      (map.getSource(WAVE_ARROW_SOURCE) as GeoJSONSource | undefined)?.setData(EMPTY_WAVE_MARKERS);
     };
   }, [map]);
 

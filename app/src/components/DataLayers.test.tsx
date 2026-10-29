@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { useEffect } from 'react';
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
@@ -11,7 +11,15 @@ import { __resetContoursForTests, type ContourAsset } from '../lib/contours';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import type { MsgKey } from '../i18n/dict.de';
-import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot, type Plan } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
+  defaultBoatSnapshot,
+  type Plan,
+  type WaveGrid,
+} from '../types';
+import { makeWaveGrid } from '../test/waveFixtures';
+import { resetConditionsHourForTests, setConditionsHour } from '../state/conditionsHour';
 import { uniformWindGrid } from '../test/fixtures';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
@@ -1210,5 +1218,94 @@ describe('#1581: the scroll cue follows content-only changes', () => {
     await waitFor(() => {
       expect(el.hasAttribute('data-overflowing')).toBe(true);
     });
+  });
+});
+
+describe('#1854 Wetter: planless form and depth suppression', () => {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  const SEA_T0 = Date.UTC(2026, 6, 15, 6);
+  const SEA = makeWaveGrid(() => ({ heightM: 0.5, periodS: 4, dirFromDeg: 200 }), {
+    t0Ms: SEA_T0,
+    hours: 4,
+  });
+  beforeEach(() => setConditionsHour(SEA_T0));
+  afterEach(() => resetConditionsHourForTests());
+
+  beforeEach(() => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
+      if (this.width !== 4) return null;
+      return {
+        createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData: () => {},
+      };
+    }) as unknown as HTMLCanvasElement['getContext'];
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+  });
+
+  function renderWetter(
+    map: ReturnType<typeof makeFakeMap>,
+    p: { plan: Plan | null; active: boolean; suppress: boolean; sea?: WaveGrid | null },
+  ) {
+    hoisted.map = map;
+    const el = (q: typeof p) => (
+      <AppStateProvider>
+        <TestSetPlan plan={q.plan} />
+        <DataLayers
+          onHarborPick={() => {}}
+          conditionsActive={q.active}
+          suppressDepth={q.suppress}
+          seaState={q.sea === undefined ? SEA : q.sea}
+        />
+      </AppStateProvider>
+    );
+    const r = render(el(p));
+    return { ...r, update: (q: typeof p) => r.rerender(el(q)) };
+  }
+
+  it('shows the planless controls on Wetter even with a plan loaded', () => {
+    const plan = minimalPlan();
+    const { container, update } = renderWetter(makeFakeMap(), {
+      plan,
+      active: false,
+      suppress: false,
+    });
+    expect(container.querySelector('.data-layer-controls-disclosure')).toBeNull();
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+    update({ plan, active: true, suppress: false });
+    expect(container.querySelector('.data-layer-controls-disclosure')).not.toBeNull();
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
+  });
+
+  it('keeps depth at an hour the sea state does not draw', async () => {
+    const map = makeFakeMap();
+    const { update } = renderWetter(map, { plan: null, active: true, suppress: false });
+    await waitFor(() => expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible'));
+    act(() => setConditionsHour(SEA_T0 + 5 * 3_600_000));
+    update({ plan: null, active: true, suppress: true });
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+    act(() => setConditionsHour(SEA_T0));
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('none');
+  });
+
+  it('hides depth, hatch and the legend while suppressed, without writing the toggles', async () => {
+    const map = makeFakeMap();
+    const { container, update } = renderWetter(map, { plan: null, active: true, suppress: false });
+    await waitFor(() => expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible'));
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
+
+    update({ plan: null, active: true, suppress: true });
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('none');
+    expect(container.querySelector('details.depth-legend')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Wassertiefen' })).toBeChecked();
+    expect(localStorage.getItem('sc-depth-visible')).not.toBe('0');
+
+    update({ plan: null, active: true, suppress: false });
+    expect(map.layers.get(DEPTH_LAYER)?.layout?.visibility).toBe('visible');
+    expect(map.layers.get(DEPTH_HATCH_LAYER)?.layout?.visibility).toBe('visible');
+    expect(container.querySelector('details.depth-legend')).not.toBeNull();
   });
 });

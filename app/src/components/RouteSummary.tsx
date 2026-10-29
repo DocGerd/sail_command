@@ -37,6 +37,10 @@ import {
   roundExposureNm,
 } from '../lib/shallowExposure';
 import { nearbyHazardMarkCount, SEAMARK_PROXIMITY_M } from '../lib/seamarkProximity';
+import { OpeningBridgeNotice } from './OpeningBridgeNotice';
+import { legMaxHsM, mergeReadings, type SeaStateReading } from '../lib/routeSeaState';
+import { seaStateBand } from '../lib/waves';
+import { formatSeaStateM, SEA_STATE_BAND_KEY } from '../lib/waveMap';
 import {
   reefSuggestionsForLegs,
   REEF1_AWS_KN,
@@ -647,6 +651,15 @@ export default function RouteSummary({
   // the same "nothing rendered" state `ReefChip` already handled before
   // this wiring — see that component's own comment.
   const reefSuggestions = result ? reefSuggestionsForLegs(result.legs) : null;
+  // #1830: derived each render from the plan's own grid; a same-id replace changes it.
+  const waveGrid = plan.waveGrid;
+  const seaLegs = waveGrid && result ? result.legs.map((l) => legMaxHsM(l, waveGrid)) : null;
+  const seaState = seaLegs ? { legs: seaLegs, route: mergeReadings(seaLegs) } : null;
+  const routeBand = seaStateBand(seaState?.route.maxM ?? NaN);
+  const seaText = (r: SeaStateReading) =>
+    r.maxM === null
+      ? t('route.seaState.noData')
+      : `${r.incomplete ? '≥ ' : ''}${formatSeaStateM(r.maxM, lang)} m`;
 
   return (
     <Card
@@ -816,6 +829,7 @@ export default function RouteSummary({
           the component. Per-rig for the same reason: the count is over the
           ACTIVE rig's own legs, so the two rig tabs can honestly differ. */}
       <SeamarkProximityNotice legs={result?.legs ?? null} />
+      <OpeningBridgeNotice legs={result?.legs ?? null} />
 
       {/* #704: the tabpanel half of the rig tablist's ARIA association — a
           plain wrapper div (no class, no CSS) around the existing per-rig
@@ -857,6 +871,19 @@ export default function RouteSummary({
               {t('route.totals.maneuvers')}:{' '}
               <span className="tabular-nums">{result.maneuverCount}</span>
             </p>
+            {seaState && (
+              <p className="ergebnis-maneuvers">
+                {t('route.totals.seaState')}:{' '}
+                <span className="tabular-nums">{seaText(seaState.route)}</span>
+                {routeBand !== 'no-data' && <> · {t(SEA_STATE_BAND_KEY[routeBand])}</>}
+                {seaState.route.incomplete && seaState.route.maxM !== null && (
+                  <>
+                    {' · '}
+                    <span className="route-legs-note">{t('route.seaState.partial')}</span>
+                  </>
+                )}
+              </p>
+            )}
 
             {/* Sail/motor split bar — proportions from the shared formatter.
               Motor uses a neutral grey (NOT a map-palette token). */}
@@ -977,6 +1004,7 @@ export default function RouteSummary({
                     <th scope="col">{t('route.legs.speed')}</th>
                     <th scope="col">{t('route.legs.distance')}</th>
                     <th scope="col">{t('route.legs.maneuver')}</th>
+                    {seaState && <th scope="col">{t('route.legs.seaState')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1078,6 +1106,7 @@ export default function RouteSummary({
                             </span>
                           )}
                         </td>
+                        {seaState && <td className="tabular-nums">{seaText(seaState.legs[i]!)}</td>}
                       </tr>
                     );
                   })}
@@ -1094,6 +1123,7 @@ export default function RouteSummary({
               {result.legs.length > 0 && (
                 <p className="route-legs-note">{t('route.legs.motorNote')}</p>
               )}
+              {seaState && <p className="route-legs-note">{t('route.legs.seaStateNote')}</p>}
               {/* #325: the reef suggestion is advisory seamanship guidance,
                 computed AFTER routing from apparent wind speed — it is NOT
                 part of the time optimisation (the boat speed every leg used

@@ -724,6 +724,9 @@ export const de = {
     'Diese Route verläuft näher als {dist} m an einem Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
   'route.seamarks.proximity.plural':
     'Diese Route verläuft näher als {dist} m an {count} Kardinal- oder Einzelgefahrenzeichen vorbei. SailCommand bezieht Seezeichen nicht in die Routenberechnung ein und trifft keine Aussage darüber, auf welcher Seite ein Zeichen zu passieren ist — mit amtlicher Seekarte prüfen.',
+  'route.bridge.notice':
+    'Diese Route passiert {name}, eine Klappbrücke, die zu bestimmten Zeiten öffnet. Außerhalb dieser Zeiten kann eine Öffnung auf Anfrage möglich sein, und die Brücke kann gesperrt sein. SailCommand bildet Öffnungen und Sperrungen nicht ab — die aktuellen Zeiten vor der Fahrt prüfen.',
+  'route.bridge.link': 'Öffnungszeiten der Brücke (Danske Havnelods)',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -859,6 +862,13 @@ export const de = {
   'route.waves.toggle': 'Seegang anzeigen',
   'route.waves.unavailable': 'Für diesen Plan sind keine Seegangsdaten verfügbar.',
   'route.waves.outOfRange': 'Keine Seegangsdaten für die gewählte Stunde.',
+  // #1830: Höchstwert über die Stunden und den Weg der Etappe, nur Anzeige.
+  'route.legs.seaState': 'Seegang',
+  'route.legs.seaStateNote':
+    'Seegang: höchste signifikante Wellenhöhe auf der Etappe, über ihre Stunden und ihren Weg. Modellschätzung, keine amtliche Angabe; „≥“ heißt, dass für Teile der Etappe keine Daten vorliegen.',
+  'route.totals.seaState': 'Höchster Seegang',
+  'route.seaState.noData': 'keine Daten',
+  'route.seaState.partial': 'teils ohne Daten',
   'route.legend.seaStateHeading': 'Seegang (signifikante Wellenhöhe)',
   'route.legend.seaStateBelow': 'unter {max} m',
   'route.legend.seaStateRange': '{min} bis {max} m',
@@ -866,6 +876,10 @@ export const de = {
   'route.legend.seaStateNoData': 'Keine Färbung bedeutet keine Daten oder Land, nicht ruhige See.',
   'route.legend.seaStateArrow':
     'Pfeile zeigen die Laufrichtung der Wellen, also wohin sie laufen – anders als Windpfeile, die zeigen, woher der Wind kommt.',
+  'route.legend.seaStateMarker':
+    'Ein Ring markiert eine Zelle mit Wellenhöhe, aber ohne Laufrichtung.',
+  'route.legend.seaStateCells':
+    'Jede Zelle ist ein Modellpunkt im {step}°-Raster, etwa {ew} × {ns} km (Ost–West × Nord–Süd) bei {lat}° N.',
   'route.legend.seaStateCaveat':
     'Modellschätzung (Open-Meteo), keine amtliche Angabe; in Küstennähe ungenau.',
   // Douglas-scale wording per NLWKN, Anlage 7.1 Wellenauflaufberechnung
@@ -1299,6 +1313,66 @@ export const de = {
   // #299: kurz gehalten, kürzer sogar als "Routen" — vermeidet die 280px-
   // Enge, die für eine Tab-Option gegen ein Wort wie "Einstellungen" spräche.
   'nav.boat': 'Boot',
+  'nav.conditions': 'Wetter',
+  'conditions.title': 'Wind und Seegang',
+  'conditions.hour.label': 'Uhrzeit für Wind und Seegang',
+  'conditions.hour.group': 'Stunde wählen',
+  'conditions.hour.prev': 'Eine Stunde früher',
+  'conditions.hour.next': 'Eine Stunde später',
+  'conditions.day.prev': 'Einen Tag früher',
+  'conditions.day.next': 'Einen Tag später',
+  'conditions.hour.now': 'jetzt',
+  'conditions.hour.in': 'in {hours} h',
+  'conditions.hour.valuetext': '{datetime}, in {hours} Stunden',
+  'conditions.day.group': 'Tag wählen',
+  'conditions.day.today': 'Heute',
+  'conditions.useAsDeparture': 'Als Abfahrt übernehmen',
+  'conditions.useAsDeparture.now': 'Jetzt als Abfahrt',
+  'conditions.useAsDeparture.done': 'Abfahrt auf {datetime} gesetzt.',
+  'conditions.useAsDeparture.offline': 'Offline – Planen braucht eine Verbindung.',
+  'conditions.useAsDeparture.short': 'Danach bleiben nur {hours} h Vorhersage.',
+  'conditions.update': 'Vorhersage aktualisieren',
+  'conditions.update.cooldown': 'Zu viele Anfragen – in einer Minute wieder möglich.',
+  'conditions.status.loading': 'Vorhersage wird geladen …',
+  'conditions.status.refreshing': 'Wird aktualisiert – zeigt den Abruf von {time}.',
+  'conditions.status.fetched': 'abgerufen {time} (vor {age})',
+  'conditions.status.fromPlan': 'aus der geladenen Route, abgerufen {time} (vor {age})',
+  'conditions.status.refreshFailed': 'Aktualisierung fehlgeschlagen – zeigt den Abruf von {time}.',
+  'conditions.status.stale': 'Vor {hours} h abgerufen – für aktuelle Bedingungen aktualisieren.',
+  'conditions.offline.none':
+    'Offline – Wind und Seegang brauchen eine Internetverbindung. Es ist keine Vorhersage im Speicher.',
+  'conditions.offline.held':
+    'Offline – zeigt die Vorhersage, abgerufen {time} (vor {age}). Zum Aktualisieren wird eine Verbindung gebraucht.',
+  'conditions.error.waves': 'Seegang konnte nicht geladen werden – nur Wind wird gezeigt.',
+  'conditions.horizon.end': 'reicht bis {datetime}',
+  'conditions.horizon.seedClamped':
+    'Abfahrt {datetime} liegt außerhalb der Vorhersage; gezeigt wird {shown}.',
+  'conditions.horizon.noneLeft': 'Diese Vorhersage enthält keine kommenden Stunden mehr.',
+  'conditions.sea.noHour': 'Keine Seegangsdaten für diese Stunde – Daten bis {datetime}',
+  'conditions.notice':
+    'Planungshilfe · nur Wind und Seegang (keine Gewitter, Sicht, Niederschlag) · Windpfeil: woher · Wellenpfeil: wohin',
+  'conditions.depthHidden': 'Wassertiefen ausgeblendet, solange Seegang angezeigt wird.',
+  'conditions.depthShow': 'Tiefen zeigen',
+  'conditions.more.summary': 'Zeitleiste, Ebenen und Zeichenerklärung',
+  'conditions.disclaimer':
+    'Planungshilfe: Modellvorhersage von Open-Meteo, keine amtliche Wetter- oder Seewetterangabe.',
+  'conditions.strip.group': 'Übersicht {day}, {scope}',
+  'conditions.strip.rowWind': 'Wind kn (Böen)',
+  'conditions.strip.rowSea': 'Seegang m',
+  'conditions.sr.wind': 'Wind',
+  'conditions.sr.windFrom': 'Wind aus {cardinal}',
+  'conditions.sr.windVariable': 'Wind umlaufend',
+  'conditions.sr.knots': 'Knoten',
+  'conditions.sr.gusts': 'Böen',
+  'conditions.sr.sea': 'Seegang',
+  'conditions.sr.metres': 'Meter',
+  'conditions.sr.noData': 'keine Modelldaten',
+  'conditions.scope.area': 'Revier',
+  'conditions.scope.nearest': 'am nächsten Modellpunkt',
+  'conditions.area':
+    'Im Kartenausschnitt: Wind {speed} kn (Bft {force}) aus {cardinal}, Böen bis {gust} kn · Seegang bis {height} m',
+  'conditions.area.variable':
+    'Im Kartenausschnitt: Wind {speed} kn (Bft {force}), Richtung umlaufend, Böen bis {gust} kn · Seegang bis {height} m',
   'nav.langToggle': 'English anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
@@ -1309,6 +1383,8 @@ export const de = {
   // eigener Schlüssel ist statt 'about.close' wiederzuverwenden.
   'about.closeDialog': 'Dialog schließen',
   'about.version': 'Version {version}',
+  'about.project.repo': 'SailCommand auf GitHub',
+  'about.project.report': 'Fehler melden oder Funktion vorschlagen',
   'about.changelog.title': 'Was ist neu',
   'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
   'about.caveats.heading': 'Wichtige Hinweise',

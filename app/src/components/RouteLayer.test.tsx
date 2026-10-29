@@ -7,7 +7,7 @@
 // @ts-expect-error process is not typed in browser context
 process.env.TZ = 'Europe/Berlin';
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, {
   HANDOVER_CASING_LAYER,
@@ -24,14 +24,15 @@ import { I18nProvider } from '../i18n';
 import { de } from '../i18n/dict.de';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
+import { DEFAULT_SETTINGS, type Leg, type Plan, type WaveGrid, type WindGrid } from '../types';
+import { resetConditionsHourForTests, setConditionsHour } from '../state/conditionsHour';
 import { defaultBoatSnapshot } from '../types';
 import { __resetContoursForTests, loadContoursAsset } from '../lib/contours';
 import { PLAN_SCHEMA_VERSION } from '../types';
 import { destinationPoint } from '../lib/geo';
 import { withHarborHandover } from '../lib/harborHandover';
 import { makeWaveGrid } from '../test/waveFixtures';
-import { WAVE_ARROW_LAYER, WAVE_EDGE_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
+import { WAVE_ARROW_LAYER, WAVE_FILL_LAYER } from '../lib/waveMap';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -2618,9 +2619,11 @@ describe('sea-state toggle (#1699)', () => {
     waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
   });
 
-  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', () => {
+  it('is disabled with a muted note, and adds no wave layer, when the plan has no grid', async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     renderRouteLayerWithPlan(map, makePlan());
+    await act(async () => {});
     const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
     expect(toggle).toBeDisabled();
     expect(toggle).not.toBeChecked();
@@ -2630,26 +2633,30 @@ describe('sea-state toggle (#1699)', () => {
     expect(map.layers.has(WAVE_FILL_LAYER)).toBe(false);
   });
 
-  it('is on by default for a plan with a grid and drives the layer visibility', () => {
+  it('is on by default for a plan with a grid and drives the layer visibility', async () => {
+    // #1854: the raster needs the mask's bbox, so the layers wait for it.
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     renderRouteLayerWithPlan(map, withWaves());
+    await act(async () => {});
     const toggle = screen.getByRole('checkbox', { name: de['route.waves.toggle'] });
     expect(toggle).toBeEnabled();
     expect(toggle).toBeChecked();
     expect(screen.queryByText(de['route.waves.unavailable'])).toBeNull();
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('visible');
-    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('visible');
     fireEvent.click(toggle);
     expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
     expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
-    expect(map.layers.get(WAVE_EDGE_LAYER)?.layout?.visibility).toBe('none');
     expect(localStorage.getItem('sc-waves-visible')).toBe('0');
   });
 
-  it('hides the overlay when the next plan has no grid, though the toggle stays on', () => {
+  it('hides the overlay when the next plan has no grid, though the toggle stays on', async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = makeFakeMap();
     const { rerender } = renderRouteLayerWithPlan(map, withWaves());
+    await act(async () => {});
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
     rerender(
       <RouteLayer
         plan={makePlan()}
@@ -2676,7 +2683,8 @@ describe('sea-state tap while a map pick is armed (#1699)', () => {
     waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
   });
 
-  function renderArmed(mapPickArmed: boolean) {
+  async function renderArmed(mapPickArmed: boolean) {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
     const map = Object.assign(makeFakeMap(), { queryRenderedFeatures: vi.fn(() => []) });
     hoisted.map = map;
     hoisted.popupsAdded = 0;
@@ -2695,22 +2703,25 @@ describe('sea-state tap while a map pick is armed (#1699)', () => {
         mapPickArmed={mapPickArmed}
       />,
     );
+    await act(async () => {});
+    // #1854: a map-level click, resolved against the raster.
+    const clicks = map.on.mock.calls.filter((c) => c[0] === 'click' && typeof c[1] === 'function');
+    expect(clicks).toHaveLength(1);
     act(() => {
-      map.fireLayerEvent('click', WAVE_FILL_LAYER, {
+      (clicks[0]![1] as (e: unknown) => void)({
         point: { x: 5, y: 5 },
         lngLat: { lng: 10, lat: 54.6 },
-        features: [{ properties: { band: 'slight', heightM: 0.6 } }],
       });
     });
   }
 
-  it('opens the sea-state popup when no pick is armed', () => {
-    renderArmed(false);
+  it('opens the sea-state popup when no pick is armed', async () => {
+    await renderArmed(false);
     expect(hoisted.popupsAdded).toBe(1);
   });
 
-  it('opens no popup while a pick is armed', () => {
-    renderArmed(true);
+  it('opens no popup while a pick is armed', async () => {
+    await renderArmed(true);
     expect(hoisted.popupsAdded).toBe(0);
   });
 });
@@ -2747,5 +2758,141 @@ describe('sea-state slider hour outside the wave axis (#1699)', () => {
     localStorage.setItem('sc-waves-visible', '0');
     renderRouteLayerWithPlan(makeFakeMap(), planWith(DEPARTURE_MS + 10 * 3_600_000));
     expect(screen.queryByText(de['route.waves.outOfRange'])).toBeNull();
+  });
+});
+
+describe('Wetter tab (#1854 §6)', () => {
+  afterEach(() => resetConditionsHourForTests());
+
+  // fakeMaplibre has no setPaintProperty; record it on the layer like setLayoutProperty.
+  function withPaint(map: ReturnType<typeof makeFakeMap>) {
+    const setPaintProperty = vi.fn((id: string, key: string, value: unknown) => {
+      const layer = map.layers.get(id);
+      if (layer) layer.paint = { ...layer.paint, [key]: value };
+    });
+    return Object.assign(map, { setPaintProperty });
+  }
+
+  function renderBoth(
+    map: ReturnType<typeof makeFakeMap>,
+    conditionsActive: boolean,
+    forecast: { wind: WindGrid | null; wave: WaveGrid | null },
+    plan: Plan = makeBothRigsPlan(),
+  ) {
+    hoisted.map = map;
+    const el = (active: boolean) => (
+      <RouteLayer
+        plan={plan}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
+        conditionsActive={active}
+        forecast={forecast}
+      />
+    );
+    const r = render(el(conditionsActive));
+    return { ...r, setActive: (active: boolean) => r.rerender(el(active)) };
+  }
+
+  const vis = (map: ReturnType<typeof makeFakeMap>, id: string) =>
+    map.layers.get(id)?.layout?.visibility;
+
+  it('hides labels and the alt rig, styles the route quietly, and restores all of it on leave', () => {
+    localStorage.setItem('sc-alt-rig-visible', '1');
+    localStorage.setItem('sc-annotations-visible', '1');
+    const map = withPaint(makeFakeMap());
+    const { setActive } = renderBoth(map, false, { wind: null, wave: null });
+    expect(vis(map, 'sc-route-alt-sail')).toBe('visible');
+    expect(vis(map, 'sc-eta-primary')).toBe('visible');
+    expect(map.setPaintProperty).not.toHaveBeenCalled();
+
+    setActive(true);
+    for (const id of ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed', 'sc-maneuver-labels'])
+      expect(vis(map, id), id).toBe('none');
+    expect(vis(map, 'sc-route-alt-sail')).toBe('none');
+    expect(vis(map, 'sc-route-alt-motor')).toBe('none');
+    for (const id of ['sc-route-sail', 'sc-route-motor']) {
+      expect(map.layers.get(id)?.paint?.['line-dasharray'], id).toEqual([1, 1.5]);
+      expect(map.layers.get(id)?.paint?.['line-opacity'], id).toBe(0.45);
+    }
+    expect(document.querySelector('.route-layer-controls')).toHaveAttribute('hidden');
+    expect(screen.queryByText(de['route.controls.summary'])).toBeNull();
+    expect(localStorage.getItem('sc-alt-rig-visible')).toBe('1');
+    expect(localStorage.getItem('sc-annotations-visible')).toBe('1');
+
+    setActive(false);
+    for (const id of ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed', 'sc-maneuver-labels'])
+      expect(vis(map, id), id).toBe('visible');
+    expect(vis(map, 'sc-route-alt-sail')).toBe('visible');
+    expect(map.layers.get('sc-route-sail')?.paint?.['line-dasharray']).toBeUndefined();
+    expect(map.layers.get('sc-route-motor')?.paint?.['line-dasharray']).toEqual([2, 1.5]);
+    expect(map.layers.get('sc-route-sail')?.paint?.['line-opacity']).toBe(1);
+    expect(document.querySelector('.route-layer-controls')).not.toHaveAttribute('hidden');
+    expect(screen.getByText(de['route.controls.summary'])).toBeInTheDocument();
+  });
+
+  it('draws barbs from the area forecast at the card hour, not the plan grid', async () => {
+    const map = withPaint(makeFakeMap());
+    const area = uniformWindGrid(33, 90, { t0Ms: DEPARTURE_MS, hours: 6 });
+    act(() => setConditionsHour(DEPARTURE_MS + 3_600_000));
+    renderBoth(map, true, { wind: area, wave: null });
+    await waitFor(() => {
+      const fc = sourceData(map, 'sc-barbs');
+      expect(fc.features.length).toBeGreaterThan(0);
+      for (const f of fc.features) expect(f.properties?.speedKn).toBeCloseTo(33, 6);
+    });
+  });
+
+  it("never draws the plan's sea state on Wetter when the area forecast has no waves", async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
+    const map = withPaint(makeFakeMap());
+    const plan: Plan = {
+      ...makePlan(),
+      waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+    };
+    act(() => setConditionsHour(DEPARTURE_MS));
+    const { setActive } = renderBoth(
+      map,
+      false,
+      { wind: uniformWindGrid(20, 90, { t0Ms: DEPARTURE_MS, hours: 2 }), wave: null },
+      plan,
+    );
+    await act(async () => {});
+    // Control: in plan mode the plan's grid draws.
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    setActive(true);
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
+  });
+
+  it('draws barbs with no plan at all on Wetter', async () => {
+    const map = withPaint(makeFakeMap());
+    hoisted.map = map;
+    act(() => setConditionsHour(DEPARTURE_MS));
+    render(
+      <RouteLayer
+        plan={null}
+        rig={null}
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        viaPointsEditing={false}
+        onViaDragEnd={async () => true}
+        onRouteLineInsert={() => {}}
+        viaArmed={false}
+        onArmedRouteTapInsert={() => {}}
+        mapPickArmed={false}
+        conditionsActive
+        forecast={{ wind: uniformWindGrid(20, 90, { t0Ms: DEPARTURE_MS, hours: 2 }), wave: null }}
+      />,
+    );
+    await waitFor(() => expect(sourceData(map, 'sc-barbs').features.length).toBeGreaterThan(0));
   });
 });

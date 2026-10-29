@@ -802,6 +802,9 @@ export const en = {
     'This route passes closer than {dist} m to a cardinal or isolated-danger mark. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check it against an official chart.',
   'route.seamarks.proximity.plural':
     'This route passes closer than {dist} m to {count} cardinal or isolated-danger marks. SailCommand does not use marks when routing and makes no claim about which side of one to pass — check them against an official chart.',
+  'route.bridge.notice':
+    'This route passes {name}, a bascule bridge that opens at listed times. Outside those times an opening may be possible on request, and the bridge may be closed. SailCommand does not model openings or closures — check the current times before sailing.',
+  'route.bridge.link': 'Bridge opening times (Danske Havnelods)',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -944,6 +947,13 @@ export const en = {
   'route.waves.toggle': 'Show sea state',
   'route.waves.unavailable': 'Sea-state data not available for this plan.',
   'route.waves.outOfRange': 'No sea-state data for the selected hour.',
+  // #1830: maximum over the leg's hours and path, display only.
+  'route.legs.seaState': 'Sea state',
+  'route.legs.seaStateNote':
+    'Sea state: highest significant wave height on the leg, over its hours and path. A model estimate, not an official figure; "≥" means parts of the leg have no data.',
+  'route.totals.seaState': 'Max sea state',
+  'route.seaState.noData': 'no data',
+  'route.seaState.partial': 'partly no data',
   'route.legend.seaStateHeading': 'Sea state (significant wave height)',
   'route.legend.seaStateBelow': 'below {max} m',
   'route.legend.seaStateRange': '{min} to {max} m',
@@ -951,6 +961,9 @@ export const en = {
   'route.legend.seaStateNoData': 'No shading means no data or land, not calm water.',
   'route.legend.seaStateArrow':
     'Arrows show the direction the waves travel — not where they come from, unlike wind barbs.',
+  'route.legend.seaStateMarker': 'A ring marks a cell with a wave height but no travel direction.',
+  'route.legend.seaStateCells':
+    'Each cell is one model point on a {step}° grid, about {ew} × {ns} km (east–west × north–south) at {lat}° N.',
   'route.legend.seaStateCaveat':
     'Model estimate (Open-Meteo), not chart authority; coarse near coasts.',
   'seaState.band.calm': 'calm',
@@ -1303,6 +1316,66 @@ export const en = {
   // #299: kept short, shorter even than "Routes" — avoids the 280px squeeze
   // that would have been the tab option's cost with a word like "Settings".
   'nav.boat': 'Boat',
+  'nav.conditions': 'Weather',
+  'conditions.title': 'Wind and sea state',
+  'conditions.hour.label': 'Time for wind and sea state',
+  'conditions.hour.group': 'Choose hour',
+  'conditions.hour.prev': 'One hour earlier',
+  'conditions.hour.next': 'One hour later',
+  'conditions.day.prev': 'One day earlier',
+  'conditions.day.next': 'One day later',
+  'conditions.hour.now': 'now',
+  'conditions.hour.in': 'in {hours} h',
+  'conditions.hour.valuetext': '{datetime}, in {hours} hours',
+  'conditions.day.group': 'Choose day',
+  'conditions.day.today': 'Today',
+  'conditions.useAsDeparture': 'Use as departure',
+  'conditions.useAsDeparture.now': 'Leave now',
+  'conditions.useAsDeparture.done': 'Departure set to {datetime}.',
+  'conditions.useAsDeparture.offline': 'Offline — planning needs a connection.',
+  'conditions.useAsDeparture.short': 'Only {hours} h of forecast remain after that.',
+  'conditions.update': 'Update forecast',
+  'conditions.update.cooldown': 'Too many requests — try again in a minute.',
+  'conditions.status.loading': 'Loading forecast …',
+  'conditions.status.refreshing': 'Updating — showing the forecast fetched at {time}.',
+  'conditions.status.fetched': 'fetched {time} ({age} ago)',
+  'conditions.status.fromPlan': 'from the loaded route, fetched {time} ({age} ago)',
+  'conditions.status.refreshFailed': 'Update failed — showing the forecast fetched at {time}.',
+  'conditions.status.stale': 'Fetched {hours} h ago — update for current conditions.',
+  'conditions.offline.none':
+    'Offline — wind and sea state need an internet connection. No forecast is held in memory.',
+  'conditions.offline.held':
+    'Offline — showing the forecast fetched at {time} ({age} ago). Updating needs a connection.',
+  'conditions.error.waves': 'Sea state could not be loaded — showing wind only.',
+  'conditions.horizon.end': 'runs to {datetime}',
+  'conditions.horizon.seedClamped':
+    'Departure {datetime} is outside the forecast; showing {shown}.',
+  'conditions.horizon.noneLeft': 'This forecast has no upcoming hours left.',
+  'conditions.sea.noHour': 'No sea-state data for this hour — data until {datetime}',
+  'conditions.notice':
+    'Planning aid · wind and sea state only (no thunderstorms, visibility, rain) · wind barb: from · wave arrow: towards',
+  'conditions.depthHidden': 'Water depths hidden while sea state is shown.',
+  'conditions.depthShow': 'Show depths',
+  'conditions.more.summary': 'Timeline, layers and key',
+  'conditions.disclaimer':
+    'Planning aid: Open-Meteo model forecast, not an official weather or marine forecast.',
+  'conditions.strip.group': 'Overview {day}, {scope}',
+  'conditions.strip.rowWind': 'Wind kn (gusts)',
+  'conditions.strip.rowSea': 'Sea state m',
+  'conditions.sr.wind': 'wind',
+  'conditions.sr.windFrom': 'wind from {cardinal}',
+  'conditions.sr.windVariable': 'wind variable',
+  'conditions.sr.knots': 'knots',
+  'conditions.sr.gusts': 'gusts',
+  'conditions.sr.sea': 'sea state',
+  'conditions.sr.metres': 'metres',
+  'conditions.sr.noData': 'no model data',
+  'conditions.scope.area': 'Sailing area',
+  'conditions.scope.nearest': 'at the nearest model point',
+  'conditions.area':
+    'In the map view: wind {speed} kn (Bft {force}) from {cardinal}, gusts to {gust} kn · sea state up to {height} m',
+  'conditions.area.variable':
+    'In the map view: wind {speed} kn (Bft {force}), direction variable, gusts to {gust} kn · sea state up to {height} m',
   'nav.langToggle': 'Auf Deutsch anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
@@ -1317,6 +1390,8 @@ export const en = {
   // ambiguous.
   'about.closeDialog': 'Close dialog',
   'about.version': 'Version {version}',
+  'about.project.repo': 'SailCommand on GitHub',
+  'about.project.report': 'Report a problem or suggest a feature',
   'about.changelog.title': "What's new",
   'about.changelog.langNote': 'The changelog is maintained in English.',
   'about.caveats.heading': 'Important notes',

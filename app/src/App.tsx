@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useLang, useT, type Lang } from './i18n';
 import {
   AppStateProvider,
@@ -83,7 +84,7 @@ import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
 import { usePersistedToggle } from './lib/usePersistedToggle';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
-import { formatLatLon, formatWeekdayTime } from './lib/format';
+import { formatDateTime, formatLatLon, formatWeekdayTime } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { boatById } from './data/boats';
 import {
@@ -107,7 +108,9 @@ import { useUnreachableBandOf, type UnreachableBand } from './components/HarborP
 import { formatDepthM, formatDraftM } from './lib/depthDisclosure';
 import { useNavMask } from './state/useNavMask';
 import type { MsgKey } from './i18n/dict.de';
-import type { Tab } from './lib/sessionSnapshot';
+import { persistableTab, type AppTab } from './lib/sessionSnapshot';
+import ConditionsPanel from './components/ConditionsPanel';
+import { useAreaForecast } from './state/useAreaForecast';
 import {
   boatSnapshot,
   DEFAULT_SETTINGS,
@@ -254,12 +257,12 @@ export function planErrorRetryMayHelp(key: MsgKey): boolean {
 }
 
 // #704: the app-shell tablist's stable DOM order, matching the JSX render
-// order of the four tab buttons below. Drives roving tabIndex (0 on the
+// order of the tab buttons below. Drives roving tabIndex (0 on the
 // selected tab, -1 on the rest) and ArrowLeft/ArrowRight/Home/End
 // navigation — the WAI-ARIA Tabs pattern's keyboard contract, previously
 // entirely absent (every tab stayed in the natural Tab order, no arrow-key
 // handler existed).
-const APP_TAB_ORDER: readonly Tab[] = ['plan', 'routes', 'live', 'boat'];
+const APP_TAB_ORDER: readonly AppTab[] = ['plan', 'conditions', 'routes', 'live', 'boat'];
 
 // Stable id for the app-shell tablist's single tabpanel container (#704).
 // There is exactly one `<main className="app-panel">` whose CONTENT swaps
@@ -268,7 +271,7 @@ const APP_TAB_ORDER: readonly Tab[] = ['plan', 'routes', 'live', 'boat'];
 // `aria-labelledby` instead tracks which tab is currently active.
 const APP_TABPANEL_ID = 'app-panel-content';
 
-function appTabId(tab: Tab): string {
+function appTabId(tab: AppTab): string {
   return `app-tab-${tab}`;
 }
 
@@ -388,6 +391,15 @@ function AppShell() {
   // settle-gate reset key with no separate [plan, rig] tuple.
   const aisRoute = useMemo(() => (plan && rig ? activeRigResult(plan, rig) : null), [plan, rig]);
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
+  const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
+  // #1761: the plan object the app itself just computed (run() completion, a
+  // confirmed departure window, a Live reroute or a late-adopted slow save);
+  // the form departure follows it unless edited mid-solve (#1867), see below.
+  const freshResultRef = useRef<Plan | null>(null);
+  // #1867: set by the departure field's onChange and by the Wetter handoff
+  // (#1854), cleared when a solve starts. A fresh result does not overwrite a
+  // departure the user set while it computed; the app's own writes never set it.
+  const departureEditedMidSolveRef = useRef(false);
   const {
     planning,
     startedAtMs: planningStartedAtMs,
@@ -395,7 +407,11 @@ function AppShell() {
     ensureClient,
     ensureClientOrFailure,
     cancel,
-  } = usePlanFlow();
+  } = usePlanFlow({
+    onLateAdopted: (p) => {
+      freshResultRef.current = p;
+    },
+  });
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and reuses the plan's STORED wind grid —
   // never refetches, so it stays available offline.
@@ -480,9 +496,6 @@ function AppShell() {
   // same object survives) — `plan !== null && rig !== null` alone can't,
   // since a re-plan or recalc has both non-null already.
   const planAtBusyStartRef = useRef<Plan | null>(plan);
-  // #1761: the plan object the app itself just computed (run() completion or a
-  // confirmed departure window); the form departure follows it, see below.
-  const freshResultRef = useRef<Plan | null>(null);
   useEffect(() => {
     const prevPhase = prevPlanningPhaseRef.current;
     prevPlanningPhaseRef.current = planning.phase;
@@ -490,6 +503,7 @@ function AppShell() {
     const isBusy = planning.phase !== 'idle' && planning.phase !== 'error';
     if (!wasBusy && isBusy) {
       planAtBusyStartRef.current = plan;
+      departureEditedMidSolveRef.current = false;
     }
     if (
       wasBusy &&
@@ -503,7 +517,21 @@ function AppShell() {
     }
   }, [planning.phase, plan, rig, announceCompletion]);
 
-  const [tab, setTab] = useState<Tab>('plan');
+  const [tab, setTab] = useState<AppTab>('plan');
+  // #1854 Wetter: the session's area forecast, fetched only while the tab is shown.
+  const areaForecast = useAreaForecast(
+    tab === 'conditions',
+    online,
+    plan?.windGrid ?? null,
+    plan?.waveGrid ?? null,
+  );
+  const [depthLifted, setDepthLifted] = useState(false);
+  const [wavesVisible] = usePersistedToggle('sc-waves-visible', true);
+  const conditionsForecast = useMemo(
+    () => ({ wind: areaForecast.wind, wave: areaForecast.wave }),
+    [areaForecast.wind, areaForecast.wave],
+  );
+  const [handoffAnnouncement, setHandoffAnnouncement] = useState('');
   const [aboutOpen, setAboutOpen] = useState(false);
   const isWide = useWideLayout();
 
@@ -608,6 +636,8 @@ function AppShell() {
   // list — same contract as `liveSlot` above (the component mounts inside
   // MapView's subtree for the map context and portals into the panel).
   const [seamarksSlot, setSeamarksSlot] = useState<HTMLDivElement | null>(null);
+  // #1854: the Wetter card mounts inside MapView for the area line's viewport.
+  const [conditionsSlot, setConditionsSlot] = useState<HTMLDivElement | null>(null);
   // #831: the Live tab's slot for the keyboard-reachable AIS-vessels-in-view
   // list — same contract, and deliberately unconditional (both narrow and
   // wide), mirroring `seamarksSlot` rather than `liveSlot`'s isWide gate.
@@ -630,10 +660,9 @@ function AppShell() {
   // #301: also written by the plan-form sync effect below (next to
   // planIdRef) whenever a NEW plan.id becomes active — origin/destination
   // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
-  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs), unless the app just computed the plan (#1761).
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs; state declared above usePlanFlow). A plan the app just computed keeps its own departure instead (#1761), and none is written if the field was edited while it computed (#1867).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
-  const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
   // #571 redesign (maintainer ruling: a via edit "is kind of a new route and
   // hence should only calculate once clicked on calculate" — no auto-replan
   // on add/remove/reorder/drag). `draftViaPoints` is now the UNCONDITIONAL
@@ -791,6 +820,10 @@ function AppShell() {
   useEffect(() => {
     if (!plan || freshResultRef.current !== plan || syncedPlanIdRef.current !== plan.id) return;
     freshResultRef.current = null;
+    if (departureEditedMidSolveRef.current) {
+      departureEditedMidSolveRef.current = false;
+      return;
+    }
     setDepartureMs(plan.request.departureMs);
   }, [plan]);
 
@@ -800,6 +833,8 @@ function AppShell() {
     syncedPlanIdRef.current = plan.id;
     const freshResult = freshResultRef.current === plan;
     freshResultRef.current = null;
+    const editedMidSolve = freshResult && departureEditedMidSolveRef.current;
+    if (freshResult) departureEditedMidSolveRef.current = false;
     const { origin: syncedOrigin, destination: syncedDestination } = pickedPointsOfPlan(
       plan,
       harbors,
@@ -818,7 +853,9 @@ function AppShell() {
     if (baseline === null || !pickedPointMoved(destination, baseline.destination)) {
       setDestination(syncedDestination);
     }
-    if (baseline === null || departureMs === baseline.departureMs) {
+    if (!editedMidSolve && (baseline === null || departureMs === baseline.departureMs)) {
+      // #1867: this write replaces any mid-solve edit.
+      departureEditedMidSolveRef.current = false;
       // #1761: a plan the app just computed keeps its own departure.
       setDepartureMs(departureAfterSyncMs(plan, freshResult));
     }
@@ -1220,29 +1257,57 @@ function AppShell() {
   // in App.test.tsx caught it; the gate removes the ordering question entirely.
   const handleHarborPick = useCallback(
     (h: Harbor) => {
+      // #1854: an exploratory tap on Wetter never edits Start or Ziel.
+      if (tab === 'conditions') return;
       const target = resolveHarborPickTarget(tapTarget, origin !== null);
       if (!target) return;
       const picked = harborToPickedPoint(h, lang);
       if (target === 'origin') handlePickOrigin(picked);
       else handlePickDestination(picked);
     },
-    [tapTarget, origin, lang, handlePickOrigin, handlePickDestination],
+    [tab, tapTarget, origin, lang, handlePickOrigin, handlePickDestination],
   );
 
   // Tap-to-pick arming is scoped to the Plan tab (that's the only place it
   // can be armed from) — leaving it armed while on Routes/Live would let a
   // stray tap on the map overwrite origin/destination without any visible
   // indicator in view.
-  const handleTabChange = useCallback((next: Tab) => {
+  const handleTabChange = useCallback((next: AppTab) => {
     setTab(next);
     if (next !== 'plan') setTapTarget(null);
+    // #1854: [Tiefen zeigen] lifts the Wetter depth suppression for one visit.
+    if (next !== 'conditions') setDepthLifted(false);
+    if (next === 'conditions') setHandoffAnnouncement('');
   }, []);
 
   // #704: roving-tabindex focus targets for the app-shell tablist, keyed by
   // Tab. A ref object (not state) — moving focus must not itself trigger a
   // render, and the buttons it targets are stable across the tab switch it
   // drives.
-  const appTabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+  const appTabRefs = useRef<Partial<Record<AppTab, HTMLButtonElement | null>>>({});
+
+  // #1854 §11: "Als Abfahrt übernehmen". Counts as a user edit for #1761's
+  // mid-solve guard, so an in-flight result cannot overwrite it.
+  const pendingDepartureFocusRef = useRef(false);
+  const handleUseAsDeparture = useCallback(
+    (ms: number, viaPointer: boolean) => {
+      departureEditedMidSolveRef.current = true;
+      setDepartureMs(ms);
+      handleTabChange('plan');
+      if (destination !== null) pendingDepartureFocusRef.current = true;
+      else if (viaPointer) appTabRefs.current.plan?.focus();
+      else setPendingDestinationFocus(true);
+      setHandoffAnnouncement(
+        t('conditions.useAsDeparture.done', { datetime: formatDateTime(ms, lang) }),
+      );
+    },
+    [destination, handleTabChange, lang, t],
+  );
+  useEffect(() => {
+    if (!pendingDepartureFocusRef.current || tab !== 'plan') return;
+    pendingDepartureFocusRef.current = false;
+    document.getElementById('planner-departure')?.focus();
+  }, [tab]);
 
   // ArrowLeft/ArrowRight cycle (wrapping) through APP_TAB_ORDER;
   // Home/End jump to the first/last tab. This is the WAI-ARIA "automatic
@@ -1280,7 +1345,7 @@ function AppShell() {
   // raw setTab would then switch tabs with the pick still armed, letting a
   // stray map tap overwrite origin/destination from Routes/Live (the exact
   // state handleTabChange's disarm exists to prevent).
-  useSessionRestore(tab, handleTabChange);
+  useSessionRestore(persistableTab(tab), handleTabChange);
 
   // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
   // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
@@ -1494,10 +1559,14 @@ function AppShell() {
   const handleLiveReroute = useCallback(
     (fixPoint: LatLon) => {
       if (!plan) return;
+      departureEditedMidSolveRef.current = false;
       void liveReroute
         .reroute(plan, fixPoint, t('live.reroute.name', { name: plan.name }))
         .then((rerouted) => {
-          if (rerouted) setPlan(rerouted);
+          if (rerouted) {
+            freshResultRef.current = rerouted;
+            setPlan(rerouted);
+          }
         });
     },
     [plan, liveReroute, setPlan, t],
@@ -1645,6 +1714,14 @@ function AppShell() {
   // come from the request handlePlan sent; if any differs now, the banner keeps
   // the generic text.
   const navMask = useNavMask();
+  // #1854: sea state draws only with the mask loaded; DataLayers and the card
+  // add the hour term (no wave hour, no sea state) from the hour store.
+  const depthSuppressed =
+    tab === 'conditions' &&
+    wavesVisible &&
+    areaForecast.wave !== null &&
+    navMask !== null &&
+    !depthLifted;
   const originHarborId = origin?.source === 'harbor' ? origin.harborId : null;
   const destinationHarborId = destination?.source === 'harbor' ? destination.harborId : null;
   const planCtxMatchesLive =
@@ -1732,7 +1809,13 @@ function AppShell() {
               Always-mounted, plan-independent (#38/#39) — must NOT live in
               RouteLayer, which renders null until a plan exists. */}
           <div className="map-stack-tl">
-            <DataLayers onHarborPick={handleHarborPick} onAddWaypoint={handleAddViaFromSeamark} />
+            <DataLayers
+              onHarborPick={handleHarborPick}
+              onAddWaypoint={handleAddViaFromSeamark}
+              conditionsActive={tab === 'conditions'}
+              suppressDepth={depthSuppressed}
+              seaState={areaForecast.wave}
+            />
             {/* Track-up is available on every tab whenever showOwnship is on
                 (#155 decision 2) — the map is shared chrome, so its
                 orientation must not flip on a tab switch. */}
@@ -1764,6 +1847,8 @@ function AppShell() {
             viaArmed={tapTarget === 'via'}
             onArmedRouteTapInsert={handleRouteLineArmedTap}
             mapPickArmed={tapTarget !== null}
+            conditionsActive={tab === 'conditions'}
+            forecast={conditionsForecast}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
               (like DataLayers above), gated only on there being a fix (kept through stale, lost and denied; drawn dimmed only when lost or denied),
@@ -1838,6 +1923,19 @@ function AppShell() {
           {tab === 'plan' && (
             <SeamarksInView panelSlot={seamarksSlot} onAddWaypoint={handleAddViaFromSeamark} />
           )}
+          {tab === 'conditions' &&
+            conditionsSlot &&
+            createPortal(
+              <ConditionsPanel
+                forecast={areaForecast}
+                online={online}
+                departureMs={departureMs}
+                depthSuppressed={depthSuppressed}
+                onShowDepth={() => setDepthLifted(true)}
+                onUseAsDeparture={handleUseAsDeparture}
+              />,
+              conditionsSlot,
+            )}
         </MapView>
       </div>
 
@@ -2111,6 +2209,20 @@ function AppShell() {
           </button>
           <button
             type="button"
+            id={appTabId('conditions')}
+            role="tab"
+            aria-selected={tab === 'conditions'}
+            aria-controls={APP_TABPANEL_ID}
+            tabIndex={tab === 'conditions' ? 0 : -1}
+            ref={(el) => {
+              appTabRefs.current.conditions = el;
+            }}
+            onClick={() => handleTabChange('conditions')}
+          >
+            {t('nav.conditions')}
+          </button>
+          <button
+            type="button"
             id={appTabId('routes')}
             role="tab"
             aria-selected={tab === 'routes'}
@@ -2166,6 +2278,9 @@ function AppShell() {
             unchanged — every existing `.app-panel`-scoped selector/test
             still matches. */}
         <main className="app-panel">
+          <p className="sr-only" aria-live="polite">
+            {handoffAnnouncement}
+          </p>
           {/* #704: the tabpanel half of the WAI-ARIA Tabs association. A
               plain wrapper div (no class, no CSS) so `<main>` above keeps
               its #707 landmark role untouched — role="tabpanel" would
@@ -2173,6 +2288,7 @@ function AppShell() {
               tab's id; every tab's aria-controls points at this one id
               since only one panel is ever rendered at a time. */}
           <div role="tabpanel" id={APP_TABPANEL_ID} aria-labelledby={appTabId(tab)}>
+            {tab === 'conditions' && <div ref={setConditionsSlot} />}
             {tab === 'plan' && (
               <>
                 <PlannerPanel
@@ -2197,7 +2313,10 @@ function AppShell() {
                   onUpdateVia={handleUpdateViaByCoord}
                   onSelectSavedWaypoint={handleSelectSavedWaypoint}
                   departureMs={departureMs}
-                  onDepartureChange={setDepartureMs}
+                  onDepartureChange={(ms) => {
+                    departureEditedMidSolveRef.current = true;
+                    setDepartureMs(ms);
+                  }}
                   settings={settings}
                   onSettingsChange={setSettings}
                   boat={boat}
@@ -2240,6 +2359,9 @@ function AppShell() {
                   plan={plan}
                   ensureClient={ensureClientOrFailure}
                   onConfirmed={handleDepartureConfirmed}
+                  onConfirmStart={() => {
+                    departureEditedMidSolveRef.current = false;
+                  }}
                 />
                 {/* #830: portal target for SeamarksInView (mounted inside MapView
                   above). Below the planner form, so the form's own CTA keeps

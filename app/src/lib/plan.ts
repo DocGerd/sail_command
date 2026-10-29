@@ -12,7 +12,7 @@ import type {
 // Spec §4: "Stale forecast (fetch → departure gap > 12 h)" — strictly
 // greater, so a plan departing exactly 12 h after its wind was fetched is
 // not flagged.
-const STALE_THRESHOLD_MS = 12 * 3_600_000;
+export const STALE_THRESHOLD_MS = 12 * 3_600_000;
 
 // Shared between usePlanFlow.ts (initial plan) and state/replan.ts (via
 // re-route) — both drive a router result to the same user-visible error
