@@ -5734,5 +5734,5 @@ select {
 }
 
 .conditions-ribbon-covered {
-  fill: var(--sc-border);
+  fill: var(--sc-wave-arrow);
 }
