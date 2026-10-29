@@ -312,7 +312,7 @@ export function markerOffset(
   return best && { dLat: (best.n * latStepDeg) / 4, dLon: (best.e * lonStepDeg) / 4 };
 }
 
-/** Per lattice point, the marker offset from the wind at `tMs`; null when barbs are hidden. */
+/** Per lattice point, the marker offset from the wind at `tMs`; null when there is no wind to offset from. */
 export function windMarkerOffsets(
   wind: WindGrid | null | undefined,
   grid: Pick<WaveGrid, 'lats' | 'lons'>,

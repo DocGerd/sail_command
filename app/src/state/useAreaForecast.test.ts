@@ -178,6 +178,42 @@ describe('useAreaForecast', () => {
     expect(fetchWind).toHaveBeenCalledTimes(2);
   });
 
+  it('a re-entry inside the rate-limit cooldown fetches nothing, and one after it does', async () => {
+    const fetchWind = vi.fn(() => Promise.reject(new OpenMeteoError('rate-limited', '429')));
+    const { rerender } = setup({ fetchWind, fetchWave: vi.fn() });
+    act(() => vi.advanceTimersByTime(AREA_FORECAST_DWELL_MS));
+    await flush();
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+    rerender({ active: false, online: true, planWind: null });
+    act(() => vi.advanceTimersByTime(5_000));
+    rerender({ active: true, online: true, planWind: null });
+    act(() => vi.advanceTimersByTime(AREA_FORECAST_DWELL_MS * 2));
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+    rerender({ active: false, online: true, planWind: null });
+    act(() => vi.advanceTimersByTime(60_000));
+    rerender({ active: true, online: true, planWind: null });
+    act(() => vi.advanceTimersByTime(AREA_FORECAST_DWELL_MS));
+    expect(fetchWind).toHaveBeenCalledTimes(2);
+  });
+
+  it('a manual refresh after the cooldown that fails fast fetches wind exactly once', async () => {
+    const fetchWind = vi
+      .fn<AreaForecastDeps['fetchWind'] & {}>()
+      .mockRejectedValueOnce(new OpenMeteoError('rate-limited', '429'))
+      .mockRejectedValue(new OpenMeteoError('http', '500'));
+    const { result } = setup({ fetchWind, fetchWave: vi.fn() });
+    act(() => vi.advanceTimersByTime(AREA_FORECAST_DWELL_MS));
+    await flush();
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(61_000));
+    fetchWind.mockClear();
+    act(() => result.current.refresh());
+    await flush();
+    act(() => vi.advanceTimersByTime(AREA_FORECAST_DWELL_MS * 3));
+    await flush();
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+  });
+
   it('refetches on re-entry only once the held forecast is over an hour old', async () => {
     const fetchWind = vi.fn(() => Promise.resolve(wind(Date.now())));
     const fetchWave = vi.fn(() => Promise.resolve(wave(Date.now())));

@@ -396,9 +396,9 @@ function AppShell() {
   // confirmed departure window, a Live reroute or a late-adopted slow save);
   // the form departure follows it unless edited mid-solve (#1867), see below.
   const freshResultRef = useRef<Plan | null>(null);
-  // #1867: set only by the departure field's own onChange and cleared when a
-  // solve starts. A fresh result does not overwrite a departure the user
-  // edited while it computed; the app's own writes never set it.
+  // #1867: set by the departure field's onChange and by the Wetter handoff
+  // (#1854), cleared when a solve starts. A fresh result does not overwrite a
+  // departure the user set while it computed; the app's own writes never set it.
   const departureEditedMidSolveRef = useRef(false);
   const {
     planning,
@@ -527,8 +527,6 @@ function AppShell() {
   );
   const [depthLifted, setDepthLifted] = useState(false);
   const [wavesVisible] = usePersistedToggle('sc-waves-visible', true);
-  const depthSuppressed =
-    tab === 'conditions' && wavesVisible && areaForecast.wave !== null && !depthLifted;
   const conditionsForecast = useMemo(
     () => ({ wind: areaForecast.wind, wave: areaForecast.wave }),
     [areaForecast.wind, areaForecast.wave],
@@ -1279,6 +1277,7 @@ function AppShell() {
     if (next !== 'plan') setTapTarget(null);
     // #1854: [Tiefen zeigen] lifts the Wetter depth suppression for one visit.
     if (next !== 'conditions') setDepthLifted(false);
+    if (next === 'conditions') setHandoffAnnouncement('');
   }, []);
 
   // #704: roving-tabindex focus targets for the app-shell tablist, keyed by
@@ -1715,6 +1714,14 @@ function AppShell() {
   // come from the request handlePlan sent; if any differs now, the banner keeps
   // the generic text.
   const navMask = useNavMask();
+  // #1854: sea state draws only with the mask loaded; DataLayers and the card
+  // add the hour term (no wave hour, no sea state) from the hour store.
+  const depthSuppressed =
+    tab === 'conditions' &&
+    wavesVisible &&
+    areaForecast.wave !== null &&
+    navMask !== null &&
+    !depthLifted;
   const originHarborId = origin?.source === 'harbor' ? origin.harborId : null;
   const destinationHarborId = destination?.source === 'harbor' ? destination.harborId : null;
   const planCtxMatchesLive =
@@ -1807,6 +1814,7 @@ function AppShell() {
               onAddWaypoint={handleAddViaFromSeamark}
               conditionsActive={tab === 'conditions'}
               suppressDepth={depthSuppressed}
+              seaState={areaForecast.wave}
             />
             {/* Track-up is available on every tab whenever showOwnship is on
                 (#155 decision 2) — the map is shared chrome, so its

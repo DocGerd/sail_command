@@ -1546,9 +1546,9 @@ export default function RouteLayer({
   // Viewport-scoped adaptive barbs (#36): recomputed on debounced moveend/
   // zoomend and on slider/plan/rig/mask changes — but ONLY while visible (no
   // per-frame JS during a pan, and no work at all when the toggle is off).
-  // Always sampled from plan.windGrid at the slider time — never re-fetched.
-  // #1854: on Wetter the barbs come from the area forecast at the card's
-  // hour, with no route ribbon.
+  // In plan mode, sampled from plan.windGrid at the slider time, never
+  // re-fetched; on Wetter (#1854), from the area forecast at the card's hour,
+  // with no route ribbon.
   const barbGrid = conditionsActive ? (forecast?.wind ?? null) : (plan?.windGrid ?? null);
   const barbTMs = conditionsActive ? conditionsHour : tMs;
   const barbLegs = conditionsActive ? null : result;

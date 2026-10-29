@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import Button from './Button';
 import Card from './Card';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
+import SeaStateLegend from './SeaStateLegend';
 import Slider from './Slider';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
@@ -35,10 +36,10 @@ import { seaStateBand, waveHourIndexAt } from '../lib/waves';
 import { useNavMask } from '../state/useNavMask';
 import { GRID_CACHE_TTL_MS } from '../services/openMeteo';
 import {
-  clampHour,
   floorHourMs,
   seedConditionsHour,
-  setConditionsHour,
+  stepConditionsHourTo,
+  useClampedSeedMs,
   stepDay,
   stepHour,
   useConditionsHour,
@@ -187,14 +188,17 @@ export default function ConditionsPanel({
   const nowHour = floorHourMs(nowMs);
   const options = useMemo(() => (wind ? validHours(wind.timesMs, nowHour) : []), [wind, nowHour]);
 
+  const enteredRef = useRef(false);
   useEffect(() => {
-    seedConditionsHour(departureMs, options);
+    // The first seed with hours to choose from is this visit's entry.
+    if (options.length === 0) return;
+    seedConditionsHour(departureMs, options, !enteredRef.current);
+    enteredRef.current = true;
   }, [departureMs, options]);
 
   const hour = hourMs !== null && options.includes(hourMs) ? hourMs : null;
   const hourIdx = hour === null ? -1 : options.indexOf(hour);
-  const seedTarget = clampHour(floorHourMs(departureMs), options);
-  const seedClamped = seedTarget !== null && seedTarget.clamped && hour === seedTarget.ms;
+  const clampedSeedMs = useClampedSeedMs();
 
   const ageMs = wind ? nowMs - wind.fetchedAtMs : 0;
   const stale = wind !== null && ageMs > STALE_THRESHOLD_MS;
@@ -242,7 +246,18 @@ export default function ConditionsPanel({
     setAnnouncement(phaseMessage(phase));
   }
 
-  const coolingDown = forecast.cooldownUntilMs !== null && nowMs < forecast.cooldownUntilMs;
+  // Re-render when the cooldown ends, not at the next minute tick.
+  const [cooldownOverMs, setCooldownOverMs] = useState<number | null>(null);
+  useEffect(() => {
+    const until = forecast.cooldownUntilMs;
+    if (until === null) return;
+    const timer = setTimeout(() => setCooldownOverMs(until), Math.max(0, until - Date.now()));
+    return () => clearTimeout(timer);
+  }, [forecast.cooldownUntilMs]);
+  const coolingDown =
+    forecast.cooldownUntilMs !== null &&
+    cooldownOverMs !== forecast.cooldownUntilMs &&
+    nowMs < forecast.cooldownUntilMs;
   const showUpdate =
     online &&
     !forecast.pending &&
@@ -398,12 +413,16 @@ export default function ConditionsPanel({
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-      <div className="conditions-header">
-        <Chip className={stale ? 'conditions-status conditions-status-stale' : 'conditions-status'}>
-          {chipText}
-        </Chip>
-        {wind !== null && updateButton}
-      </div>
+      {(wind !== null || phase === 'loading') && (
+        <div className="conditions-header">
+          <Chip
+            className={stale ? 'conditions-status conditions-status-stale' : 'conditions-status'}
+          >
+            {chipText}
+          </Chip>
+          {wind !== null && updateButton}
+        </div>
+      )}
 
       {phase === 'offlineNone' && <p className="conditions-line">{t('conditions.offline.none')}</p>}
       {phase === 'error' && (
@@ -421,6 +440,9 @@ export default function ConditionsPanel({
       {(phase === 'offlineHeld' || phase === 'failed' || phase === 'stale') && (
         <p className="conditions-line conditions-line-warn">{phaseMessage(phase)}</p>
       )}
+      {wind !== null && wave === null && forecast.source === 'plan' && (
+        <p className="conditions-line">{t('route.waves.unavailable')}</p>
+      )}
       {wind !== null && forecast.waveError && (
         <p className="conditions-line">{t('conditions.error.waves')}</p>
       )}
@@ -428,13 +450,13 @@ export default function ConditionsPanel({
 
       {hour !== null && (
         <>
-          <div className="conditions-hour" role="group" aria-label={t('conditions.hour.label')}>
+          <div className="conditions-hour" role="group" aria-label={t('conditions.hour.group')}>
             <Button
               variant="secondary"
               className="conditions-step"
               aria-label={t('conditions.day.prev')}
               disabled={hourIdx <= 0}
-              onClick={() => setConditionsHour(stepDay(options, hour, -1))}
+              onClick={() => stepConditionsHourTo(stepDay(options, hour, -1))}
             >
               «
             </Button>
@@ -443,7 +465,7 @@ export default function ConditionsPanel({
               className="conditions-step"
               aria-label={t('conditions.hour.prev')}
               disabled={hourIdx <= 0}
-              onClick={() => setConditionsHour(stepHour(options, hour, -1))}
+              onClick={() => stepConditionsHourTo(stepHour(options, hour, -1))}
             >
               ◀
             </Button>
@@ -455,7 +477,7 @@ export default function ConditionsPanel({
               className="conditions-step"
               aria-label={t('conditions.hour.next')}
               disabled={hourIdx >= options.length - 1}
-              onClick={() => setConditionsHour(stepHour(options, hour, 1))}
+              onClick={() => stepConditionsHourTo(stepHour(options, hour, 1))}
             >
               ▶
             </Button>
@@ -464,15 +486,15 @@ export default function ConditionsPanel({
               className="conditions-step"
               aria-label={t('conditions.day.next')}
               disabled={hourIdx >= options.length - 1}
-              onClick={() => setConditionsHour(stepDay(options, hour, 1))}
+              onClick={() => stepConditionsHourTo(stepDay(options, hour, 1))}
             >
               »
             </Button>
           </div>
-          {seedClamped && (
+          {clampedSeedMs !== null && (
             <p className="conditions-line">
               {t('conditions.horizon.seedClamped', {
-                datetime: formatDateTime(departureMs, lang),
+                datetime: formatDateTime(clampedSeedMs, lang),
                 shown: formatDateTime(hour, lang),
               })}
             </p>
@@ -499,7 +521,7 @@ export default function ConditionsPanel({
       )}
 
       <p className="conditions-notice">{t('conditions.notice')}</p>
-      {depthSuppressed && (
+      {depthSuppressed && hour !== null && !seaNoHour && (
         <div className="conditions-depth">
           <span>{t('conditions.depthHidden')}</span>
           <Button variant="ghost" onClick={onShowDepth}>
@@ -598,7 +620,7 @@ export default function ConditionsPanel({
                 }
                 onChange={(i) => {
                   const ms = options[i];
-                  if (ms !== undefined) setConditionsHour(ms);
+                  if (ms !== undefined) stepConditionsHourTo(ms);
                 }}
               />
             </div>
@@ -616,7 +638,7 @@ export default function ConditionsPanel({
                         (new Date(ms).setHours(0, 0, 0, 0) - new Date(hour).setHours(0, 0, 0, 0)) /
                           (24 * HOUR_MS),
                       );
-                      setConditionsHour(stepDay(options, hour, delta));
+                      stepConditionsHourTo(stepDay(options, hour, delta));
                     }}
                   >
                     {key === localDayKey(nowMs)
@@ -644,6 +666,7 @@ export default function ConditionsPanel({
           />
           {t('route.waves.toggle')}
         </label>
+        {wavesVisible && wave !== null && <SeaStateLegend />}
         <p className="conditions-disclaimer">{t('conditions.disclaimer')}</p>
       </Disclosure>
     </Card>

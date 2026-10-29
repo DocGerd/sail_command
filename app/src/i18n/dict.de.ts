@@ -1316,6 +1316,7 @@ export const de = {
   'nav.conditions': 'Wetter',
   'conditions.title': 'Wind und Seegang',
   'conditions.hour.label': 'Uhrzeit für Wind und Seegang',
+  'conditions.hour.group': 'Stunde wählen',
   'conditions.hour.prev': 'Eine Stunde früher',
   'conditions.hour.next': 'Eine Stunde später',
   'conditions.day.prev': 'Einen Tag früher',

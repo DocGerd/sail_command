@@ -2777,8 +2777,8 @@ describe('Wetter tab (#1854 §6)', () => {
     map: ReturnType<typeof makeFakeMap>,
     conditionsActive: boolean,
     forecast: { wind: WindGrid | null; wave: WaveGrid | null },
+    plan: Plan = makeBothRigsPlan(),
   ) {
-    const plan = makeBothRigsPlan();
     hoisted.map = map;
     const el = (active: boolean) => (
       <RouteLayer
@@ -2848,6 +2848,28 @@ describe('Wetter tab (#1854 §6)', () => {
       expect(fc.features.length).toBeGreaterThan(0);
       for (const f of fc.features) expect(f.properties?.speedKn).toBeCloseTo(33, 6);
     });
+  });
+
+  it("never draws the plan's sea state on Wetter when the area forecast has no waves", async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
+    const map = withPaint(makeFakeMap());
+    const plan: Plan = {
+      ...makePlan(),
+      waveGrid: makeWaveGrid(() => ({ heightM: 0.6, periodS: 4, dirFromDeg: 200 })),
+    };
+    act(() => setConditionsHour(DEPARTURE_MS));
+    const { setActive } = renderBoth(
+      map,
+      false,
+      { wind: uniformWindGrid(20, 90, { t0Ms: DEPARTURE_MS, hours: 2 }), wave: null },
+      plan,
+    );
+    await act(async () => {});
+    // Control: in plan mode the plan's grid draws.
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('visible');
+    setActive(true);
+    expect(map.layers.get(WAVE_FILL_LAYER)?.layout?.visibility).toBe('none');
+    expect(map.layers.get(WAVE_ARROW_LAYER)?.layout?.visibility).toBe('none');
   });
 
   it('draws barbs with no plan at all on Wetter', async () => {

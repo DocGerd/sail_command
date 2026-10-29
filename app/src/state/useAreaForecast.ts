@@ -76,6 +76,7 @@ export function useAreaForecast(
   const [waveError, setWaveError] = useState(false);
   const [cooldownUntilMs, setCooldownUntilMs] = useState<number | null>(null);
   const runningRef = useRef(false);
+  const cooldownRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     // Set here too, not only at init: StrictMode runs this cleanup once.
@@ -104,7 +105,9 @@ export function useAreaForecast(
       } catch (err) {
         if (!mountedRef.current) return;
         if (err instanceof OpenMeteoError && err.kind === 'rate-limited') {
-          setCooldownUntilMs(Date.now() + AREA_FORECAST_COOLDOWN_MS);
+          const until = Date.now() + AREA_FORECAST_COOLDOWN_MS;
+          cooldownRef.current = until;
+          setCooldownUntilMs(until);
         }
         if (shownRef.current) {
           setRefreshFailed(true);
@@ -140,15 +143,18 @@ export function useAreaForecast(
     return held === null || Date.now() - held.fetchedAtMs > AREA_FORECAST_AUTO_REFETCH_MS;
   }, []);
 
-  // Entry and the `online` event: after the dwell, only when nothing recent is held.
+  // Entry and the `online` event: after the dwell, only when nothing recent is
+  // held, and never inside a rate-limit cooldown.
   useEffect(() => {
-    if (!active || !online || !due()) return;
+    const until = cooldownRef.current;
+    if (!active || !online || !due() || (until !== null && Date.now() < until)) return;
     const timer = setTimeout(() => void load(), AREA_FORECAST_DWELL_MS);
     return () => clearTimeout(timer);
   }, [active, online, due, load]);
 
   const refresh = useCallback(() => {
     if (cooldownUntilMs !== null && Date.now() < cooldownUntilMs) return;
+    cooldownRef.current = null;
     setCooldownUntilMs(null);
     void load();
   }, [cooldownUntilMs, load]);

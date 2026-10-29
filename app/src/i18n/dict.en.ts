@@ -1319,6 +1319,7 @@ export const en = {
   'nav.conditions': 'Weather',
   'conditions.title': 'Wind and sea state',
   'conditions.hour.label': 'Time for wind and sea state',
+  'conditions.hour.group': 'Choose hour',
   'conditions.hour.prev': 'One hour earlier',
   'conditions.hour.next': 'One hour later',
   'conditions.day.prev': 'One day earlier',
