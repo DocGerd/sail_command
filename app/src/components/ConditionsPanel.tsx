@@ -561,6 +561,7 @@ export default function ConditionsPanel({
                   aria-hidden="true"
                   viewBox={`0 0 ${ribbon.length} 1`}
                   preserveAspectRatio="none"
+                  shapeRendering="crispEdges"
                 >
                   {ribbon.map((m, i) => {
                     const band = m === null ? 'no-data' : seaStateBand(m);
