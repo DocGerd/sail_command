@@ -879,6 +879,15 @@ for (const { label, viewport, panelPx } of TAB_STRIP_CASES) {
               timeout: 5_000,
             })
             .toBeLessThanOrEqual(0);
+          // #1854: a MIDDLE tab's spill overlaps its neighbour and never
+          // widens the strip, so each tab's own overflow is read too.
+          await expect
+            .poll(() =>
+              tabs.evaluateAll((els) =>
+                Math.max(...els.map((el) => el.scrollWidth - el.clientWidth)),
+              ),
+            )
+            .toBeLessThanOrEqual(0);
         }
         await tabs.nth(0).click();
 

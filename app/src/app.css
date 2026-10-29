@@ -575,24 +575,36 @@ select {
   container-type: inline-size;
 }
 
-/* Horizontal padding only adds to the min-content width #299 guards. */
+/* No horizontal padding: flex sets the width, and padding only adds to the
+   min-content width #299 guards. */
 .app-tabs button {
   flex: 1;
   background: transparent;
   border: none;
   border-bottom: 3px solid transparent;
-  padding: 0.6rem 0.25rem;
-}
-
-@container (max-width: 22.5rem) {
-  .app-tabs button {
-    font-size: 0.875rem;
-  }
+  padding: 0.6rem 0;
 }
 
 .app-tabs button[aria-selected='true'] {
   border-bottom-color: var(--sc-accent);
   font-weight: 600;
+}
+
+@container (max-width: 22.5rem) {
+  .app-tabs button {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Below the tablet floor the selected tab keeps its accent border, not bold. */
+@container (max-width: 18rem) {
+  .app-tabs button {
+    font-size: 0.75rem;
+  }
+
+  .app-tabs button[aria-selected='true'] {
+    font-weight: inherit;
+  }
 }
 
 /* #706: the app's most-used control had no focus ring at all before this —
