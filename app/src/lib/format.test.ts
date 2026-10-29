@@ -40,6 +40,7 @@ import {
   formatKn,
   formatLegNm,
   formatHeading,
+  formatCompassPoint,
   formatTime,
   formatDateTime,
   formatAgeShort,
@@ -931,4 +932,29 @@ it('#1707: formatWeekdayTime pairs the short weekday with the 24 h time', () => 
   const sat10 = new Date(2026, 9, 17, 10, 0).getTime();
   expect(formatWeekdayTime(sat10, 'de')).toBe('Sa 10:00');
   expect(formatWeekdayTime(sat10, 'en')).toBe('Sat 10:00');
+});
+
+describe('#1854: formatCompassPoint', () => {
+  it.each([
+    [0, 'N', 'N'],
+    [22.49, 'N', 'N'],
+    [22.5, 'NO', 'NE'],
+    [67.49, 'NO', 'NE'],
+    [67.5, 'O', 'E'],
+    [112.5, 'SO', 'SE'],
+    [157.5, 'S', 'S'],
+    [202.5, 'SW', 'SW'],
+    [225, 'SW', 'SW'],
+    [247.5, 'W', 'W'],
+    [292.5, 'NW', 'NW'],
+    [337.49, 'NW', 'NW'],
+    [337.5, 'N', 'N'],
+    [359.99, 'N', 'N'],
+    [360, 'N', 'N'],
+    [-45, 'NW', 'NW'],
+    [405, 'NO', 'NE'],
+  ])('%s° is %s / %s', (deg, de, en) => {
+    expect(formatCompassPoint(deg, 'de')).toBe(de);
+    expect(formatCompassPoint(deg, 'en')).toBe(en);
+  });
 });

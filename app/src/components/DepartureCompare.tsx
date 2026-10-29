@@ -8,6 +8,7 @@ import { motorSplit, rigRecommendationOf, sailLabelKey } from '../lib/resultSumm
 import { recommendedResult } from '../types';
 import { formatDateTime, formatDuration, formatHeading, formatNm } from '../lib/format';
 import { WindField } from '../lib/wind';
+import { beaufortForce } from '../lib/beaufort';
 import { GENOA_SAIL_ID } from '../data/boats';
 import {
   scanSailIdsFor,
@@ -25,25 +26,6 @@ const MIN_COUNT = 4;
 const MAX_COUNT = 8;
 const DEFAULT_COUNT = 6;
 const DEFAULT_STEP_HOURS = 3;
-
-// #936: standard Beaufort-scale upper bounds in knots (WMO/Met Office knots
-// table). This is a real, universal maritime convention, not an invented
-// category scale — the number it summarizes always comes from a real
-// windGrid sample.
-// index i = force i's inclusive upper bound; a speed above the last entry is
-// force 12 (hurricane).
-const BEAUFORT_UPPER_BOUNDS_KN = [1, 3, 6, 10, 16, 21, 27, 33, 40, 47, 55, 63] as const;
-
-function beaufortForce(speedKn: number): number {
-  for (let force = 0; force < BEAUFORT_UPPER_BOUNDS_KN.length; force++) {
-    const bound = BEAUFORT_UPPER_BOUNDS_KN[force];
-    // Force 0's band is 0 kn up to but NOT including 1 kn — the force-1 band
-    // (1-3 kn) is closed on the left, so 1.0 kn exactly is force 1, not 0.
-    // Every other boundary in this table is closed on both ends.
-    if (force === 0 ? speedKn < bound : speedKn <= bound) return force;
-  }
-  return BEAUFORT_UPPER_BOUNDS_KN.length;
-}
 
 export interface DepartureCompareProps {
   // Null until a plan exists — #356a §3: "an explicit action on an EXISTING

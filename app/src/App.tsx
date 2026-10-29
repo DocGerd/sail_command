@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useLang, useT, type Lang } from './i18n';
 import {
   AppStateProvider,
@@ -635,6 +636,8 @@ function AppShell() {
   // list — same contract as `liveSlot` above (the component mounts inside
   // MapView's subtree for the map context and portals into the panel).
   const [seamarksSlot, setSeamarksSlot] = useState<HTMLDivElement | null>(null);
+  // #1854: the Wetter card mounts inside MapView for the area line's viewport.
+  const [conditionsSlot, setConditionsSlot] = useState<HTMLDivElement | null>(null);
   // #831: the Live tab's slot for the keyboard-reachable AIS-vessels-in-view
   // list — same contract, and deliberately unconditional (both narrow and
   // wide), mirroring `seamarksSlot` rather than `liveSlot`'s isWide gate.
@@ -1920,6 +1923,19 @@ function AppShell() {
           {tab === 'plan' && (
             <SeamarksInView panelSlot={seamarksSlot} onAddWaypoint={handleAddViaFromSeamark} />
           )}
+          {tab === 'conditions' &&
+            conditionsSlot &&
+            createPortal(
+              <ConditionsPanel
+                forecast={areaForecast}
+                online={online}
+                departureMs={departureMs}
+                depthSuppressed={depthSuppressed}
+                onShowDepth={() => setDepthLifted(true)}
+                onUseAsDeparture={handleUseAsDeparture}
+              />,
+              conditionsSlot,
+            )}
         </MapView>
       </div>
 
@@ -2272,16 +2288,7 @@ function AppShell() {
               tab's id; every tab's aria-controls points at this one id
               since only one panel is ever rendered at a time. */}
           <div role="tabpanel" id={APP_TABPANEL_ID} aria-labelledby={appTabId(tab)}>
-            {tab === 'conditions' && (
-              <ConditionsPanel
-                forecast={areaForecast}
-                online={online}
-                departureMs={departureMs}
-                depthSuppressed={depthSuppressed}
-                onShowDepth={() => setDepthLifted(true)}
-                onUseAsDeparture={handleUseAsDeparture}
-              />
-            )}
+            {tab === 'conditions' && <div ref={setConditionsSlot} />}
             {tab === 'plan' && (
               <>
                 <PlannerPanel

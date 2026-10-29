@@ -10,6 +10,11 @@ import { makeWindGrid } from '../test/fixtures';
 import { makeWaveGrid } from '../test/waveFixtures';
 import type { WaveGrid, WindGrid } from '../types';
 
+let mockMask: unknown = null;
+let mockMap: unknown = null;
+vi.mock('../state/useNavMask', () => ({ useNavMask: () => mockMask }));
+vi.mock('./MapView', () => ({ useMapInstance: () => mockMap }));
+
 const H = 3_600_000;
 const NOW = new Date(2026, 9, 14, 10, 32).getTime();
 const HOUR0 = new Date(2026, 9, 14, 10, 0).getTime();
@@ -81,6 +86,8 @@ afterEach(() => {
   vi.useRealTimers();
   resetConditionsHourForTests();
   localStorage.clear();
+  mockMask = null;
+  mockMap = null;
 });
 
 describe('ConditionsPanel states (#1854 §7)', () => {
@@ -316,5 +323,237 @@ describe('ConditionsPanel hour control and handoff (#1854 §4, §11)', () => {
     update(props({ forecast: ready() }));
     expect(document.activeElement).toBe(outside);
     outside.remove();
+  });
+});
+
+describe('#1854 day strip, sea ribbon and area line', () => {
+  const LATS = [54.5, 54.6, 54.7];
+  const LONS = [10.0, 10.1, 10.2, 10.3];
+  // Water everywhere but the eastern column, whose 30 kn must never count.
+  const SPEED: Record<number, number> = { 10: 8, 10.1: 10, 10.2: 14, 10.3: 30 };
+  const smallWind = (dir = 225): WindGrid => ({
+    ...makeWindGrid((_lat, lon) => ({ speedKn: SPEED[lon]!, dirFromDeg: dir }), {
+      south: 54.5,
+      north: 54.7,
+      west: 10.0,
+      east: 10.3,
+      t0Ms: HOUR0 - 2 * H,
+      hours: 48,
+    }),
+    fetchedAtMs: NOW - 2 * 60_000,
+  });
+  const smallWave = (hs: (hourIdx: number) => number, hours = 48): WaveGrid =>
+    makeWaveGrid((_la, _lo, t) => ({ heightM: hs(t), periodS: 3, dirFromDeg: 200 }), {
+      lats: LATS,
+      lons: LONS,
+      t0Ms: HOUR0 - 2 * H,
+      hours,
+    });
+  const smallReady = (w: WaveGrid | null = smallWave(() => 0.5), wd = smallWind()) =>
+    forecast({ wind: wd, wave: w, source: 'session' });
+
+  beforeEach(() => {
+    mockMask = { inBounds: () => true, depthM: (p: { lon: number }) => (p.lon < 10.25 ? 5 : 0) };
+  });
+
+  const strip = () => screen.getByRole('group', { name: 'Übersicht Mi 14., Revier' });
+  const columns = () => Array.from(strip().querySelectorAll('button'));
+  const visibleText = (el: Element) => {
+    const c = el.cloneNode(true) as Element;
+    c.querySelectorAll('.sr-only').forEach((s) => s.remove());
+    return c.textContent.replace(/\s+/g, ' ').trim();
+  };
+
+  it('one column per remaining 3-hour window of the day, over the Revier water points', () => {
+    renderPanel(props({ forecast: smallReady() }));
+    expect(columns().map((b) => b.querySelector('.conditions-col-time')!.textContent)).toEqual([
+      '09:00',
+      '12:00',
+      '15:00',
+      '18:00',
+      '21:00',
+    ]);
+    const first = columns()[0]!;
+    expect(visibleText(first)).toBe('09:00 8–14 (18) 0,5');
+    expect(first).toHaveAccessibleName(
+      '09:00, Wind aus SW 8–14 Knoten Böen (18), Seegang 0,5 Meter',
+    );
+  });
+
+  it('EN: the column name keeps the visible tokens in order', () => {
+    localStorage.setItem('sc-lang', 'en');
+    renderPanel(props({ forecast: smallReady() }));
+    const first = screen
+      .getByRole('group', { name: 'Overview Wed 14, Sailing area' })
+      .querySelector('button')!;
+    expect(visibleText(first)).toBe('09:00 8–14 (18) 0.5');
+    expect(first).toHaveAccessibleName(
+      '09:00, wind from SW 8–14 knots gusts (18), sea state 0.5 metres',
+    );
+  });
+
+  it('marks the window holding the hour; a column selects its first valid hour', () => {
+    renderPanel(props({ forecast: smallReady() }));
+    expect(columns()[0]).toHaveAttribute('aria-current', 'true');
+    expect(columns()[1]).not.toHaveAttribute('aria-current');
+    fireEvent.click(columns()[1]!);
+    expect(document.querySelector('.conditions-hour-value')).toHaveTextContent('(in 2 h)');
+    expect(columns()[1]).toHaveAttribute('aria-current', 'true');
+    expect(columns()[0]).not.toHaveAttribute('aria-current');
+    // The current window starts at a past hour; its column selects now.
+    fireEvent.click(columns()[0]!);
+    expect(document.querySelector('.conditions-hour-value')).toHaveTextContent('(jetzt)');
+  });
+
+  it('a column click is a user step: it retires the clamped-seed note', () => {
+    renderPanel(props({ forecast: smallReady(), departureMs: HOUR0 + 100 * H }));
+    expect(screen.getByText(/liegt außerhalb der Vorhersage/)).toBeInTheDocument();
+    const lastDay = screen.getByRole('group', { name: /^Übersicht .+, Revier$/ });
+    fireEvent.click(lastDay.querySelector('button')!);
+    expect(screen.queryByText(/liegt außerhalb der Vorhersage/)).toBeNull();
+  });
+
+  it('missing Hs reads as no model data, never as calm', () => {
+    renderPanel(props({ forecast: smallReady(smallWave(() => NaN)) }));
+    const sea = columns()[0]!.querySelector('.conditions-col-sea')!;
+    expect(visibleText(sea)).toBe('–');
+    expect(sea).toHaveTextContent('Seegang – keine Modelldaten');
+    expect(document.querySelectorAll('.conditions-ribbon rect')).toHaveLength(0);
+  });
+
+  it('a direction spread reads as variable in the column name', () => {
+    const spread = makeWindGrid(
+      (_lat, lon) => ({ speedKn: 10, dirFromDeg: lon < 10.05 ? 0 : lon < 10.15 ? 120 : 240 }),
+      { south: 54.5, north: 54.7, west: 10.0, east: 10.3, t0Ms: HOUR0 - 2 * H, hours: 48 },
+    );
+    renderPanel(props({ forecast: smallReady(undefined, { ...spread, fetchedAtMs: NOW }) }));
+    expect(columns()[0]!.textContent).toContain('Wind umlaufend');
+  });
+
+  it('the ribbon has one band per hour with sea data and none past the wave axis', () => {
+    const hs = (t: number) => (t < 6 ? 0.3 : 1.5);
+    renderPanel(props({ forecast: smallReady(smallWave(hs, 12)) }));
+    const rects = Array.from(document.querySelectorAll('.conditions-ribbon rect[data-band]'));
+    // Options start at 10:00 (wave hour 2); the wave axis ends at hour 11.
+    expect(rects.map((r) => r.getAttribute('data-band'))).toEqual([
+      ...Array(4).fill('smooth'),
+      ...Array(6).fill('moderate'),
+    ]);
+    expect(rects[0]).toHaveClass('conditions-ribbon-smooth');
+    expect(rects.map((r) => r.getAttribute('x'))).toEqual(
+      Array.from({ length: 10 }, (_, i) => String(i)),
+    );
+  });
+
+  it('every hour with sea data, calm included, carries a coverage tick', () => {
+    renderPanel(props({ forecast: smallReady(smallWave(() => 0.05, 12)) }));
+    const ticks = Array.from(document.querySelectorAll('.conditions-ribbon-covered'));
+    expect(ticks.map((r) => r.getAttribute('x'))).toEqual(
+      Array.from({ length: 10 }, (_, i) => String(i)),
+    );
+    expect(document.querySelectorAll('.conditions-ribbon-calm')).toHaveLength(10);
+  });
+
+  it('a column without wind data is not announced as variable wind', () => {
+    const nan = makeWindGrid(() => ({ speedKn: NaN, dirFromDeg: NaN }), {
+      south: 54.5,
+      north: 54.7,
+      west: 10.0,
+      east: 10.3,
+      t0Ms: HOUR0 - 2 * H,
+      hours: 48,
+    });
+    renderPanel(props({ forecast: smallReady(undefined, { ...nan, fetchedAtMs: NOW }) }));
+    expect(columns()[0]).toHaveAccessibleName('09:00, Wind keine Modelldaten, Seegang 0,5 Meter');
+  });
+
+  it('no strip until the mask has loaded', () => {
+    mockMask = null;
+    renderPanel(props({ forecast: smallReady() }));
+    expect(document.querySelector('.conditions-strip')).toBeNull();
+  });
+
+  describe('area line', () => {
+    let moveend: Array<() => void> = [];
+    let shift = 0;
+    beforeEach(() => {
+      moveend = [];
+      shift = 0;
+      mockMap = {
+        getContainer: () => ({
+          clientWidth: 250,
+          clientHeight: 300,
+          getBoundingClientRect: () => ({ top: 0 }),
+        }),
+        project: ([lon, lat]: [number, number]) => ({
+          x: (lon - 9.9 - shift) * 1000,
+          y: (54.8 - lat) * 1000,
+        }),
+        unproject: ([x, y]: [number, number]) => ({
+          lng: 9.9 + shift + x / 1000,
+          lat: 54.8 - y / 1000,
+        }),
+        on: (_e: string, fn: () => void) => moveend.push(fn),
+        off: (_e: string, fn: () => void) => (moveend = moveend.filter((f) => f !== fn)),
+      };
+    });
+
+    const line = () => document.querySelector('.conditions-area')?.textContent ?? null;
+
+    it('summarises the water points in view at the chosen hour', () => {
+      renderPanel(props({ forecast: smallReady() }));
+      expect(line()).toBe(
+        'Im Kartenausschnitt: Wind 8–10 kn (Bft 3) aus SW, Böen bis 13 kn · Seegang bis 0,5 m',
+      );
+    });
+
+    it('falls back to the water point nearest the view centre, and says so', () => {
+      renderPanel(props({ forecast: smallReady() }));
+      shift = 1;
+      act(() => moveend.forEach((f) => f()));
+      expect(line()).toBe(
+        'Im Kartenausschnitt: Wind 14 kn (Bft 4) aus SW, Böen bis 18 kn · Seegang bis 0,5 m (am nächsten Modellpunkt)',
+      );
+    });
+
+    it('missing Hs in view reads as a dash, not as calm', () => {
+      renderPanel(props({ forecast: smallReady(smallWave(() => NaN)) }));
+      expect(line()).toContain('Seegang bis – m');
+    });
+
+    it('leaves out the map band under the bottom sheet', () => {
+      const sheet = document.createElement('div');
+      sheet.className = 'app-bottom-sheet';
+      sheet.getBoundingClientRect = () => ({ top: 150 }) as DOMRect;
+      document.body.append(sheet);
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          private cb: () => void;
+          constructor(cb: () => void) {
+            this.cb = cb;
+          }
+          observe() {
+            this.cb();
+          }
+          disconnect() {}
+        },
+      );
+      // Rows at y 100/200/300: only 54.7 stays above the sheet top; there 10.1 blows 10 kn.
+      const rowWind = makeWindGrid(
+        (lat, lon) => ({ speedKn: lat > 54.65 ? SPEED[lon]! : 20, dirFromDeg: 225 }),
+        { south: 54.5, north: 54.7, west: 10.0, east: 10.3, t0Ms: HOUR0 - 2 * H, hours: 48 },
+      );
+      renderPanel(props({ forecast: smallReady(undefined, { ...rowWind, fetchedAtMs: NOW }) }));
+      expect(line()).toContain('Wind 8–10 kn');
+      sheet.remove();
+      vi.unstubAllGlobals();
+    });
+
+    it('is absent without a map instance', () => {
+      mockMap = null;
+      renderPanel(props({ forecast: smallReady() }));
+      expect(line()).toBeNull();
+    });
   });
 });
