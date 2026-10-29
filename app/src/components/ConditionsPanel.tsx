@@ -229,16 +229,16 @@ export default function ConditionsPanel({
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-      <div className="conditions-header">
-        {(wind !== null || phase === 'loading') && (
+      {(wind !== null || phase === 'loading') && (
+        <div className="conditions-header">
           <Chip
             className={stale ? 'conditions-status conditions-status-stale' : 'conditions-status'}
           >
             {chipText}
           </Chip>
-        )}
-        {wind !== null && updateButton}
-      </div>
+          {wind !== null && updateButton}
+        </div>
+      )}
 
       {phase === 'offlineNone' && <p className="conditions-line">{t('conditions.offline.none')}</p>}
       {phase === 'error' && (

@@ -97,8 +97,8 @@ describe('ConditionsPanel states (#1854 §7)', () => {
     renderPanel(props({ forecast: forecast({ errorKey: 'error.windService', refresh }) }));
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(de['error.windService']);
-    // Nothing is loading: no chip claims it is.
-    expect(document.querySelector('.chip.conditions-status')).toBeNull();
+    // Nothing is loading: no chip claims it is, and no empty header row.
+    expect(document.querySelector('.conditions-header')).toBeNull();
     expect(screen.queryByText(de['conditions.status.loading'])).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: de['conditions.update'] }));
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -132,7 +132,7 @@ describe('ConditionsPanel states (#1854 §7)', () => {
   it('offline with nothing held: the offline copy, no alert, no hour row', () => {
     renderPanel(props({ online: false }));
     expect(screen.getByText(de['conditions.offline.none'])).toBeInTheDocument();
-    expect(document.querySelector('.chip.conditions-status')).toBeNull();
+    expect(document.querySelector('.conditions-header')).toBeNull();
     expect(screen.queryByText(de['conditions.status.loading'])).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByRole('button', { name: de['conditions.update'] })).toBeNull();
