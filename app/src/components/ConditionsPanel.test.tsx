@@ -322,6 +322,18 @@ describe('#1854 day strip, sea ribbon and area line', () => {
     );
   });
 
+  it('EN: the column name keeps the visible tokens in order', () => {
+    localStorage.setItem('sc-lang', 'en');
+    renderPanel(props({ forecast: smallReady() }));
+    const first = screen
+      .getByRole('group', { name: 'Overview Wed 14, Sailing area' })
+      .querySelector('button')!;
+    expect(visibleText(first)).toBe('09:00 8–14 (18) 0.5');
+    expect(first).toHaveAccessibleName(
+      '09:00, wind from SW 8–14 knots gusts (18), sea state 0.5 metres',
+    );
+  });
+
   it('marks the window holding the hour; a column selects its first valid hour', () => {
     renderPanel(props({ forecast: smallReady() }));
     expect(columns()[0]).toHaveAttribute('aria-current', 'true');
