@@ -6154,6 +6154,18 @@ describe('#1854 Wetter tab (App wiring)', () => {
     await waitFor(() => expect(fetchWaveGrid).toHaveBeenCalledTimes(1));
   });
 
+  it('the card mounts inside MapView, so the area line reads the map view', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    await openWetter();
+    // The FakeMap's container has no size, so the line takes the nearest-point form.
+    await waitFor(() =>
+      expect(document.querySelector('[role="tabpanel"] .conditions-area')?.textContent).toMatch(
+        /^Im Kartenausschnitt: Wind \d+ kn .*\(am nächsten Modellpunkt\)$/,
+      ),
+    );
+  });
+
   it('a harbour tap on Wetter leaves Start and Ziel unchanged', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });

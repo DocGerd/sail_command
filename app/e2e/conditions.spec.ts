@@ -218,6 +218,9 @@ test('the day strip is a list or grid by its own width, selects hours, and the r
           await expect
             .poll(() => page.locator('.conditions-ribbon rect').count())
             .toBeGreaterThan(0);
+          await expect(page.locator('.conditions-area')).toHaveText(
+            /^Im Kartenausschnitt: Wind \d+(–\d+)? kn \(Bft \d+(–\d+)?\)/,
+          );
 
           if (viewport === STANDARD_VIEWPORTS.tabletPortrait) {
             const fits = await page.evaluate(() => {
