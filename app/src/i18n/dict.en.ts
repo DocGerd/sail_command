@@ -1362,6 +1362,7 @@ export const en = {
   'conditions.strip.group': 'Overview {day}, {scope}',
   'conditions.strip.rowWind': 'Wind kn (gusts)',
   'conditions.strip.rowSea': 'Sea state m',
+  'conditions.sr.wind': 'wind',
   'conditions.sr.windFrom': 'wind from {cardinal}',
   'conditions.sr.windVariable': 'wind variable',
   'conditions.sr.knots': 'knots',

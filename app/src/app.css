@@ -5716,3 +5716,23 @@ select {
   width: 100%;
   height: 6px;
 }
+
+.conditions-ribbon-calm {
+  fill: color-mix(in srgb, var(--sc-sea-calm) 45%, var(--sc-halo));
+}
+.conditions-ribbon-smooth {
+  fill: color-mix(in srgb, var(--sc-sea-smooth) 45%, var(--sc-halo));
+}
+.conditions-ribbon-slight {
+  fill: color-mix(in srgb, var(--sc-sea-slight) 45%, var(--sc-halo));
+}
+.conditions-ribbon-moderate {
+  fill: color-mix(in srgb, var(--sc-sea-moderate) 45%, var(--sc-halo));
+}
+.conditions-ribbon-rough {
+  fill: color-mix(in srgb, var(--sc-sea-rough) 45%, var(--sc-halo));
+}
+
+.conditions-ribbon-covered {
+  fill: var(--sc-border);
+}

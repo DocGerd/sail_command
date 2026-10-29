@@ -31,7 +31,7 @@ import { STALE_THRESHOLD_MS } from '../lib/plan';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { useSheetTop } from '../lib/useSheetTop';
 import { useWideLayout } from '../lib/useWideLayout';
-import { formatSeaStateM, SEA_STATE_COLORS } from '../lib/waveMap';
+import { formatSeaStateM } from '../lib/waveMap';
 import { seaStateBand, waveHourIndexAt } from '../lib/waves';
 import { useNavMask } from '../state/useNavMask';
 import { GRID_CACHE_TTL_MS } from '../services/openMeteo';
@@ -84,10 +84,11 @@ interface ViewScope {
 type T = ReturnType<typeof useT>;
 
 function windDirSr(s: ScopeSummary, t: T, lang: Lang): string {
-  const dir = s.wind?.dirFromDeg;
-  return dir === null || dir === undefined
+  const w = s.wind;
+  if (w === null) return t('conditions.sr.wind');
+  return w.dirFromDeg === null
     ? t('conditions.sr.windVariable')
-    : t('conditions.sr.windFrom', { cardinal: formatCompassPoint(dir, lang) });
+    : t('conditions.sr.windFrom', { cardinal: formatCompassPoint(w.dirFromDeg, lang) });
 }
 
 // Sr-only words sit between visible tokens with the spaces in text nodes
@@ -588,15 +589,23 @@ export default function ConditionsPanel({
                   {ribbon.map((m, i) => {
                     const band = m === null ? 'no-data' : seaStateBand(m);
                     return band === 'no-data' ? null : (
-                      <rect
-                        key={options[i]}
-                        x={i}
-                        y={0}
-                        width={1}
-                        height={1}
-                        fill={SEA_STATE_COLORS[band]}
-                        data-band={band}
-                      />
+                      <g key={options[i]}>
+                        <rect
+                          x={i}
+                          y={0}
+                          width={1}
+                          height={1}
+                          className={`conditions-ribbon-${band}`}
+                          data-band={band}
+                        />
+                        <rect
+                          x={i}
+                          y={0.75}
+                          width={1}
+                          height={0.25}
+                          className="conditions-ribbon-covered"
+                        />
+                      </g>
                     );
                   })}
                 </svg>

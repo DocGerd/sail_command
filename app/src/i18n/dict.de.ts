@@ -1359,6 +1359,7 @@ export const de = {
   'conditions.strip.group': 'Übersicht {day}, {scope}',
   'conditions.strip.rowWind': 'Wind kn (Böen)',
   'conditions.strip.rowSea': 'Seegang m',
+  'conditions.sr.wind': 'Wind',
   'conditions.sr.windFrom': 'Wind aus {cardinal}',
   'conditions.sr.windVariable': 'Wind umlaufend',
   'conditions.sr.knots': 'Knoten',

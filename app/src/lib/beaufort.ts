@@ -1,6 +1,9 @@
 // #936: standard Beaufort-scale upper bounds in knots (WMO/Met Office knots
-// table). Index i is force i's inclusive upper bound; a speed above the last
-// entry is force 12 (hurricane).
+// table). This is a real, universal maritime convention, not an invented
+// category scale — the number it summarizes always comes from a real
+// windGrid sample.
+// index i = force i's inclusive upper bound; a speed above the last entry is
+// force 12 (hurricane).
 const BEAUFORT_UPPER_BOUNDS_KN = [1, 3, 6, 10, 16, 21, 27, 33, 40, 47, 55, 63] as const;
 
 export function beaufortForce(speedKn: number): number {

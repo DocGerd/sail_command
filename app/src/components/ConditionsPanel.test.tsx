@@ -9,7 +9,6 @@ import type { AreaForecast } from '../state/useAreaForecast';
 import { makeWindGrid } from '../test/fixtures';
 import { makeWaveGrid } from '../test/waveFixtures';
 import type { WaveGrid, WindGrid } from '../types';
-import { SEA_STATE_COLORS } from '../lib/waveMap';
 
 let mockMask: unknown = null;
 let mockMap: unknown = null;
@@ -434,16 +433,38 @@ describe('#1854 day strip, sea ribbon and area line', () => {
   it('the ribbon has one band per hour with sea data and none past the wave axis', () => {
     const hs = (t: number) => (t < 6 ? 0.3 : 1.5);
     renderPanel(props({ forecast: smallReady(smallWave(hs, 12)) }));
-    const rects = Array.from(document.querySelectorAll('.conditions-ribbon rect'));
+    const rects = Array.from(document.querySelectorAll('.conditions-ribbon rect[data-band]'));
     // Options start at 10:00 (wave hour 2); the wave axis ends at hour 11.
     expect(rects.map((r) => r.getAttribute('data-band'))).toEqual([
       ...Array(4).fill('smooth'),
       ...Array(6).fill('moderate'),
     ]);
-    expect(rects[0]).toHaveAttribute('fill', SEA_STATE_COLORS.smooth);
+    expect(rects[0]).toHaveClass('conditions-ribbon-smooth');
     expect(rects.map((r) => r.getAttribute('x'))).toEqual(
       Array.from({ length: 10 }, (_, i) => String(i)),
     );
+  });
+
+  it('every hour with sea data, calm included, carries a coverage tick', () => {
+    renderPanel(props({ forecast: smallReady(smallWave(() => 0.05, 12)) }));
+    const ticks = Array.from(document.querySelectorAll('.conditions-ribbon-covered'));
+    expect(ticks.map((r) => r.getAttribute('x'))).toEqual(
+      Array.from({ length: 10 }, (_, i) => String(i)),
+    );
+    expect(document.querySelectorAll('.conditions-ribbon-calm')).toHaveLength(10);
+  });
+
+  it('a column without wind data is not announced as variable wind', () => {
+    const nan = makeWindGrid(() => ({ speedKn: NaN, dirFromDeg: NaN }), {
+      south: 54.5,
+      north: 54.7,
+      west: 10.0,
+      east: 10.3,
+      t0Ms: HOUR0 - 2 * H,
+      hours: 48,
+    });
+    renderPanel(props({ forecast: smallReady(undefined, { ...nan, fetchedAtMs: NOW }) }));
+    expect(columns()[0]).toHaveAccessibleName('09:00, Wind keine Modelldaten, Seegang 0,5 Meter');
   });
 
   it('no strip until the mask has loaded', () => {

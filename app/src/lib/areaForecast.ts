@@ -1,5 +1,5 @@
 // #1854: summaries of the Wetter tab's area forecast over a set of lattice
-// points (spike §3, §5). Missing values are skipped, never read as calm: a
+// points (spike §3, §10). Missing values are skipped, never read as calm: a
 // scope with no finite value yields null, as #1830's route readout does.
 import type { LatLon, WaveGrid, WindGrid } from '../types';
 import type { NavMask } from './mask';
