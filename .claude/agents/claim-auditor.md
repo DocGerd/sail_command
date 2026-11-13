@@ -137,27 +137,19 @@ your finding.
 
 ## Report discipline
 
-Cap the message you send back at ~25 lines: verdict, findings list (per-site,
-per the format above), spot-checks, unverifiable items.
+Report the verdict, each finding with an evidence pointer, and the SHA; keep it scannable; put large output on disk. Findings are per-site, per the format above; include spot-checks and unverifiable items.
 
 - Keep the QUOTED claim text and the artifact line you refuted it against
   VERBATIM and inline — never paraphrase either. A paraphrase discards the
   evidence; this repo lost a `-0` root cause exactly that way (#203).
 - Reduce a clean spot-check to a counted verdict (`4 of 4 citations verified`),
   never to a comparative adjective ("looks accurate", "broadly fine").
-- If your findings list is long enough to blow that cap — a full enumeration
+- If your findings list is too long to read at a glance — a full enumeration
   of every citation checked, not just the defective ones, is often the right
   amount of evidence for a "Clean" verdict — write it to a scratchpad file and
   return the PATH, not the contents. Never truncate the enumeration itself;
   truncate where it lives.
 - Write that scratchpad file with a Bash heredoc
   (`cat > /path/to/file <<'EOF' ... EOF`) — you have no Edit or Write tool by
-  design, so Bash is the only route to a file. Observed 2026-09-05 (#969):
-  two of five subagents briefed to write a scratchpad report did not write it
-  and pasted their tables inline, while a third wrote the same file via Bash;
-  whether the tool errored or the agent obeyed the harness-injected
-  `Do NOT Write report/summary/... files` instruction #969 quotes was not
-  established — either way a harness property; re-check after an upgrade.
-  If you were briefed to return a summary and find yourself about to paste a
-  large table instead, try the Bash heredoc before concluding you cannot
-  write the file, and say in your report which route you took.
+  design, so Bash is the only route to a file. If you cannot write the file,
+  say which route you took instead of pasting a large table.

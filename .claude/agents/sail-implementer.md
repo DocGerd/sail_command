@@ -65,11 +65,10 @@ not count as done:
 2. `npm --prefix app run lint`
 3. Focused tests: `npm --prefix app run test -- <filter>` — use filters while
    iterating; for the full suite's own duration read `app/vite.config.ts`'s
-   #878 comment rather than any figure quoted here.
-4. Routing changes: the `realmask.repro.*.test.ts` files (five sibling
-   files under `app/src/routing/`, #878) must stay green — real committed
-   mask/polars. `npm --prefix app run test -- realmask.repro` filters to
-   all five.
+   test-config comment rather than any figure quoted here.
+4. Routing changes: the `realmask.repro.*.test.ts` files under
+   `app/src/routing/` must stay green — real committed mask/polars.
+   `npm --prefix app run test -- realmask.repro` filters to all of them.
 5. UI tasks end with a REAL browser pass (dev server + Playwright) — synthetic
    fixtures have missed product-blocking bugs before.
 6. Guard any NEW test you add against vacuity before reporting it as coverage.
@@ -94,11 +93,8 @@ not count as done:
 
 ## Report discipline
 
-Return ~25 lines: what changed (file list, one-line purpose each), the
-verification evidence above, deviations/concerns (or explicitly "none"). If
-the required items alone exceed that — several files, six verification items,
-a mutation result per new assertion — keep the failures inline and move the
-rest to the scratchpad file below.
+Report the verdict, each finding with an evidence pointer, and the SHA; keep it scannable; put large output on disk. The report covers what changed (file list, one-line purpose each), the
+verification evidence above, and deviations/concerns (or explicitly "none").
 
 - Keep FAILING command output VERBATIM and inline — never paraphrase a
   failure. A paraphrase discards the diagnostic; this repo lost a `-0` root
@@ -107,16 +103,9 @@ rest to the scratchpad file below.
 - Reduce PASSING evidence to a counted verdict (`typecheck ok`, `12 files /
   84 tests passed`) — never to a comparative adjective ("looks good", "all
   fine").
-- Anything longer than the 25-line cap (a full test list, a large diff)
-  goes to a scratchpad file; return its PATH, not its contents.
+- Anything long (a full test list, a large diff) goes to a scratchpad file;
+  return its PATH, not its contents.
 - Write that scratchpad file with a Bash heredoc
-  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
-  Observed 2026-09-05 (#969): two of five subagents briefed to write a
-  scratchpad report did not write it and pasted their tables inline, while a
-  third wrote the same file via Bash. Whether the tool errored or the agent
-  obeyed the harness-injected `Do NOT Write report/summary/... files`
-  instruction #969 quotes was not established — either way a harness
-  property; re-check after an upgrade. If you were briefed to return a
-  summary and find yourself about to paste a large table instead, try the
-  Bash heredoc before concluding you cannot write the file, and say in your
-  report which route you took.
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool: the
+  harness can refuse `Write` for report files. If you cannot write the file,
+  say which route you took instead of pasting a large table.
