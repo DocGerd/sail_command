@@ -15,8 +15,10 @@
 # mapping.json (for -f) is a JSON array of objects:
 #   [{ "path": "app/src/foo.ts", "line": 42, "body": "Fixed in `abc1234`." },
 #    { "body": "Default reply for anything not matched above." }]
-# Each open thread is matched against its own (path, line) — the same
-# coordinates used to anchor the original inline comment (SKILL.md step 2).
+# Each open thread is matched against its CURRENT (path, line) as GraphQL
+# reports them now, not the coordinates the comment was anchored to. After a
+# fix push moves the hunk the thread is outdated and "line" is null, so such
+# an entry must carry an explicit "line": null; originalLine is never read.
 # An entry with NEITHER "path" NOR "line" is the catch-all default, tried
 # only when no path/line entry matches (and reusable across many threads —
 # that is what a catch-all is for). A thread matching nothing at all is a
