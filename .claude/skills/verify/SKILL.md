@@ -5,13 +5,13 @@ description: Use when a SailCommand change needs real-browser confirmation — b
 
 # Verify a SailCommand change in a real browser
 
-Synthetic tests alone missed a product-blocking solver bug that the first
-real-browser run found in minutes (#20). UI and routing tasks end with this
-pass, not with green unit tests.
+Synthetic tests alone can miss product-blocking solver bugs that a real-browser
+run finds in minutes. UI and routing tasks end with this pass, not with green
+unit tests.
 
 ## Serving — the two sharp edges
 
-The app MUST be served at base `/sail_command/` (vite.config.ts) **with HTTP
+The app MUST be served at base `/sail_command/` (`vite.config.ts`) **with HTTP
 Range support** — pmtiles' FetchSource throws on full-body 200 responses.
 `vite dev` and `vite preview` both satisfy this. A plain static server
 (`python3 -m http.server`, `npx serve`) satisfies neither. Never substitute one.
@@ -53,23 +53,23 @@ there is nothing to bake in.
    timestamps trigger the staleForecast alert and you verify the wrong state).
 2. Append `?windFixture=test-fixtures/wind-sw12.json` to the URL.
 
-## #240: clean PWA state + build-identity assertion (production bundle only)
+## Clean PWA state + build-identity assertion (production bundle only)
 
 A local production preview can show "Update verfügbar" / render stale
-content while looking correct, for two same-origin reasons (both reproduced
-in #240 — no application-code defect in either; `registerType: 'prompt'`,
+content while looking correct, for two same-origin reasons (neither is an
+application-code defect; `registerType: 'prompt'`,
 the focus-gated update check, and the message-gated `skipWaiting()` below
 are all deliberate):
 
 - **A — served bytes changed under a live page.** `ReloadPrompt.tsx` re-checks
   `registration.update()` on every window focus while online
-  (`app/src/components/ReloadPrompt.tsx:26-30`). If `dist/` was rebuilt while
+  (`app/src/components/ReloadPrompt.tsx`). If `dist/` was rebuilt while
   the previewed page stayed open (another agent's build, a `pree2e` rebuild),
   the next focus installs the new worker into `waiting` — while the page
   still correctly shows the build it loaded.
 - **B — a stale service worker from an earlier preview on the same
-  origin+port survives.** `app/src/sw.ts:54` calls `clientsClaim()`
-  unconditionally, but `self.skipWaiting()` (`sw.ts:81`) only fires inside the
+  origin+port survives.** `app/src/sw.ts` calls `clientsClaim()`
+  unconditionally, but `self.skipWaiting()` only fires inside the
   `message` handler, gated on an explicit `SKIP_WAITING` postMessage (sent
   when the Reload button calls `updateServiceWorker(true)`) — never
   automatically on install. An old worker's precache keeps serving
@@ -78,7 +78,7 @@ are all deliberate):
   one waiting in the background.
 
 A version string alone (`git describe --tags --always`, no `--dirty` flag —
-see `appVersion()` in `app/vite.config.ts:112-122`) does not distinguish two
+see `appVersion()` in `app/vite.config.ts`) does not distinguish two
 builds of the SAME commit, which is exactly the pre-release case (rebuild
 after an uncommitted tweak). Pair it with Vite's content-hashed entry chunk,
 which changes whenever any bundled module changes, commit or not.
@@ -86,10 +86,7 @@ which changes whenever any bundled module changes, commit or not.
 Do this **every time**, before capturing any screenshot used as pre-release
 evidence, right after the preview server is up. **Do not rebuild `dist/` (or
 trigger any page reload) mid-walkthrough without re-running steps 3-5** — the
-checks below only cover the state at the moment they run; issue #240's own
-suggested fix says the same thing, and this skill's own negative-probe dry
-run (#240) reproduced exactly this failure by rebuilding in place under a
-live server. If a rebuild happens mid-walkthrough, treat every screenshot
+checks below only cover the state at the moment they run; rebuilding in place under a live server reproduces exactly this failure. If a rebuild happens mid-walkthrough, treat every screenshot
 captured before re-running the preflight as unverified.
 
 Rebuilding mid-walkthrough is not forbidden outright — it is exactly the
@@ -128,7 +125,7 @@ and discard anything captured before that point.
    nothing stale beneath it.
 5. **Assert build identity — two checks, each closes a different gap.**
    (`navigator.serviceWorker.controller === null` is NOT one of them —
-   dry-run-verified during this skill's own #240 fix: `sw.ts:54` calls
+   `sw.ts` calls
    `clientsClaim()` unconditionally, so a brand-new worker can already be
    `controller` moments after a clean reload with no old registration in
    sight. Controller nullity tests timing, not staleness; don't use it.)
