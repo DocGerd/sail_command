@@ -1,6 +1,6 @@
 ---
 name: sweep-closure
-description: Use when deciding whether a SailCommand diff owes an `app/sweep/` #282 acceptance sweep. Mechanically derives the sweep's real input closure — its transitive import graph, UNIONED with the runtime harness/data/pipeline inputs an import walk cannot see — and intersects it with the diff, instead of consulting the hand-maintained prose path list in CLAUDE.md. Use before running (or skipping) a sweep, and whenever a change touches routing, `app/src/types.ts`, `app/src/data/boats.ts`, anything under `app/src/lib`/`app/src/routing`/`app/src/test`, `app/sweep/**`, `app/public/data/**`, or `pipeline/**`.
+description: Use when deciding whether a SailCommand diff owes an `app/sweep/` acceptance sweep. Mechanically derives the sweep's real input closure — its transitive import graph, UNIONED with the runtime harness/data/pipeline inputs an import walk cannot see — and intersects it with the diff, instead of consulting the hand-maintained prose path list in CLAUDE.md. Use before running (or skipping) a sweep, and whenever a change touches routing, `app/src/types.ts`, `app/src/data/boats.ts`, anything under `app/src/lib`/`app/src/routing`/`app/src/test`, `app/sweep/**`, `app/public/data/**`, or `pipeline/**`.
 ---
 
 # Sweep closure: does this diff owe a #282 sweep?

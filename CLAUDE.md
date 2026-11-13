@@ -4646,11 +4646,9 @@ making design-level decisions; do not silently deviate.
   work (design, adversarial correctness/safety verification, hard solver work);
   `haiku` for pure transcription. Do NOT let mechanical implementers/reviewers
   inherit the session's heavy model by default.
-- `offline-pwa-reviewer` is CONDITIONAL, not always-on: invoke it ONLY when the
-  change set touches a PWA path (`app/src/sw.ts`, glyph cache/warmup,
-  `basemapSource.ts`, Vite PWA config, IndexedDB, offline); non-PWA PRs must NOT
-  spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
-  place of it.
+- PWA-path changes (`app/src/sw.ts`, glyph cache/warmup, `basemapSource.ts`, Vite PWA
+  config, IndexedDB, offline) need no extra reviewer: `sail-reviewer`'s "PWA paths" section
+  covers them and applies only when the diff touches one.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
   (high/medium/low) + `area:` + optional `status:` — and a milestone
   (an open release milestone, `Backlog` or `Icebox`;
@@ -5056,10 +5054,8 @@ making design-level decisions; do not silently deviate.
   replacement instead of nudging again. Such an agent also has no Write/Edit
   tool and a read-only Bash, so briefing it to keep an on-disk fallback copy of
   its report is unsatisfiable.
-  Worktree cleanup ritual: agent runs `find app/node_modules -delete`
-  (`rm -rf` is permission-blocked even in the main session; `find -delete` is
-  allowed), then the main session runs `git worktree remove` — force-free. A worktree
-  locked by THIS session's own pid needs `git worktree unlock` first, still force-free. Parallel
+  Worktree teardown is owned by the `worktree-cleanup` skill (creator prepares, main session
+  removes, never `--force`). Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE — but note
   the #803 port-squat case never RAISES one (the probe succeeds because someone
   else already answers 200), so retrying cannot reach it; the shared
@@ -5169,10 +5165,8 @@ making design-level decisions; do not silently deviate.
   your commit (the #140 plan absorbed a half-applied edit exactly that way) —
   diff the content you are about to stage against what you reviewed, and
   stand writers down from shared trees once their deliverable is handed over.
-  Reviewer verification worktrees must be cleaned up by their CREATOR
-  (untracked `node_modules` blocks `git worktree remove`; `rm -rf` can be
-  permission-blocked in the main session) — brief reviewers to remove their
-  own worktree or verify without a local install.
+  Brief reviewers to prepare their own verification worktree for removal per the
+  `worktree-cleanup` skill, or to verify without a local install.
   A reviewer that will MUTATION-CHECK needs its own worktree or a `/tmp` copy,
   decided AT BRIEFING time: it must write somewhere, and its measuring is why
   its findings are worth having. Measured 2026-08-14 on #518 — a reviewer's

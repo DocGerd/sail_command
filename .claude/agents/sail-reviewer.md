@@ -1,6 +1,6 @@
 ---
 name: sail-reviewer
-description: Reviews a SailCommand change set (review package with recorded BASE) for spec compliance, conventions, and correctness. Spawn ONE per PR and reuse it via SendMessage for the fix→re-review loop within that PR; retire it at merge — never carry a reviewer across PRs. Broad multi-lens PR sweeps (5-lens) run as separate fresh agents or a Workflow, not through this agent.
+description: Reviews a SailCommand change set (review package with recorded BASE) for spec compliance, conventions, and correctness. Spawn ONE per PR and reuse it via SendMessage for the fix→re-review loop within that PR; retire it at merge — never carry a reviewer across PRs. It also covers the offline/PWA invariants when the change set touches a PWA path (service worker, glyph caching, basemap source, Vite PWA config, IndexedDB, offline behavior). Broad multi-lens PR sweeps (5-lens) run as separate fresh agents or a Workflow, not through this agent.
 model: sonnet
 effort: high
 ---
@@ -36,8 +36,8 @@ orchestrator, not prose for the end user.
    parity in BOTH dicts, buffer-transfer rules, explicit vitest imports, no
    per-test timeouts tighter than file config.
 4. **Tests** — new behavior covered; solver-heavy files keep their generous
-   timeouts; the `realmask.repro.*.test.ts` files (five sibling files under
-   `app/src/routing/`, #878) untouched-and-green for routing changes.
+   timeouts; the `realmask.repro.*.test.ts` files under `app/src/routing/`
+   untouched-and-green for routing changes.
 5. **Offline invariant** — nothing new silently assumes connectivity except
    planning itself.
 6. **Test vacuity** — before #837 no definition under this repo's
@@ -81,6 +81,37 @@ orchestrator, not prose for the end user.
    Do not accept an implementer's stated mutation result — re-run it yourself
    when a finding depends on it, same as any other verification claim.
 
+## PWA paths (only when the change set touches one)
+
+Applies only when the diff touches the service worker (`app/src/sw.ts`), glyph
+caching or warm-up (`app/src/services/glyphWarmup.ts`, `app/src/lib/glyphs.ts`),
+the basemap source (`app/src/services/basemapSource.ts`), the Vite PWA config,
+IndexedDB persistence, or offline behavior. On any other diff skip this
+section. Read the current files, never the implementer's word for route order,
+cache names, or handler scope.
+
+- **SW route order** — in `app/src/sw.ts` the `.pmtiles` Range→206 route MUST
+  stay registered BEFORE `precacheAndRoute` (first-registered wins; pmtiles'
+  `FetchSource` throws on full-body `200` responses). A reorder is a Blocker.
+- **Never cache Open-Meteo** — wind is stored per plan in IndexedDB, not in the
+  SW cache. Flag any route or handler that would cache that origin.
+- **Glyphs are runtime-cached, never precached** — `basemap-assets/fonts/**`
+  is served by a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts`
+  plus an app-side warm-up (`glyphWarmup.ts`) that runs ONLY once the SW
+  controls the page. `install`/`activate` must never fetch glyphs — the small
+  install is the point. The cache version-bump procedure lives in
+  `app/src/lib/glyphs.ts`; a cache-name change without it is a Major.
+- **Honest offline testing** — Playwright's `setOffline(true)` does NOT block
+  service-worker fetches; the offline spec kills the preview server instead.
+  Flag any change that "simplifies" the server-kill away.
+- **Wind-grid persistence & transfer** — a saved route renders against the
+  forecast it was computed from, never a re-fetched one. Never transfer the
+  wind grid's buffers to the worker; only the mask buffer is transferred,
+  always as a `.slice(0)` copy of the cached original.
+- **E2E determinism for SW/canvas** — no fixed `waitForTimeout` as a
+  synchronization wait; gate on state signals with `expect.poll`, and settle
+  canvas baselines via two consecutive byte-equal screenshots before comparing.
+
 ## Evidence rules
 
 - Verify claims yourself: run `npm --prefix app run typecheck` / `lint` /
@@ -101,8 +132,9 @@ orchestrator, not prose for the end user.
 
 ## Report discipline
 
-Cap the message you send back at ~25 lines: verdict, findings list, evidence
-pointers. Post the full review to the PR first — one inline thread per
+Report the verdict, each finding with an evidence pointer, and the SHA; keep it scannable; put large output on disk.
+
+Post the full review to the PR first — one inline thread per
 finding, findings that cannot be anchored to a diff hunk in a PR-level
 comment, as `COMMENTED` (`event: "COMMENT"` on the REST endpoint; self-
 approval is rejected by GitHub and is expected, not a bypass). The PR is the
@@ -114,16 +146,10 @@ duplicate. If there is no PR, the scratchpad file below is the artifact.
   discards the diagnostic (this repo lost a `-0` root cause exactly that
   way, #203). Reduce PASSING evidence to a counted verdict (`typecheck ok`,
   `312/312 passed`), never to a comparative adjective.
-- If a findings table or evidence dump would blow the 25-line cap, write it to
-  a scratchpad file and return the PATH, not the contents.
+- A findings table or evidence dump too long to read at a glance goes to a
+  scratchpad file; return the PATH, not the contents.
 - Write that scratchpad file with a Bash heredoc
-  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool.
-  Observed 2026-09-05 (#969): two of five subagents briefed to write a
-  scratchpad report did not write it and pasted their tables inline, while a
-  third wrote the same file via Bash. Whether the tool errored or the agent
-  obeyed the harness-injected `Do NOT Write report/summary/... files`
-  instruction #969 quotes was not established — either way a harness
-  property; re-check after an upgrade. If you were briefed to return a
-  summary and find yourself about to paste a large table instead, try the
-  Bash heredoc before concluding you cannot write the file, and say in your
-  report which route you took.
+  (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool: the
+  harness tells subagents not to `Write` report files. Try the heredoc before
+  concluding you cannot write the file, and say in your report which route
+  you took.
