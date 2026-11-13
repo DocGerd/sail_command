@@ -63,7 +63,7 @@ are all deliberate):
 
 - **A — served bytes changed under a live page.** `ReloadPrompt.tsx` re-checks
   `registration.update()` on every window focus while online
-  (`ReloadPrompt.tsx`). If `dist/` was rebuilt while
+  (`app/src/components/ReloadPrompt.tsx`). If `dist/` was rebuilt while
   the previewed page stayed open (another agent's build, a `pree2e` rebuild),
   the next focus installs the new worker into `waiting` — while the page
   still correctly shows the build it loaded.

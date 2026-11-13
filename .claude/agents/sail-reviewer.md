@@ -150,5 +150,6 @@ duplicate. If there is no PR, the scratchpad file below is the artifact.
   scratchpad file; return the PATH, not the contents.
 - Write that scratchpad file with a Bash heredoc
   (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool: the
-  harness can refuse `Write` for report files. If you cannot write the file,
-  say which route you took instead of pasting a large table.
+  harness tells subagents not to `Write` report files. Try the heredoc before
+  concluding you cannot write the file, and say in your report which route
+  you took.

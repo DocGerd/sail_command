@@ -20,14 +20,15 @@ step 6 below).
 
 **Ownership is split, and this skill is the single owner of the procedure.**
 The CREATOR of the worktree (the implementer or reviewer that made it) runs
-steps 1-3 inside it before handing back: `rm -rf` is permission-blocked even
-in the main session, so only the creator's `find -delete` can empty an
-untracked `node_modules`. The main session then runs steps 4-8 from the repo
+steps 1-3 inside it before handing back, emptying an untracked
+`node_modules` with `find -delete` (`rm -rf` is permission-blocked even in
+the main session). The main session then runs steps 4-8 from the repo
 root. If the creator is gone, a fresh agent pointed at the surviving worktree
 does steps 1-3.
 
-**Run each step below as a separate plain command** — a worktree-isolated
-agent's compound or out-of-tree git commands are refused by the harness.
+**Run each step below as a separate plain command** — for a worktree-isolated
+agent the harness refuses compound or out-of-tree git commands, heredocs, and
+any command it cannot show is not git (CLAUDE.md's harness-refusal bullet).
 
 ## Steps (run from inside the worktree, steps 1–3)
 

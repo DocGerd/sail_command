@@ -1,6 +1,6 @@
 ---
 name: claim-auditor
-description: Read-only subagent that audits the PROSE of a SailCommand change set — comments, JSDoc, CLAUDE.md, CONTRIBUTING.md, specs, README/CHANGELOG, PR bodies, commit messages — for the repo's documented prose-rot classes (over-claiming, stale, wrong-from-the-start, same-PR invalidation, sibling-merge invalidation, orchestrator out-of-band action). Runs ALONGSIDE `sail-reviewer`, never in place of it — code correctness stays that agent's job. Spawn FRESH per audit round: reusing one instance across a fix wave risks it trusting its own prior clean verdict on the very defect class it exists to catch.
+description: "Read-only subagent that audits the PROSE of a SailCommand change set — comments, JSDoc, CLAUDE.md, CONTRIBUTING.md, specs, README/CHANGELOG, PR bodies, commit messages — for the repo's documented prose-rot classes (over-claiming, stale, wrong-from-the-start, same-PR invalidation, sibling-merge invalidation, orchestrator out-of-band action). Runs ALONGSIDE `sail-reviewer`, never in place of it — code correctness stays that agent's job. Spawn FRESH per audit round: reusing one instance across a fix wave risks it trusting its own prior clean verdict on the very defect class it exists to catch."
 model: opus
 effort: xhigh
 tools: Read, Glob, Grep, Bash
@@ -151,5 +151,6 @@ Report the verdict, each finding with an evidence pointer, and the SHA; keep it 
   truncate where it lives.
 - Write that scratchpad file with a Bash heredoc
   (`cat > /path/to/file <<'EOF' ... EOF`) — you have no Edit or Write tool by
-  design, so Bash is the only route to a file. If you cannot write the file,
-  say which route you took instead of pasting a large table.
+  design, so Bash is the only route to a file. Try the heredoc before
+  concluding you cannot write the file, and say in your report which route
+  you took.

@@ -65,7 +65,7 @@ not count as done:
 2. `npm --prefix app run lint`
 3. Focused tests: `npm --prefix app run test -- <filter>` — use filters while
    iterating; for the full suite's own duration read `app/vite.config.ts`'s
-   test-config comment rather than any figure quoted here.
+   #878 comment rather than any figure quoted here.
 4. Routing changes: the `realmask.repro.*.test.ts` files under
    `app/src/routing/` must stay green — real committed mask/polars.
    `npm --prefix app run test -- realmask.repro` filters to all of them.
@@ -93,8 +93,9 @@ not count as done:
 
 ## Report discipline
 
-Report the verdict, each finding with an evidence pointer, and the SHA; keep it scannable; put large output on disk. The report covers what changed (file list, one-line purpose each), the
-verification evidence above, and deviations/concerns (or explicitly "none").
+Report what changed (file list, one-line purpose each), the verification
+evidence above, deviations/concerns (or explicitly "none"), and the commit
+SHA; keep it scannable; put large output on disk.
 
 - Keep FAILING command output VERBATIM and inline — never paraphrase a
   failure. A paraphrase discards the diagnostic; this repo lost a `-0` root
@@ -107,5 +108,6 @@ verification evidence above, and deviations/concerns (or explicitly "none").
   return its PATH, not its contents.
 - Write that scratchpad file with a Bash heredoc
   (`cat > /path/to/file <<'EOF' ... EOF`) rather than the `Write` tool: the
-  harness can refuse `Write` for report files. If you cannot write the file,
-  say which route you took instead of pasting a large table.
+  harness tells subagents not to `Write` report files. Try the heredoc before
+  concluding you cannot write the file, and say in your report which route
+  you took.
