@@ -214,7 +214,7 @@ Per task:
   fragment for the same issue is still pending, DECIDE whether it is still TRUE — do not
   reflexively leave it alone; both fold into the same section.
 - One persistent `sail-reviewer` per PR, reused via `SendMessage` for the fix→re-review loop,
-  retired at merge. Add `offline-pwa-reviewer` ONLY if the diff touches a PWA path. Run
+  retired at merge. `sail-reviewer` covers PWA paths when the diff touches one. Run
   `/pr-selfreview`: one inline thread per finding, fix all, resolve all.
 - **For a prose-heavy diff add `claim-auditor` ALONGSIDE the reviewer, spawned FRESH each round**
   (never resumed — it would carry its own prior clean verdict as a prior). Give them disjoint
@@ -377,9 +377,11 @@ measured to contain 30 further defects, 9 of them major.
 
 ## Phase 5 — Housekeeping
 
-- **Milestone roll-forward**, per `CONTRIBUTING.md`: the shipped milestone closes, `v0.(N+1).0`'s
-  scope becomes the next `v0.N.0`, and a fresh `v0.(N+2).0` is opened. A PATCH milestone closes at
-  its own cut and shifts nothing. `Backlog` and `Icebox` persist.
+- **Milestone roll-forward**, per `CONTRIBUTING.md` and the `release` skill: the fresh `v0.(N+2).0`
+  is opened BEFORE the sweep PR (its prose asserts it exists), and the shipped milestone is closed
+  AFTER the tag push, never during the sweep. Verify both here and do whichever is still missing.
+  `v0.(N+1).0`'s scope becomes the next `v0.N.0`. A PATCH release opens no fresh milestone, closes
+  only its own, and shifts nothing. `Backlog` and `Icebox` persist.
 - Close any issue the release shipped that a `Refs`-only PR left open, and verify state via
   `gh api repos/DocGerd/sail_command/issues/N --jq .state`. **File every residual as its own
   tracked issue at REVIEW time, per-PR — not in a post-hoc audit here.** The v0.18.0 cut ran a

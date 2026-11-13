@@ -1,6 +1,6 @@
 ---
 name: merge-train
-description: The main-session merge loop for SailCommand develop PRs (batch file-disjoint PRs by default, serial as fallback) — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from #119 stale-SHA and #94 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
+description: The main-session merge loop for SailCommand develop PRs (batch file-disjoint PRs by default, serial as fallback) — arm a check-runs Monitor, verify head.sha before merging, merge, re-sync the next PR, and recover from stale-SHA and 504 near-misses. Use when merging one or more feature/chore PRs into develop. Triggers on /merge-train.
 ---
 
 # Merge-train: the develop merge loop

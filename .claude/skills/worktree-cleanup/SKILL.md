@@ -18,16 +18,19 @@ location, only that you `cd` to the repo root first and pass its absolute
 path), and a **locked** worktree (fails with a specific, fixable error —
 step 6 below).
 
-**Responsibility sits with the CREATOR of the worktree** — the agent that
-made it, not the main session. `rm -rf` is permission-blocked even in the
-main session, so a reviewer or implementer must clean its own tree before
-handing back; a fresh agent pointed at the surviving worktree is the fallback
-if the creator is gone.
+**Ownership is split, and this skill is the single owner of the procedure.**
+The CREATOR of the worktree (the implementer or reviewer that made it) runs
+steps 1-3 inside it before handing back, emptying an untracked
+`node_modules` with `find -delete` (`rm -rf` is permission-blocked even in
+the main session). The main session then runs steps 4-8 from the repo
+root. If the creator is gone, a fresh agent pointed at the surviving worktree
+does steps 1-3.
 
-**Run each step below as a separate plain command** — see CLAUDE.md's
-worktree-isolated-agent harness-refusal bullet for why.
+**Run each step below as a separate plain command** — for a worktree-isolated
+agent the harness refuses compound or out-of-tree git commands, heredocs, and
+any command it cannot show is not git (CLAUDE.md's harness-refusal bullet).
 
-## Steps (run from inside the worktree first, steps 1–2)
+## Steps (run from inside the worktree, steps 1–3)
 
 1. **Remove `node_modules` with `find`, never `rm -rf`.** `rm -rf` is
    permission-blocked in this environment; `find -delete` is not:
@@ -115,8 +118,8 @@ worktree-isolated-agent harness-refusal bullet for why.
 
 ## Never touch
 
-- `pipeline/data-src/` — an ~888 MB gitignored download cache. Re-downloading
-  costs about an hour. Never delete it during any cleanup, worktree removal
+- `pipeline/data-src/` — a large gitignored download cache that is slow to
+  re-download. Never delete it during any cleanup, worktree removal
   included.
 - Any worktree you did not create or were not explicitly asked to remove —
   `git worktree list` shows every worktree in the repo, including other
