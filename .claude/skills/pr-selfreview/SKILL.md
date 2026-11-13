@@ -92,8 +92,7 @@ running it by hand, one thread at a time:
 .claude/skills/pr-selfreview/resolve-threads.sh N -m "Fixed in \`abc1234\`."
 ```
 
-or, for per-thread text keyed by the same (path, line) each finding was
-anchored to in step 2:
+or, for per-thread text matched on each thread's CURRENT `path` and `line`:
 
 ```json
 [
@@ -105,6 +104,14 @@ anchored to in step 2:
 ```
 .claude/skills/pr-selfreview/resolve-threads.sh N -f mapping.json
 ```
+
+The script compares only the thread's current `line`. Once a fix push has
+moved or removed the commented hunk, GitHub reports the thread as outdated
+with `line: null`, so a `(path, line)` entry no longer matches it. Resolution
+runs after the fix push, so in practice use the shared message or a single
+default entry (no `path`/`line`) carrying the fix SHA; a thread matching no
+entry fails the run loudly. Distinct per-thread text after a push needs the
+raw GraphQL fallback below, addressed by thread id.
 
 The script builds every GraphQL payload through `jq -n --arg`, so
 backtick/code-fence bodies never touch a double-quoted shell string — no
